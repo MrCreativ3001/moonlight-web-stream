@@ -1,9 +1,9 @@
 {
   "credentials": null,
   "data_path": "server/data.json",
-  "bind_address": "0.0.0.0:8080",
+  "bind_address": "0.0.0.0:${WEB_PORT}",
   "moonlight_default_http_port": 47989,
-  "pair_device_name": "roth",
+  "pair_device_name": "${PAIR_DEVICE_NAME}",
   "webrtc_ice_servers": [
     {
       "urls": [
@@ -19,13 +19,13 @@
     }
   ],
   "webrtc_port_range": {
-    "min": 40000,
-    "max": 40100
+    "min": ${WEBRTC_PORT_MIN:-40000},
+    "max": ${WEBRTC_PORT_MAX:-40100}
   },
   "webrtc_nat_1to1": {
     "ice_candidate_type": "host",
     "ips": [
-      "127.0.0.1"
+      "${SERVER_IP}"
     ]
   },
   "webrtc_network_types": [

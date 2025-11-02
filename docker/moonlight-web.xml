@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<Container>
+  <Name>moonlight-web</Name>
+  <Repository>highland04/moonlight-web-stream:latest</Repository>
+  <Network>host</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/highlandn/moonlight-web-stream</Support>
+  <Project>https://github.com/highlandn/moonlight-web-stream</Project>
+
+  <Overview>
+Moonlight Web Stream enables browser-based game streaming through your Sunshine host.
+
+SETUP:
+1. Set SERVER_IP to your Unraid server's LAN IP (for example, 192.168.1.50).
+2. Leave network mode as "host" for low latency.
+3. Set WEB_PORT to the same port used in config.json.
+  </Overview>
+
+  <Category>Games - Remote Streaming</Category>
+  <Icon>https://raw.githubusercontent.com/highlandn/moonlight-web-stream/master/logo.png</Icon>
+
+  <!-- Environment Variables -->
+  <Config Name="Timezone" Target="TIMEZONE" Default="America/New_York" Mode="" Description="Container timezone (adjust if needed)" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Server IP" Target="SERVER_IP" Default="192.168.1.100" Mode="" Description="Replace with your Unraid server's LAN IP. Used for WebRTC NAT 1:1 mapping." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Web Port" Target="WEB_PORT" Default="8080" Mode="" Description="Port used for web server binding (host networking only)" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Pair Device Name" Target="PAIR_DEVICE_NAME" Default="roth" Mode="" Description="Device name used when pairing Moonlight to Sunshine" Type="Variable" Display="always" Required="false" Mask="false"/>
+
+  <!-- Paths -->
+  <Config Name="Config Folder" Target="/config" Default="/mnt/user/appdata/moonlight-web/config" Mode="rw" Description="Configuration folder for config.json and data" Type="Path" Display="always" Required="true" Mask="false"/>
+
+  <!-- Web UI -->
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+  <WebPort>8080</WebPort>
+
+  <!-- Extra Parameters -->
+  <ExtraParameters>--restart unless-stopped</ExtraParameters>
+</Container>

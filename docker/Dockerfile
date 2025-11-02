@@ -2,6 +2,12 @@ FROM debian:bookworm-slim
 
 ENV MOONLIGHT_WEB_PATH=/moonlight-web
 
+# Install required utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    jq \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create / Go to app directory
 WORKDIR ${MOONLIGHT_WEB_PATH}
 

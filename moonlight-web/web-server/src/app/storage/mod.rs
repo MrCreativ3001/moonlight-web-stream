@@ -101,6 +101,7 @@ pub struct StorageQueryHosts {
 }
 
 pub enum Either<L, R> {
+    #[allow(dead_code)]
     Left(L),
     Right(R),
 }
@@ -125,6 +126,7 @@ pub trait Storage {
         expires_after: Duration,
     ) -> Result<SessionToken, AppError>;
     async fn remove_session_token(&self, session: SessionToken) -> Result<(), AppError>;
+    #[allow(dead_code)]
     async fn remove_all_user_session_tokens(&self, user_id: UserId) -> Result<(), AppError>;
     /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data directly
     async fn get_user_by_session_token(

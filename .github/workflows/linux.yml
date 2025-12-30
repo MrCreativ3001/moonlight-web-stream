@@ -1,0 +1,49 @@
+name: Linux
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    continue-on-error: true
+    strategy:
+      matrix:
+        arch:
+          - runner: ubuntu-latest
+            name: x86_64
+          - runner: ubuntu-24.04-arm
+            name: aarch64
+
+    name: ${{ matrix.arch.name }}
+    runs-on: ${{ matrix.arch.runner }}
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: recursive
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: nightly
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 24
+    - run: sudo apt-get install clang -y
+      
+
+    - name: Build
+      run: |
+       cargo build --release
+       pushd moonlight-web/web-server
+       npm install
+       npm run build
+       mv dist static
+       popd
+
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: moonlight-web-${{ matrix.arch.name }}-unknown-linux-gnu
+        path: |
+          target/release/streamer
+          target/release/web-server
+          moonlight-web/web-server/static

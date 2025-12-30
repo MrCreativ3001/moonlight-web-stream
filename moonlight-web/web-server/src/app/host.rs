@@ -69,6 +69,7 @@ impl From<App> for api_bindings::App {
 }
 
 impl Host {
+    #[allow(dead_code)]
     pub fn id(&self) -> HostId {
         self.id
     }
@@ -434,6 +435,7 @@ impl Host {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn is_paired(
         &mut self,
         user: &mut AuthenticatedUser,
@@ -528,6 +530,7 @@ impl Host {
         self.modify(user, modify).await
     }
 
+    #[allow(dead_code)]
     pub async fn unpair(&self, user: &mut AuthenticatedUser) -> Result<Host, AppError> {
         self.can_use(user).await?;
 

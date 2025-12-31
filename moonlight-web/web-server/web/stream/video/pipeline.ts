@@ -16,7 +16,6 @@ import { OffscreenCanvasVideoRenderer } from "./offscreen_canvas.js"
 // -- Gather information about the browser
 interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic { }
 
-// TODO: print info
 const VIDEO_RENDERERS: Array<VideoRendererStatic> = [
     VideoElementRenderer,
     CanvasVideoRenderer,
@@ -76,6 +75,23 @@ export async function buildVideoPipeline(type: "data", settings: VideoPipelineOp
 export async function buildVideoPipeline(type: string, settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<VideoRenderer>> {
     const pipesInfo = await gatherPipeInfo()
 
+    if (logger) {
+        // Print supported pipes
+        const videoRendererInfoPromises = []
+        for (const videoRenderer of VIDEO_RENDERERS) {
+            videoRendererInfoPromises.push(videoRenderer.getInfo().then(info => [videoRenderer.name, info]))
+        }
+        const videoRendererInfo = await Promise.all(videoRendererInfoPromises)
+
+        logger.debug(`Supported Video Renderers: {`)
+        let isFirst = true
+        for (const [name, info] of videoRendererInfo) {
+            logger.debug(`${isFirst ? "" : ","}"${name}": ${JSON.stringify(info)}`)
+            isFirst = false
+        }
+        logger.debug(`}`)
+    }
+
     logger?.debug(`Building video pipeline with output "${type}"`)
 
     let pipelines: Array<Pipeline> = []
@@ -90,6 +106,8 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
 
         // H264 is assumed universal, if we don't currently support something force it!
         if (!hasAnyCodec(settings.supportedVideoCodecs)) {
+            logger?.debug("No codec currently found. Setting H264 as supported even though the browser says it is not supported")
+
             settings.supportedVideoCodecs.H264 = true
         }
 

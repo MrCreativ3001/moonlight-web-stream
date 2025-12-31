@@ -302,6 +302,17 @@ export class Stream implements Component {
             return "failednoconnect"
         }
 
+        // Print pipe support
+        const pipesInfo = await gatherPipeInfo()
+
+        this.logger.debug(`Supported Pipes: {`)
+        let isFirst = true
+        for (const [key, value] of pipesInfo.entries()) {
+            this.logger.debug(`${isFirst ? "" : ","}"${getPipe(key)?.name}": ${JSON.stringify(value)}`)
+            isFirst = false
+        }
+        this.logger.debug(`}`)
+
         const videoCodecSupport = await this.createPipelines()
         if (!videoCodecSupport) {
             this.debugLog("No video pipeline was found for the codec that was specified. If you're unsure which codecs are supported use H264.", { type: "fatalDescription" })

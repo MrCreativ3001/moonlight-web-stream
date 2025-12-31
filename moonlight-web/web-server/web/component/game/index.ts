@@ -155,6 +155,16 @@ export class Game implements Component {
             callback: this.showDetails.bind(this),
         })
 
+        elements.push({
+            name: "Open",
+            callback: async () => {
+                this.startStream()
+
+                const event = new ComponentEvent("ml-gamereload", this)
+                this.divElement.dispatchEvent(event)
+            }
+        })
+
         setContextMenu(event, {
             elements
         })

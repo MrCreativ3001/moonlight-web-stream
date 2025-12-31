@@ -27,6 +27,7 @@ const VIDEO_RENDERERS: Array<VideoRendererStatic> = [
 export type VideoPipelineOptions = {
     supportedVideoCodecs: VideoCodecSupport
     canvasRenderer: boolean
+    forceVideoElementRenderer: boolean
 }
 
 type PipelineResult<T> = { videoRenderer: T, supportedCodecs: VideoCodecSupport, error: false } | { videoRenderer: null, supportedCodecs: null, error: true }
@@ -78,7 +79,23 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
     logger?.debug(`Building video pipeline with output "${type}"`)
 
     let pipelines: Array<Pipeline> = []
+
     // Forced renderer
+    if (settings.forceVideoElementRenderer) {
+        logger?.debug("Forcing Video Element Renderer")
+        if (type != "videotrack") {
+            logger?.debug("The option Force Video Element Renderer is currently only supported with WebRTC", { type: "fatalDescription" })
+            return { videoRenderer: null, supportedCodecs: null, error: true }
+        }
+
+        // H264 is assumed universal, if we don't currently support something force it!
+        if (!hasAnyCodec(settings.supportedVideoCodecs)) {
+            settings.supportedVideoCodecs.H264 = true
+        }
+
+        return { videoRenderer: new VideoElementRenderer(), supportedCodecs: settings.supportedVideoCodecs, error: false }
+    }
+
     if (settings.canvasRenderer) {
         logger?.debug("Forcing canvas renderer")
 

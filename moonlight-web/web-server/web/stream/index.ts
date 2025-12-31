@@ -345,16 +345,6 @@ export class Stream implements Component {
     }
 
     private async createPipelines(): Promise<VideoCodecSupport | null> {
-        // Print supported pipes
-        const pipesInfo = await gatherPipeInfo()
-        this.logger?.debug(`Supported Pipes: {`)
-        let isFirst = true
-        for (const [key, value] of pipesInfo.entries()) {
-            this.logger?.debug(`${isFirst ? "" : ","}"${getPipe(key)?.name}": ${JSON.stringify(value)}`)
-            isFirst = false
-        }
-        this.logger?.debug(`}`)
-
         // Create pipelines
         const [supportedVideoCodecs] = await Promise.all([this.createVideoRenderer(), this.createAudioPlayer()])
 
@@ -397,7 +387,8 @@ export class Stream implements Component {
 
         const videoSettings: VideoPipelineOptions = {
             supportedVideoCodecs: andVideoCodecs(codecHint, transportCodecSupport),
-            canvasRenderer: this.settings.canvasRenderer
+            canvasRenderer: this.settings.canvasRenderer,
+            forceVideoElementRenderer: this.settings.forceVideoElementRenderer
         }
 
         let pipelineCodecSupport
@@ -437,7 +428,7 @@ export class Stream implements Component {
             return null
         }
 
-        return andVideoCodecs(transportCodecSupport, pipelineCodecSupport)
+        return pipelineCodecSupport
     }
     private async createAudioPlayer(): Promise<boolean> {
         if (this.audioPlayer) {

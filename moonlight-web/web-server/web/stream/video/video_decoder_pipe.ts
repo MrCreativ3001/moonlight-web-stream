@@ -1,8 +1,7 @@
 import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
-import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { andVideoCodecs, emptyVideoCodecs, maybeVideoCodecs, VIDEO_DECODER_CODECS, VideoCodecSupport } from "../video.js";
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
 
@@ -61,12 +60,11 @@ export class VideoDecoderPipe implements DataVideoRenderer {
     static readonly type = "videodata"
 
     static async getInfo(): Promise<PipeInfo> {
-        const supported = await checkExecutionEnvironment("VideoDecoder")
+        const supported = "VideoDecoder" in globalObject()
 
         return {
-            executionEnvironment: supported,
-            // TODO: if it's only supported in a worker check there, maybe directly in checkExecEnv?
-            supportedVideoCodecs: supported.main ? await detectCodecs() : emptyVideoCodecs()
+            environmentSupported: supported,
+            supportedVideoCodecs: supported ? await detectCodecs() : emptyVideoCodecs()
         }
     }
 

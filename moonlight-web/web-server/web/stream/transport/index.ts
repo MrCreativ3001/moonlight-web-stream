@@ -56,6 +56,9 @@ export const TRANSPORT_CHANNEL_OPTIONS: Record<keyof typeof TransportChannelId, 
     CONTROLLER15: { reliable: false, ordered: false },
 }
 
+// failednoconnect => a connection failed without firstly being established
+// failed => a connection was ungracefully closed
+// disconnect => a connection was gracefully closed
 export type TransportShutdown = "failednoconnect" | "failed" | "disconnect"
 
 export interface Transport {

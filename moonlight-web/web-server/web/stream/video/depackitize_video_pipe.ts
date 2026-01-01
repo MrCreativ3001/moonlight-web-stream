@@ -13,10 +13,7 @@ export class DepacketizeVideoPipe implements DataPipe {
     static async getInfo(): Promise<PipeInfo> {
         // no link
         return {
-            executionEnvironment: {
-                main: true,
-                worker: true
-            },
+            environmentSupported: true,
             supportedVideoCodecs: allVideoCodecs()
         }
     }

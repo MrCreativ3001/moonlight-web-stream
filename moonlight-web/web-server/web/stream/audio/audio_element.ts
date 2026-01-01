@@ -1,4 +1,4 @@
-import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
 import { AudioPlayerSetup, TrackAudioPlayer } from "./index.js";
 
 export class AudioElementPlayer implements TrackAudioPlayer {
@@ -7,11 +7,7 @@ export class AudioElementPlayer implements TrackAudioPlayer {
 
     static async getInfo(): Promise<PipeInfo> {
         return {
-            executionEnvironment: {
-                main: "HTMLAudioElement" in window && "srcObject" in HTMLAudioElement.prototype,
-                // Not available in a worker
-                worker: false
-            }
+            environmentSupported: "HTMLAudioElement" in globalObject() && "srcObject" in HTMLAudioElement.prototype,
         }
     }
 

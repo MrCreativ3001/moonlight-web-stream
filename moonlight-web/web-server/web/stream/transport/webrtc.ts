@@ -30,6 +30,7 @@ export class WebRTCTransport implements Transport {
         this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
 
         this.peer.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this))
+        this.peer.addEventListener("signalingstatechange", this.onSignalingStateChange.bind(this))
         this.peer.addEventListener("iceconnectionstatechange", this.onIceConnectionStateChange.bind(this))
         this.peer.addEventListener("icegatheringstatechange", this.onIceGatheringStateChange.bind(this))
 
@@ -178,6 +179,7 @@ export class WebRTCTransport implements Transport {
         this.iceCandidates.length = 0
     }
 
+    private wasConnected = false
     private onConnectionStateChange() {
         if (!this.peer) {
             this.logger?.debug("OnConnectionStateChange without a peer")
@@ -189,14 +191,36 @@ export class WebRTCTransport implements Transport {
         if (this.peer.connectionState == "connected") {
             type = "recover"
             this.setDelayHintInterval(true)
-        } else if ((this.peer.connectionState == "failed" || this.peer.connectionState == "disconnected") && this.peer.iceGatheringState == "complete") {
+
+            if (this.onconnect) {
+                this.onconnect()
+            }
+            this.wasConnected = true
+        } else if ((this.peer.connectionState == "failed" || this.peer.connectionState == "closed" || this.peer.connectionState == "disconnected") && this.peer.iceGatheringState == "complete") {
             type = "fatal"
             this.setDelayHintInterval(false)
+        }
+
+        if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
+            if (this.onclose) {
+                if (this.wasConnected) {
+                    this.onclose("failed")
+                } else {
+                    this.onclose("failednoconnect")
+                }
+            }
         }
 
         this.logger?.debug(`Changing Peer State to ${this.peer.connectionState}`, {
             type: type ?? undefined
         })
+    }
+    private onSignalingStateChange() {
+        if (!this.peer) {
+            this.logger?.debug("OnSignalingStateChange without a peer")
+            return
+        }
+        this.logger?.debug(`Changing Peer Signaling State to ${this.peer.signalingState}`)
     }
     private onIceConnectionStateChange() {
         if (!this.peer) {
@@ -211,6 +235,13 @@ export class WebRTCTransport implements Transport {
             return
         }
         this.logger?.debug(`Changing Peer Ice Gathering State to ${this.peer.iceGatheringState}`)
+
+        if (this.peer.iceConnectionState == "new" && this.peer.iceGatheringState == "complete") {
+            // we failed without connection
+            if (this.onclose) {
+                this.onclose("failednoconnect")
+            }
+        }
     }
 
     private forceDelayInterval: number | null = null
@@ -353,9 +384,12 @@ export class WebRTCTransport implements Transport {
         return channel
     }
 
-    // TODO: implement this
+    onconnect: (() => void) | null = null
+
     onclose: ((shutdown: TransportShutdown) => void) | null = null
     async close(): Promise<void> {
+        this.logger?.debug("Closing WebRTC Peer")
+
         this.peer?.close()
     }
 

@@ -50,7 +50,7 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
                 continue pipelineLoop
             }
 
-            if (!pipeInfo.executionEnvironment.main) {
+            if (!pipeInfo.environmentSupported) {
                 continue pipelineLoop
             }
         }
@@ -61,7 +61,7 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
             continue pipelineLoop
         }
 
-        if (!playerInfo.executionEnvironment.main) {
+        if (!playerInfo.environmentSupported) {
             continue pipelineLoop
         }
 

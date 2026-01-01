@@ -6,10 +6,7 @@ export class DepacketizeAudioPipe implements DataPipe {
 
     static async getInfo(): Promise<PipeInfo> {
         return {
-            executionEnvironment: {
-                main: true,
-                worker: true
-            }
+            environmentSupported: true
         }
     }
 

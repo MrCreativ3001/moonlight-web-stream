@@ -243,10 +243,12 @@ export class Stream implements Component {
         this.debugLog(`Using transport: ${this.settings.dataTransport}`)
 
         if (this.settings.dataTransport == "auto") {
-            await this.tryWebRTCTransport()
+            let shutdownReason = await this.tryWebRTCTransport()
 
-            // TODO: use Web Socket Transport after WebRTC fail
-            // await this.tryWebSocketTransport()
+            if (shutdownReason == "failednoconnect") {
+                this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.")
+                await this.tryWebSocketTransport()
+            }
         } else if (this.settings.dataTransport == "webrtc") {
             await this.tryWebRTCTransport()
         } else if (this.settings.dataTransport == "websocket") {
@@ -289,7 +291,27 @@ export class Stream implements Component {
         })
         this.setTransport(transport)
 
-        // TODO: wait for negotiation
+        // Wait for negotiation
+        const result = await (new Promise((resolve, _reject) => {
+            transport.onconnect = () => resolve(true)
+            transport.onclose = () => resolve(false)
+        }))
+        this.debugLog(`WebRTC negotiation success: ${result}`)
+
+        if (!result) {
+            return "failednoconnect"
+        }
+
+        // Print pipe support
+        const pipesInfo = await gatherPipeInfo()
+
+        this.logger.debug(`Supported Pipes: {`)
+        let isFirst = true
+        for (const [key, value] of pipesInfo.entries()) {
+            this.logger.debug(`${isFirst ? "" : ","}"${getPipe(key)?.name}": ${JSON.stringify(value)}`)
+            isFirst = false
+        }
+        this.logger.debug(`}`)
 
         const videoCodecSupport = await this.createPipelines()
         if (!videoCodecSupport) {
@@ -334,16 +356,6 @@ export class Stream implements Component {
     }
 
     private async createPipelines(): Promise<VideoCodecSupport | null> {
-        // Print supported pipes
-        const pipesInfo = await gatherPipeInfo()
-        this.logger?.debug(`Supported Pipes: {`)
-        let isFirst = true
-        for (const [key, value] of pipesInfo.entries()) {
-            this.logger?.debug(`${isFirst ? "" : ","}"${getPipe(key)?.name}": ${JSON.stringify(value)}`)
-            isFirst = false
-        }
-        this.logger?.debug(`}`)
-
         // Create pipelines
         const [supportedVideoCodecs] = await Promise.all([this.createVideoRenderer(), this.createAudioPlayer()])
 
@@ -375,8 +387,8 @@ export class Stream implements Component {
         this.debugLog(`Codec Hint by the user: ${JSON.stringify(codecHint)}`)
 
         if (!hasAnyCodec(codecHint)) {
-            // TODO: use the logger and log via fatal
-            throw "Couldn't find any supported video format. Change the codec option to H264 in the settings if you're unsure which codecs are supported."
+            this.debugLog("Couldn't find any supported video format. Change the codec option to H264 in the settings if you're unsure which codecs are supported.", { type: "fatalDescription" })
+            return null
         }
 
         const transportCodecSupport = await this.transport.setupHostVideo({
@@ -386,7 +398,8 @@ export class Stream implements Component {
 
         const videoSettings: VideoPipelineOptions = {
             supportedVideoCodecs: andVideoCodecs(codecHint, transportCodecSupport),
-            canvasRenderer: this.settings.canvasRenderer
+            canvasRenderer: this.settings.canvasRenderer,
+            forceVideoElementRenderer: this.settings.forceVideoElementRenderer
         }
 
         let pipelineCodecSupport
@@ -401,7 +414,9 @@ export class Stream implements Component {
 
             videoRenderer.mount(this.divElement)
 
-            video.addTrackListener((track) => videoRenderer.setTrack(track))
+            video.addTrackListener((track) => {
+                videoRenderer.setTrack(track)
+            })
 
             this.videoRenderer = videoRenderer
         } else if (video.type == "data") {
@@ -424,7 +439,7 @@ export class Stream implements Component {
             return null
         }
 
-        return andVideoCodecs(transportCodecSupport, pipelineCodecSupport)
+        return pipelineCodecSupport
     }
     private async createAudioPlayer(): Promise<boolean> {
         if (this.audioPlayer) {

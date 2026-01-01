@@ -8,7 +8,6 @@ import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sideba
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { allVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./stream/video.js";
 import { LogMessageType, StreamCapabilities, StreamKeys } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";

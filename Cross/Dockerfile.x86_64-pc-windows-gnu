@@ -4,8 +4,9 @@ FROM $CROSS_BASE_IMAGE AS base
 # -- Overwrite the openssl finder so we just don't do anything (it'll just error out even though we have the lib)
 RUN echo "" > $(cmake --system-information | grep CMAKE_ROOT | cut -d'"' -f2)/Modules/FindOpenSSL.cmake
 
-# -- This will enable functionality for cross in the build rs
-ENV MOONLIGHT_COMMON_CROSS=1
+# -- This will set flags required for windows
+RUN echo 'set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID")' >> /opt/toolchain.cmake && \
+    echo 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID")' >> /opt/toolchain.cmake
 
 FROM base AS win
 

@@ -1,55 +1,72 @@
-import { CanvasVideoRenderer } from "./canvas_element.js"
+import { CanvasVideoRenderer } from "./canvas.js"
 import { VideoElementRenderer } from "./video_element.js"
 import { VideoMediaStreamTrackProcessorPipe } from "./media_stream_track_processor_pipe.js"
 import { TrackVideoRenderer, VideoRenderer } from "./index.js"
 import { VideoDecoderPipe } from "./video_decoder_pipe.js"
 import { DepacketizeVideoPipe } from "./depackitize_video_pipe.js"
 import { Logger } from "../log.js"
-import { VideoTrackGeneratorPipe } from "./video_track_generator.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
 import { andVideoCodecs, hasAnyCodec, VideoCodecSupport } from "../video.js"
-import { buildPipeline, gatherPipeInfo, getPipe, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
+import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { workerPipe } from "../pipeline/worker_pipe.js"
-import { WorkerDataSendPipe, WorkerVideoFrameReceivePipe } from "../pipeline/worker_io.js"
-
-// -- Custom worker pipelines
-const TestWorkerPipeline1 = workerPipe("TestWorkerPipeline1", { pipes: ["WorkerDataReceivePipe", "DepacketizeVideoPipe", "VideoDecoderPipe", "WorkerVideoFrameSendPipe"] })
+import { WorkerDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io.js"
+import { OffscreenCanvasVideoRenderer } from "./offscreen_canvas.js"
 
 // -- Gather information about the browser
 interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic { }
 
-// TODO: print info
 const VIDEO_RENDERERS: Array<VideoRendererStatic> = [
     VideoElementRenderer,
     CanvasVideoRenderer,
+    OffscreenCanvasVideoRenderer,
 ]
 
 // -- Build the pipeline
 export type VideoPipelineOptions = {
     supportedVideoCodecs: VideoCodecSupport
     canvasRenderer: boolean
+    forceVideoElementRenderer: boolean
 }
 
 type PipelineResult<T> = { videoRenderer: T, supportedCodecs: VideoCodecSupport, error: false } | { videoRenderer: null, supportedCodecs: null, error: true }
 
 type Pipeline = { input: string, pipes: Array<PipeStatic>, renderer: VideoRendererStatic }
 
+export const WorkerVideoMediaStreamProcessorPipe = workerPipe("WorkerVideoMediaStreamProcessorPipe", { pipes: ["WorkerVideoTrackReceivePipe", "VideoMediaStreamTrackProcessorPipe", "WorkerVideoFrameSendPipe"] })
+export const WorkerVideoMediaStreamProcessorCanvasPipe = workerPipe("WorkerVideoMediaStreamProcessorCanvasPipe", { pipes: ["WorkerVideoTrackReceivePipe", "VideoMediaStreamTrackProcessorPipe", "WorkerOffscreenCanvasSendPipe"] })
+export const WorkerDataToVideoTrackPipe = workerPipe("WorkerVideoFrameToTrackPipe", { pipes: ["WorkerDataReceivePipe", "DepacketizeVideoPipe", "VideoDecoderPipe", "VideoTrackGeneratorPipe", "WorkerVideoTrackSendPipe"] })
+
 const FORCE_CANVAS_PIPELINES: Array<Pipeline> = [
+    // -- track
+    // Convert track -> video frame -> canvas, Chromium
     { input: "videotrack", pipes: [VideoMediaStreamTrackProcessorPipe], renderer: CanvasVideoRenderer },
+    // Convert track -> video frame (in worker) -> canvas (in worker), Safari
+    { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorCanvasPipe], renderer: OffscreenCanvasVideoRenderer },
+    // Convert track -> video frame (in worker) -> canvas, Safari
+    { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorPipe, WorkerVideoFrameReceivePipe], renderer: CanvasVideoRenderer },
+    // -- data
+    // Convert data -> video frame -> canvas, Default (should be supported everywhere)
     { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe], renderer: CanvasVideoRenderer },
 ]
 
 const PIPELINES: Array<Pipeline> = [
+    // -- track
+    // Convert track -> video element, Default (should be supported everywhere)
     { input: "videotrack", pipes: [], renderer: VideoElementRenderer },
-    { input: "videotrack", pipes: [], renderer: VideoElementRenderer },
+    // Convert track -> video frame -> canvas, Chromium
     { input: "videotrack", pipes: [VideoMediaStreamTrackProcessorPipe], renderer: CanvasVideoRenderer },
+    // Convert track -> video frame (in worker) -> canvas (in worker), Safari
+    { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorCanvasPipe], renderer: OffscreenCanvasVideoRenderer },
+    // Convert track -> video frame (in worker) -> canvas, Safari
+    { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorPipe, WorkerVideoFrameReceivePipe], renderer: CanvasVideoRenderer },
+    // -- data
+    // Convert data -> video frame (in worker) -> track (in worker, VideoTrackGenerator) -> video element, Safari
+    { input: "data", pipes: [WorkerDataSendPipe, WorkerDataToVideoTrackPipe, WorkerVideoTrackReceivePipe], renderer: VideoElementRenderer },
+    // Convert data -> video frame -> track (MediaStreamTrackGenerator) -> video element, Chromium
     { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe, VideoMediaStreamTrackGeneratorPipe], renderer: VideoElementRenderer },
-    { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe, VideoTrackGeneratorPipe], renderer: VideoElementRenderer },
+    // Convert data -> video frame -> canvas, Firefox / Fallback
     { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe], renderer: CanvasVideoRenderer },
-]
-const TEST_PIPELINES: Array<Pipeline> = [
-    { input: "data", pipes: [WorkerDataSendPipe, TestWorkerPipeline1, WorkerVideoFrameReceivePipe], renderer: CanvasVideoRenderer }
 ]
 
 export async function buildVideoPipeline(type: "videotrack", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackVideoRenderer & VideoRenderer>>
@@ -58,10 +75,45 @@ export async function buildVideoPipeline(type: "data", settings: VideoPipelineOp
 export async function buildVideoPipeline(type: string, settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<VideoRenderer>> {
     const pipesInfo = await gatherPipeInfo()
 
+    if (logger) {
+        // Print supported pipes
+        const videoRendererInfoPromises = []
+        for (const videoRenderer of VIDEO_RENDERERS) {
+            videoRendererInfoPromises.push(videoRenderer.getInfo().then(info => [videoRenderer.name, info]))
+        }
+        const videoRendererInfo = await Promise.all(videoRendererInfoPromises)
+
+        logger.debug(`Supported Video Renderers: {`)
+        let isFirst = true
+        for (const [name, info] of videoRendererInfo) {
+            logger.debug(`${isFirst ? "" : ","}"${name}": ${JSON.stringify(info)}`)
+            isFirst = false
+        }
+        logger.debug(`}`)
+    }
+
     logger?.debug(`Building video pipeline with output "${type}"`)
 
     let pipelines: Array<Pipeline> = []
+
     // Forced renderer
+    if (settings.forceVideoElementRenderer) {
+        logger?.debug("Forcing Video Element Renderer")
+        if (type != "videotrack") {
+            logger?.debug("The option Force Video Element Renderer is currently only supported with WebRTC", { type: "fatalDescription" })
+            return { videoRenderer: null, supportedCodecs: null, error: true }
+        }
+
+        // H264 is assumed universal, if we don't currently support something force it!
+        if (!hasAnyCodec(settings.supportedVideoCodecs)) {
+            logger?.debug("No codec currently found. Setting H264 as supported even though the browser says it is not supported")
+
+            settings.supportedVideoCodecs.H264 = true
+        }
+
+        return { videoRenderer: new VideoElementRenderer(), supportedCodecs: settings.supportedVideoCodecs, error: false }
+    }
+
     if (settings.canvasRenderer) {
         logger?.debug("Forcing canvas renderer")
 
@@ -71,9 +123,6 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
 
         pipelines = PIPELINES
     }
-
-    // TODO: REMOVE TEST PIPELINES!
-    // pipelines = TEST_PIPELINES
 
     pipelineLoop: for (const pipeline of pipelines) {
         if (pipeline.input != type) {
@@ -89,7 +138,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
                 continue pipelineLoop
             }
 
-            if (!pipeInfo.executionEnvironment.main) {
+            if (!pipeInfo.environmentSupported) {
                 continue pipelineLoop
             }
 
@@ -104,7 +153,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
             continue pipelineLoop
         }
 
-        if (!rendererInfo.executionEnvironment.main) {
+        if (!rendererInfo.environmentSupported) {
             continue pipelineLoop
         }
         if (rendererInfo.supportedVideoCodecs) {

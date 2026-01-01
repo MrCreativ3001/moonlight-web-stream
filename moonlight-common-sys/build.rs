@@ -102,19 +102,6 @@ fn compile_moonlight(allow_vendored: bool) -> Option<(String, PathBuf)> {
     // Force the library used by openssl
     config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
 
-    // If we're in cargo cross
-    if let Ok("1") = var("MOONLIGHT_COMMON_CROSS").as_deref() {
-        let target_os = var("CARGO_CFG_TARGET_OS").unwrap();
-
-        if target_os == "windows" {
-            // Definitions required for some windows headers to enable them
-            // -> qos2.h
-            let flags = "-D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID";
-            config.cflag(flags);
-            config.cxxflag(flags);
-        }
-    }
-
     let profile = config.get_profile().to_string();
     Some((profile, config.build()))
 }

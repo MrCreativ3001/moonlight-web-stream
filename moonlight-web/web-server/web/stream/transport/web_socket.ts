@@ -24,6 +24,8 @@ export class WebSocketTransport implements Transport {
         // Very important, set the binary type to arraybuffer
         this.ws.binaryType = "arraybuffer"
 
+        this.ws.addEventListener("close", this.onWsClose.bind(this))
+
         for (const keyRaw in TransportChannelId) {
             const key = keyRaw as TransportChannelIdKey
             const id = TransportChannelId[key]
@@ -53,9 +55,15 @@ export class WebSocketTransport implements Transport {
 
     onclose: ((shutdown: TransportShutdown) => void) | null = null
 
+    private onWsClose(event: CloseEvent) {
+        if (this.onclose) {
+            this.onclose(event.wasClean ? "disconnect" : "failed")
+        }
+    }
     async close(): Promise<void> {
         // do nothing, we don't own this ws, the stream owns the ws
         // -> maybe we changed protocol
+        this.logger?.debug("Web Socket transport close called, not closing Web Socket because it might still be needed")
     }
     async getStats(): Promise<Record<string, string>> {
         // TODO: maybe a ping (from browser ws to streamer) to get rtt

@@ -307,7 +307,6 @@ impl StreamConnection {
                                 return;
                             };
 
-                            // TODO: after the stream stops we don't stop the streamer -> the frontend won't show connection lost
                             let this = this.clone();
                             spawn(async move {
                                 if let Err(err) = this.start_stream(settings).await {
@@ -328,14 +327,6 @@ impl StreamConnection {
                             this.on_packet(packet).await;
                         }
                         Err(TransportError::Closed) | Ok(TransportEvent::Closed) => {
-                            let Some(this) = this.upgrade() else {
-                                warn!(
-                                    "Failed to get stream connection, stopping listening to events"
-                                );
-                                return;
-                            };
-
-                            this.stop().await;
                             break;
                         }
                         // It wouldn't make sense to return this

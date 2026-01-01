@@ -7,7 +7,6 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 
 ## Overview
 
-- [Images](#images)
 - [Limitations](#limitations)
 - [Installation](#installation)
   - [Manual Installation](#install-manually)
@@ -21,18 +20,6 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 - [Migrating to v2](#migrating-to-v2)
 - [Contributors](#contributors)
 - [Building](#building)
-
-## Images
-
-### Host List
-![View: Hosts](/readme/hostView.jpg)
-
-### Games List
-![View: Games View](/readme/gamesView.jpg)
-
-### Streaming
-![View: Streaming, sidebar closed](/readme/stream.jpg)
-![View: Streaming, sidebar opened](/readme/streamExtended.jpg)
 
 ## Limitations
 - Features that only work in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts#:~:text=They%20must%20be,be%20considered%20deprecated.) -> [How to configure a Secure Context / https](#configuring-https)
@@ -455,6 +442,7 @@ Other changes:
 ## Contributors
 - Thanks to [@Argon2000](https://github.com/Argon2000) for implementing a canvas renderer, which makes this run in the Tesla browser.
 - Thanks to [@Maneetbal](https://github.com/Maneetbal) for creating a new beautiful GUI.
+- Thanks to [@chromaticpipe](https://github.com/chromaticpipe) for making Github CI.
 
 ## Building
 Make sure you've cloned this repo with all it's submodules

@@ -1,9 +1,9 @@
 import { LogMessageInfo } from "../log.js"
 import { VideoRendererSetup } from "../video/index.js"
-import { Pipeline } from "./index.js"
+import { PipeInfo, Pipeline } from "./index.js"
 
 export type ToWorkerMessage =
-    { checkSupport: { className: string } } |
+    { checkSupport: Pipeline } |
     { createPipeline: Pipeline } |
     { input: WorkerMessage }
 
@@ -12,9 +12,13 @@ export type WorkerMessage =
     { videoSetup: VideoRendererSetup } |
     // VideoFrame is a transferable object
     { videoFrame: VideoFrame } |
-    { data: ArrayBuffer }
+    // MediaStreamTrack is a transferable object when using the transfer parameter
+    { track: MediaStreamTrack } |
+    { data: ArrayBuffer } |
+    // Canvas stuff
+    { canvas: OffscreenCanvas }
 
 export type ToMainMessage =
-    { checkSupport: { supported: boolean } } |
+    { checkSupport: PipeInfo } |
     { log: string, info: LogMessageInfo } |
     { output: WorkerMessage }

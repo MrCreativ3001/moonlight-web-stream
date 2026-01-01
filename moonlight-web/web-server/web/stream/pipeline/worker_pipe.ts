@@ -1,65 +1,53 @@
-import { ExecutionEnvironment } from "../index.js";
+import { showErrorPopup } from "../../component/error.js";
 import { Logger } from "../log.js";
 import { VideoRendererSetup } from "../video/index.js";
-import { Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index.js";
+import { OffscreenCanvasVideoRenderer } from "../video/offscreen_canvas.js";
+import { globalObject, Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index.js";
 import { addPipePassthrough } from "./pipes.js";
 import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types.js";
 
 export function createPipelineWorker(): Worker | null {
-    if (!("Worker" in window)) {
+    if (!("Worker" in globalObject())) {
         return null
     }
 
     return new Worker(new URL("worker.js", import.meta.url), { type: "module" })
 }
 
-function checkWorkerSupport(className: string): Promise<boolean> {
-    return new Promise((resolve, reject) => {
-        const worker = createPipelineWorker()
-        if (!worker) {
-            resolve(false)
-            return
-        }
-
-        worker.onerror = reject
-        worker.onmessageerror = reject
-
-        worker.onmessage = (message) => {
-            const data = message.data as ToMainMessage
-
-            if ("checkSupport" in data) {
-                resolve(data.checkSupport.supported)
-
-                worker.terminate()
-            } else {
-                throw `Received invalid message whilst checking support of a worker ${JSON.stringify(data)}`
-            }
-        }
-
-        const request: ToWorkerMessage = {
-            checkSupport: { className }
-        }
-        worker.postMessage(request)
-    });
-}
-
-export async function checkExecutionEnvironment(className: string): Promise<ExecutionEnvironment> {
-    return {
-        main: className in window,
-        worker: await checkWorkerSupport(className),
-    }
-}
-
 export interface WorkerReceiver extends Pipe {
-    onWorkerMessage(message: WorkerMessage): void
+    onWorkerMessage(message: WorkerMessage, transferable?: Transferable[]): void
 }
 
 export class WorkerPipe implements WorkerReceiver {
-    static async getInfo(): Promise<PipeInfo> {
-        return {
-            // TODO: check in the actual worker for support
-            executionEnvironment: await checkExecutionEnvironment("Worker")
+    protected static async getInfoInternal(pipeline: Pipeline): Promise<PipeInfo> {
+        const worker = createPipelineWorker()
+        if (!worker) {
+            return {
+                environmentSupported: false
+            }
         }
+
+        const sendMessage: ToWorkerMessage = { checkSupport: pipeline }
+        worker.postMessage(sendMessage)
+
+        const info = await new Promise<PipeInfo>((resolve, reject) => {
+            worker.onmessage = (event) => {
+                const message = event.data as ToMainMessage
+
+                if ("checkSupport" in message) {
+                    resolve(message.checkSupport)
+                } else if ("log" in message) {
+                    // TODO: log this using a logger
+                    throw message.log
+                } else {
+                    // TODO: log this
+                    throw "Failed to get info about worker pipeline because it returned a wrong message"
+                }
+            }
+            worker.onerror = reject
+        })
+
+        return info
     }
 
     readonly implementationName: string
@@ -86,13 +74,18 @@ export class WorkerPipe implements WorkerReceiver {
 
         this.worker.onmessage = this.onReceiveWorkerMessage.bind(this)
 
+        const message: ToWorkerMessage = {
+            createPipeline: this.pipeline
+        }
+        this.worker.postMessage(message)
+
         addPipePassthrough(this)
     }
 
-    onWorkerMessage(input: WorkerMessage): void {
+    onWorkerMessage(input: WorkerMessage, transfer?: Array<Transferable>): void {
         const message: ToWorkerMessage = { input }
 
-        this.worker.postMessage(message)
+        this.worker.postMessage(message, transfer ?? [])
     }
 
     private onReceiveWorkerMessage(event: MessageEvent) {
@@ -105,17 +98,24 @@ export class WorkerPipe implements WorkerReceiver {
         }
     }
 
-    setup(setup: VideoRendererSetup) {
-        const message2: ToWorkerMessage = {
-            createPipeline: this.pipeline
+    mount() {
+        let result
+        if ("mount" in this.base && typeof this.base.mount == "function") {
+            result = this.base.mount(...arguments)
         }
-        this.worker.postMessage(message2)
 
-        this.onWorkerMessage({ videoSetup: setup })
+        // The OffscreenCanvas needs to transfer it's canvas into the worker, do that here
+        if (this.base instanceof OffscreenCanvasVideoRenderer && this.base.offscreen) {
+            this.logger?.debug("TESTING: TRANSFERRED")
 
-        if ("setup" in this.base && typeof this.base.setup == "function") {
-            return this.base.setup(...arguments)
+            const canvas = this.base.offscreen
+            this.onWorkerMessage({ canvas }, [canvas])
+
+            this.base.transferred = true
+            this.base.offscreen = null
         }
+
+        return result
     }
 
     cleanup() {
@@ -132,8 +132,11 @@ export class WorkerPipe implements WorkerReceiver {
 }
 
 export function workerPipe(name: string, pipeline: Pipeline): PipeStatic {
-    // TODO: use name somehow
     class CustomWorkerPipe extends WorkerPipe {
+        static async getInfo(): Promise<PipeInfo> {
+            return await this.getInfoInternal(pipeline)
+        }
+
         static readonly baseType = "workeroutput"
         static readonly type = "workerinput"
 
@@ -141,6 +144,8 @@ export function workerPipe(name: string, pipeline: Pipeline): PipeStatic {
             super(base, pipeline, logger)
         }
     }
+
+    Object.defineProperty(CustomWorkerPipe, "name", { value: name })
 
     return CustomWorkerPipe
 }

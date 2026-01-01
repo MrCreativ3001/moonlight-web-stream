@@ -1,6 +1,5 @@
-import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
-import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { SampleAudioPlayer, TrackAudioPlayer } from "./index.js";
 
 export class AudioMediaStreamTrackGeneratorPipe implements SampleAudioPlayer {
@@ -10,7 +9,7 @@ export class AudioMediaStreamTrackGeneratorPipe implements SampleAudioPlayer {
 
     static async getInfo(): Promise<PipeInfo> {
         return {
-            executionEnvironment: await checkExecutionEnvironment("MediaStreamTrackGenerator")
+            environmentSupported: "MediaStreamTrackGenerator" in globalObject()
         }
     }
 

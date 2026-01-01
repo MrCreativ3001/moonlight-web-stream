@@ -1,15 +1,27 @@
 import { AudioDecoderPipe } from "../audio/audio_decoder_pipe.js";
 import { DepacketizeAudioPipe } from "../audio/depacketize_pipe.js";
 import { AudioMediaStreamTrackGeneratorPipe } from "../audio/media_stream_track_generator_pipe.js";
-import { ExecutionEnvironment } from "../index.js";
 import { Logger } from "../log.js";
 import { VideoCodecSupport } from "../video.js";
 import { DepacketizeVideoPipe } from "../video/depackitize_video_pipe.js";
 import { VideoMediaStreamTrackGeneratorPipe } from "../video/media_stream_track_generator_pipe.js";
 import { VideoMediaStreamTrackProcessorPipe } from "../video/media_stream_track_processor_pipe.js";
+import { WorkerDataToVideoTrackPipe, WorkerVideoMediaStreamProcessorCanvasPipe, WorkerVideoMediaStreamProcessorPipe } from "../video/pipeline.js";
 import { VideoDecoderPipe } from "../video/video_decoder_pipe.js";
 import { VideoTrackGeneratorPipe } from "../video/video_track_generator.js";
-import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe } from "./worker_io.js";
+import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerOffscreenCanvasSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "./worker_io.js";
+
+export function globalObject(): any {
+    if (typeof self !== 'undefined') {
+        return self
+    }
+
+    if (typeof window !== 'undefined') {
+        return window
+    }
+
+    return globalThis;
+}
 
 export interface Pipe {
     readonly implementationName: string
@@ -18,7 +30,7 @@ export interface Pipe {
 }
 
 export type PipeInfo = {
-    executionEnvironment: ExecutionEnvironment
+    environmentSupported: boolean
     supportedVideoCodecs?: VideoCodecSupport
 }
 
@@ -120,16 +132,23 @@ async function gatherPipeInfoInternal(): Promise<Map<PipeStatic, PipeInfo>> {
 export function pipes(): Array<PipeStatic> {
     return [
         // Worker
-        WorkerDataSendPipe,
-        WorkerDataReceivePipe,
         WorkerVideoFrameSendPipe,
         WorkerVideoFrameReceivePipe,
+        WorkerDataSendPipe,
+        WorkerDataReceivePipe,
+        WorkerVideoTrackSendPipe,
+        WorkerVideoTrackReceivePipe,
         // Video
         DepacketizeVideoPipe,
         VideoMediaStreamTrackGeneratorPipe,
         VideoMediaStreamTrackProcessorPipe,
         VideoDecoderPipe,
         VideoTrackGeneratorPipe,
+        // Video Worker pipes
+        WorkerVideoMediaStreamProcessorPipe,
+        WorkerOffscreenCanvasSendPipe,
+        WorkerVideoMediaStreamProcessorCanvasPipe,
+        WorkerDataToVideoTrackPipe,
         // Audio
         DepacketizeAudioPipe,
         AudioMediaStreamTrackGeneratorPipe,

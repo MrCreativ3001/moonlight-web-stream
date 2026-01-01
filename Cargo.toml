@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [workspace]
 resolver = "3"
 members = [
@@ -9,6 +11,10 @@ members = [
     "moonlight-web/web-server",
 ]
 default-members = ["moonlight-web/streamer", "moonlight-web/web-server"]
+
+[profile.release]
+# strip release information
+rustflags = ["-Zremap-cwd-prefix=.", "-Zlocation-detail=none"]
 
 [workspace.package]
 version = "2.1.0"

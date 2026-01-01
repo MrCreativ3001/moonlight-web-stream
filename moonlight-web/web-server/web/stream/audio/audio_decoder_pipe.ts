@@ -1,7 +1,6 @@
 import { Logger } from "../log.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
-import { checkExecutionEnvironment } from "../pipeline/worker_pipe.js";
 import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, SampleAudioPlayer } from "./index.js";
 
 async function detectCodec(): Promise<boolean> {
@@ -26,14 +25,8 @@ export class AudioDecoderPipe implements DataAudioPlayer {
     static readonly type = "audiodata"
 
     static async getInfo(): Promise<PipeInfo> {
-        const supported = await checkExecutionEnvironment("AudioDecoder")
-
         return {
-            executionEnvironment: {
-                main: supported.main ? await detectCodec() : false,
-                // TODO: should we detect in a worker?
-                worker: supported.worker
-            },
+            environmentSupported: "AudioDecoder" in globalObject(),
         }
     }
 

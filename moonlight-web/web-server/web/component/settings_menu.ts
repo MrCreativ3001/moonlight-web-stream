@@ -17,6 +17,7 @@ export type StreamSettings = {
     },
     fps: number
     videoCodec: StreamCodec,
+    forceVideoElementRenderer: boolean
     canvasRenderer: boolean
     playAudioLocal: boolean
     audioSampleQueueSize: number
@@ -44,6 +45,7 @@ export function defaultStreamSettings(): StreamSettings {
             height: 1080,
         },
         videoCodec: "h264",
+        forceVideoElementRenderer: false,
         canvasRenderer: false,
         playAudioLocal: false,
         audioSampleQueueSize: 20,
@@ -94,6 +96,7 @@ export class StreamSettingsComponent implements Component {
     private packetSize: InputComponent
     private fps: InputComponent
     private videoCodec: SelectComponent
+    private forceVideoElementRenderer: InputComponent
     private canvasRenderer: InputComponent
 
     private videoSize: SelectComponent
@@ -232,8 +235,15 @@ export class StreamSettingsComponent implements Component {
         this.videoCodec.addChangeListener(this.onSettingsChange.bind(this))
         this.videoCodec.mount(this.divElement)
 
+        // Force Video Element renderer
+        this.forceVideoElementRenderer = new InputComponent("forceVideoElementRenderer", "checkbox", "Force Video Element Renderer (WebRTC only)", {
+            checked: settings?.forceVideoElementRenderer ?? defaultSettings.forceVideoElementRenderer
+        })
+        this.forceVideoElementRenderer.addChangeListener(this.onSettingsChange.bind(this))
+        this.forceVideoElementRenderer.mount(this.divElement)
+
         // Use Canvas Renderer
-        this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", "Use Canvas Renderer (Experimental)", {
+        this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", "Use Canvas Renderer", {
             defaultValue: defaultSettings.canvasRenderer.toString(),
             checked: settings === null || settings === void 0 ? void 0 : settings.canvasRenderer
         })
@@ -381,6 +391,7 @@ export class StreamSettingsComponent implements Component {
         }
         settings.videoFrameQueueSize = parseInt(this.videoSampleQueueSize.getValue())
         settings.videoCodec = this.videoCodec.getValue() as any
+        settings.forceVideoElementRenderer = this.forceVideoElementRenderer.isChecked()
         settings.canvasRenderer = this.canvasRenderer.isChecked()
 
         settings.playAudioLocal = this.playAudioLocal.isChecked()

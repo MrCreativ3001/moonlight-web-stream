@@ -9,9 +9,6 @@ export type VideoRendererSetup = {
     fps: number
 }
 
-// TODO: remove generics from VideoRenderers
-
-// TODO: maybe implement Pipe for some types?
 export interface VideoRenderer extends Component, Pipe {
     readonly implementationName: string
 

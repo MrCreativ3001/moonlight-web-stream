@@ -1,4 +1,4 @@
-import { DetailedHost, DetailedUser, PatchHostRequest, UndetailedHost } from "../../api_bindings.js"
+import { DetailedHost, DetailedUser, UndetailedHost } from "../../api_bindings.js"
 import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp, apiGetUser, apiPatchHost } from "../../api.js"
 import { Component, ComponentEvent } from "../index.js"
 import { setContextMenu } from "../context_menu.js"
@@ -92,6 +92,11 @@ export class Host implements Component {
             elements.push({
                 name: "Show Details",
                 callback: this.showDetails.bind(this),
+            })
+
+            elements.push({
+                name: "Open",
+                callback: this.onClick.bind(this)
             })
         } else if (this.cache?.paired == "Paired") {
             elements.push({

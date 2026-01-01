@@ -57,9 +57,18 @@ class ContextMenuElementComponent implements Component {
         this.nameElement.innerText = element.name
 
         this.nameElement.classList.add("context-menu-element")
+
         this.nameElement.addEventListener("click", event => {
             element.callback(event)
         })
+
+        // Also register right click for certain devices which make left click hard: https://github.com/MrCreativ3001/moonlight-web-stream/issues/55
+        this.nameElement.addEventListener("contextmenu", event => {
+            event.preventDefault()
+            removeContextMenu()
+
+            element.callback(event)
+        }, { passive: false })
 
         if (element.classes) {
             this.nameElement.classList.add(...element.classes)

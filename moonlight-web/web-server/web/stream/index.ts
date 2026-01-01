@@ -2,7 +2,7 @@ import { Api } from "../api.js"
 import { App, ConnectionStatus, StreamCapabilities, StreamClientMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
 import { showErrorPopup } from "../component/error.js"
 import { Component } from "../component/index.js"
-import { StreamSettings } from "../component/settings_menu.js"
+import { Settings } from "../component/settings_menu.js"
 import { AudioPlayer } from "./audio/index.js"
 import { buildAudioPipeline } from "./audio/pipeline.js"
 import { BIG_BUFFER } from "./buffer.js"
@@ -31,7 +31,7 @@ export type InfoEvent = CustomEvent<
 >
 export type InfoEventListener = (event: InfoEvent) => void
 
-export function getStreamerSize(settings: StreamSettings, viewerScreenSize: [number, number]): [number, number] {
+export function getStreamerSize(settings: Settings, viewerScreenSize: [number, number]): [number, number] {
     let width, height
     if (settings.videoSize == "720p") {
         width = 1280
@@ -55,7 +55,7 @@ export function getStreamerSize(settings: StreamSettings, viewerScreenSize: [num
     return [width, height]
 }
 
-function getVideoCodecHint(settings: StreamSettings): VideoCodecSupport {
+function getVideoCodecHint(settings: Settings): VideoCodecSupport {
     let videoCodecHint = emptyVideoCodecs()
     if (settings.videoCodec == "h264") {
         videoCodecHint.H264 = true
@@ -85,7 +85,7 @@ export class Stream implements Component {
     private hostId: number
     private appId: number
 
-    private settings: StreamSettings
+    private settings: Settings
 
     private divElement = document.createElement("div")
     private eventTarget = new EventTarget()
@@ -101,7 +101,7 @@ export class Stream implements Component {
 
     private streamerSize: [number, number]
 
-    constructor(api: Api, hostId: number, appId: number, settings: StreamSettings, viewerScreenSize: [number, number]) {
+    constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number]) {
         this.logger.addInfoListener((info, type) => {
             this.debugLog(info, { type: type ?? undefined })
         })

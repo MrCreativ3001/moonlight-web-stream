@@ -270,6 +270,48 @@ If enabled the web server will use https with the provided certificate data
 }
 ```
 
+### Default Settings
+This will overwrite the default config of any new browser to open the website.
+
+```jsonc
+{
+    "default_settings": {
+        // possible values: "left", "right", "up", "down"
+        "sidebarEdge": "left",
+        "bitrate": 10000,
+        "packetSize": 2048,
+        "fps": 60,
+        "videoFrameQueueSize": 3,
+        // possible values: "720p", "1080p", "1440p", "4k", "native", "custom"
+        "videoSize": "custom",
+        // only works if videoSize=custom
+        "videoSizeCustom": {
+            "width": 1920,
+            "height": 1080
+        },
+        // possible values: "h264", "h265", "av1", "auto"
+        "videoCodec": "h264",
+        "forceVideoElementRenderer": false,
+        "canvasRenderer": false,
+        "playAudioLocal": false,
+        "audioSampleQueueSize": 20,
+        // possible values: "highres", "normal"
+        "mouseScrollMode": "highres",
+        "controllerConfig": {
+            "invertAB": false,
+            "invertXY": false,
+            // possible values: null or a number, example: 60, 120
+            "sendIntervalOverride": null
+        },
+        // possible values: "auto", "webrtc", "websocket"
+        "dataTransport": "auto",
+        "toggleFullscreenWithKeybind": false,
+        // possible values: "standard", "old"
+        "pageStyle": "standard"
+    }
+}
+```
+
 ### WebRTC Port Range
 This will set the port range on the web server used to communicate when using WebRTC
 

@@ -10,7 +10,7 @@ use moonlight_common::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::ts_consts;
+use crate::{api_bindings_ext::TsAny, ts_consts};
 
 const EXPORT_PATH: &str = "../../web-server/web/api_bindings.ts";
 
@@ -18,6 +18,7 @@ const EXPORT_PATH: &str = "../../web-server/web/api_bindings.ts";
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct ConfigJs {
     pub path_prefix: String,
+    pub default_settings: Option<TsAny>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone)]

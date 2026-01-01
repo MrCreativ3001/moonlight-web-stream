@@ -1,3 +1,7 @@
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use ts_rs::TS;
+
 #[macro_export]
 macro_rules! ts_consts {
     ($struct_vis: vis $struct: ident $(( $test_name: ident : $path: expr ))? $( as $record_ty: ident)? : $($vis: vis const $name: ident : $ty: ident = $const: expr;)*) => {
@@ -79,4 +83,44 @@ macro_rules! ts_consts {
         )?
     };
 
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(from = "Value", into = "Value")]
+pub struct TsAny(Value);
+
+impl From<Value> for TsAny {
+    fn from(value: Value) -> Self {
+        Self(value)
+    }
+}
+impl From<TsAny> for Value {
+    fn from(value: TsAny) -> Self {
+        value.0
+    }
+}
+
+impl TS for TsAny {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+
+    fn decl() -> String {
+        "any".to_string()
+    }
+
+    fn decl_concrete() -> String {
+        Self::decl()
+    }
+
+    fn name() -> String {
+        "any".to_string()
+    }
+
+    fn inline() -> String {
+        "any".to_string()
+    }
+
+    fn inline_flattened() -> String {
+        format!("({})", Self::inline())
+    }
 }

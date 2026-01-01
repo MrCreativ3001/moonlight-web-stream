@@ -5,7 +5,7 @@ use moonlight_common::stream::bindings::{Colorspace, SupportedVideoFormats};
 use serde::{Deserialize, Serialize};
 
 pub mod api_bindings;
-pub mod api_bindings_consts;
+pub mod api_bindings_ext;
 pub mod config;
 pub mod ipc;
 

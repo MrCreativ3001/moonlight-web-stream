@@ -5,7 +5,7 @@ import { Component, ComponentEvent } from "./index.js";
 import { InputComponent, SelectComponent } from "./input.js";
 import { SidebarEdge } from "./sidebar/index.js";
 
-export type StreamSettings = {
+export type Settings = {
     sidebarEdge: SidebarEdge,
     bitrate: number
     packetSize: number
@@ -31,37 +31,18 @@ export type StreamSettings = {
 export type StreamCodec = "h264" | "auto" | "h265" | "av1"
 export type TransportType = "auto" | "webrtc" | "websocket"
 
-// TODO: rename this into a more generalized settings, this not only affects streaming
-export function defaultStreamSettings(): StreamSettings {
-    return {
-        sidebarEdge: "left",
-        bitrate: 10000,
-        packetSize: 2048,
-        fps: 60,
-        videoFrameQueueSize: 3,
-        videoSize: "custom",
-        videoSizeCustom: {
-            width: 1920,
-            height: 1080,
-        },
-        videoCodec: "h264",
-        forceVideoElementRenderer: false,
-        canvasRenderer: false,
-        playAudioLocal: false,
-        audioSampleQueueSize: 20,
-        mouseScrollMode: "highres",
-        controllerConfig: {
-            invertAB: false,
-            invertXY: false,
-            sendIntervalOverride: null,
-        },
-        dataTransport: "auto",
-        toggleFullscreenWithKeybind: false,
-        pageStyle: "standard"
+import DEFAULT_SETTINGS from "../default_settings.js"
+
+export function defaultSettings(): Settings {
+    // We are deep cloning this
+    if ("structuredClone" in window) {
+        return structuredClone(DEFAULT_SETTINGS)
+    } else {
+        return JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
     }
 }
 
-export function getLocalStreamSettings(): StreamSettings | null {
+export function getLocalStreamSettings(): Settings | null {
     let settings = null
     try {
         const settingsLoadedJson = localStorage.getItem("mlSettings")
@@ -71,14 +52,14 @@ export function getLocalStreamSettings(): StreamSettings | null {
 
         const settingsLoaded = JSON.parse(settingsLoadedJson)
 
-        settings = defaultStreamSettings()
+        settings = defaultSettings()
         Object.assign(settings, settingsLoaded)
     } catch (e) {
         localStorage.removeItem("mlSettings")
     }
     return settings
 }
-export function setLocalStreamSettings(settings?: StreamSettings) {
+export function setLocalStreamSettings(settings?: Settings) {
     localStorage.setItem("mlSettings", JSON.stringify(settings))
 }
 
@@ -124,8 +105,8 @@ export class StreamSettingsComponent implements Component {
     // TODO: make a different category
     private pageStyle: SelectComponent
 
-    constructor(settings?: StreamSettings) {
-        const defaultSettings = defaultStreamSettings()
+    constructor(settings?: Settings) {
+        const defaultSettings_ = defaultSettings()
 
         // Root div
         this.divElement.classList.add("settings")
@@ -141,7 +122,7 @@ export class StreamSettingsComponent implements Component {
             { value: "down", name: "Down" },
         ], {
             displayName: "Sidebar Edge",
-            preSelectedOption: settings?.sidebarEdge ?? defaultSettings.sidebarEdge,
+            preSelectedOption: settings?.sidebarEdge ?? defaultSettings_.sidebarEdge,
         })
         this.sidebarEdge.addChangeListener(this.onSettingsChange.bind(this))
         this.sidebarEdge.mount(this.divElement)
@@ -152,7 +133,7 @@ export class StreamSettingsComponent implements Component {
 
         // Bitrate
         this.bitrate = new InputComponent("bitrate", "number", "Bitrate", {
-            defaultValue: defaultSettings.bitrate.toString(),
+            defaultValue: defaultSettings_.bitrate.toString(),
             value: settings?.bitrate?.toString(),
             step: "100",
             numberSlider: {
@@ -166,7 +147,7 @@ export class StreamSettingsComponent implements Component {
 
         // Packet Size
         this.packetSize = new InputComponent("packetSize", "number", "Packet Size", {
-            defaultValue: defaultSettings.packetSize.toString(),
+            defaultValue: defaultSettings_.packetSize.toString(),
             value: settings?.packetSize?.toString(),
             step: "100"
         })
@@ -175,7 +156,7 @@ export class StreamSettingsComponent implements Component {
 
         // Fps
         this.fps = new InputComponent("fps", "number", "Fps", {
-            defaultValue: defaultSettings.fps.toString(),
+            defaultValue: defaultSettings_.fps.toString(),
             value: settings?.fps?.toString(),
             step: "100"
         })
@@ -194,21 +175,21 @@ export class StreamSettingsComponent implements Component {
             ],
             {
                 displayName: "Video Size",
-                preSelectedOption: settings?.videoSize || defaultSettings.videoSize
+                preSelectedOption: settings?.videoSize || defaultSettings_.videoSize
             }
         )
         this.videoSize.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSize.mount(this.divElement)
 
         this.videoSizeWidth = new InputComponent("videoSizeWidth", "number", "Video Width", {
-            defaultValue: defaultSettings.videoSizeCustom.width.toString(),
+            defaultValue: defaultSettings_.videoSizeCustom.width.toString(),
             value: settings?.videoSizeCustom.width.toString()
         })
         this.videoSizeWidth.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeWidth.mount(this.divElement)
 
         this.videoSizeHeight = new InputComponent("videoSizeHeight", "number", "Video Height", {
-            defaultValue: defaultSettings.videoSizeCustom.height.toString(),
+            defaultValue: defaultSettings_.videoSizeCustom.height.toString(),
             value: settings?.videoSizeCustom.height.toString()
         })
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
@@ -216,7 +197,7 @@ export class StreamSettingsComponent implements Component {
 
         // Video Sample Queue Size
         this.videoSampleQueueSize = new InputComponent("videoFrameQueueSize", "number", "Video Frame Queue Size", {
-            defaultValue: defaultSettings.videoFrameQueueSize.toString(),
+            defaultValue: defaultSettings_.videoFrameQueueSize.toString(),
             value: settings?.videoFrameQueueSize?.toString()
         })
         this.videoSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
@@ -230,21 +211,21 @@ export class StreamSettingsComponent implements Component {
             { value: "av1", name: "AV1 (Experimental)" },
         ], {
             displayName: "Video Codec",
-            preSelectedOption: settings?.videoCodec ?? defaultSettings.videoCodec
+            preSelectedOption: settings?.videoCodec ?? defaultSettings_.videoCodec
         })
         this.videoCodec.addChangeListener(this.onSettingsChange.bind(this))
         this.videoCodec.mount(this.divElement)
 
         // Force Video Element renderer
         this.forceVideoElementRenderer = new InputComponent("forceVideoElementRenderer", "checkbox", "Force Video Element Renderer (WebRTC only)", {
-            checked: settings?.forceVideoElementRenderer ?? defaultSettings.forceVideoElementRenderer
+            checked: settings?.forceVideoElementRenderer ?? defaultSettings_.forceVideoElementRenderer
         })
         this.forceVideoElementRenderer.addChangeListener(this.onSettingsChange.bind(this))
         this.forceVideoElementRenderer.mount(this.divElement)
 
         // Use Canvas Renderer
         this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", "Use Canvas Renderer", {
-            defaultValue: defaultSettings.canvasRenderer.toString(),
+            defaultValue: defaultSettings_.canvasRenderer.toString(),
             checked: settings === null || settings === void 0 ? void 0 : settings.canvasRenderer
         })
         this.canvasRenderer.addChangeListener(this.onSettingsChange.bind(this))
@@ -262,7 +243,7 @@ export class StreamSettingsComponent implements Component {
 
         // Audio Sample Queue Size
         this.audioSampleQueueSize = new InputComponent("audioSampleQueueSize", "number", "Audio Sample Queue Size", {
-            defaultValue: defaultSettings.audioSampleQueueSize.toString(),
+            defaultValue: defaultSettings_.audioSampleQueueSize.toString(),
             value: settings?.audioSampleQueueSize?.toString()
         })
         this.audioSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
@@ -279,7 +260,7 @@ export class StreamSettingsComponent implements Component {
             ],
             {
                 displayName: "Scroll Mode",
-                preSelectedOption: settings?.mouseScrollMode || defaultSettings.mouseScrollMode
+                preSelectedOption: settings?.mouseScrollMode || defaultSettings_.mouseScrollMode
             }
         )
         this.mouseScrollMode.addChangeListener(this.onSettingsChange.bind(this))
@@ -334,7 +315,7 @@ export class StreamSettingsComponent implements Component {
             { value: "websocket", name: "Web Socket (Experimental)" },
         ], {
             displayName: "Data Transport",
-            preSelectedOption: settings?.dataTransport ?? defaultSettings.dataTransport
+            preSelectedOption: settings?.dataTransport ?? defaultSettings_.dataTransport
         })
         this.dataTransport.addChangeListener(this.onSettingsChange.bind(this))
         this.dataTransport.mount(this.divElement)
@@ -350,7 +331,7 @@ export class StreamSettingsComponent implements Component {
             { value: "old", name: "Old" }
         ], {
             displayName: "Style",
-            preSelectedOption: settings?.pageStyle ?? defaultSettings.pageStyle
+            preSelectedOption: settings?.pageStyle ?? defaultSettings_.pageStyle
         })
         this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
         this.pageStyle.mount(this.divElement)
@@ -377,8 +358,8 @@ export class StreamSettingsComponent implements Component {
         this.divElement.removeEventListener("ml-settingschange", listener as any)
     }
 
-    getStreamSettings(): StreamSettings {
-        const settings = defaultStreamSettings()
+    getStreamSettings(): Settings {
+        const settings = defaultSettings()
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
         settings.bitrate = parseInt(this.bitrate.getValue())

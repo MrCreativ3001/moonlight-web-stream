@@ -6,7 +6,7 @@ import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { defaultStreamSettings, getLocalStreamSettings, StreamSettings } from "./component/settings_menu.js";
+import { defaultSettings, getLocalStreamSettings, Settings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { LogMessageType, StreamCapabilities, StreamKeys } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
@@ -73,7 +73,7 @@ class ViewerApp implements Component {
     private statsDiv = document.createElement("div")
     private stream: Stream | null = null
 
-    private settings: StreamSettings
+    private settings: Settings
 
     private inputConfig: StreamInputConfig = defaultStreamInputConfig()
     private previousMouseMode: MouseMode
@@ -106,7 +106,7 @@ class ViewerApp implements Component {
         this.div.appendChild(this.statsDiv)
 
         // Configure stream
-        const settings = getLocalStreamSettings() ?? defaultStreamSettings()
+        const settings = getLocalStreamSettings() ?? defaultSettings()
 
         let browserWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
         let browserHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
@@ -158,7 +158,7 @@ class ViewerApp implements Component {
         element.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
     }
 
-    private async startStream(hostId: number, appId: number, settings: StreamSettings, browserSize: [number, number]) {
+    private async startStream(hostId: number, appId: number, settings: Settings, browserSize: [number, number]) {
         setSidebarStyle({
             edge: settings.sidebarEdge,
         })

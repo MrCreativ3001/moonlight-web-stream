@@ -1,4 +1,4 @@
-import { defaultStreamSettings, getLocalStreamSettings } from "../component/settings_menu.js"
+import { defaultSettings, getLocalStreamSettings } from "../component/settings_menu.js"
 
 export type PageStyle = "standard" | "old"
 
@@ -24,6 +24,6 @@ export function getStyle(): PageStyle {
 }
 
 const settings = getLocalStreamSettings()
-const defaultSettings = defaultStreamSettings()
+const defaultSettings_ = defaultSettings()
 
-setStyle(settings?.pageStyle ?? defaultSettings.pageStyle)
+setStyle(settings?.pageStyle ?? defaultSettings_.pageStyle)

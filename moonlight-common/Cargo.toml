@@ -35,7 +35,7 @@ hyper-openssl = { workspace = true, optional = true }
 hyper-util = { workspace = true, features = ["tokio"], optional = true }
 http-body-util = { workspace = true, optional = true }
 
-# Network Curl backend
+# Network Curl backend, Doesn't currently work on windows
 curl = { workspace = true, features = ["ssl"], optional = true }
 
 # High

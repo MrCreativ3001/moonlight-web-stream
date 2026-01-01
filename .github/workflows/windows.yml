@@ -39,6 +39,6 @@ jobs:
       with:
         name: moonlight-web-x86_64-pc-windows-gnu
         path: |
-          target/x86_64-pc-windows-gnu/streamer.exe
-          target/x86_64-pc-windows-gnu/web-server.exe
+          target/x86_64-pc-windows-gnu/release/streamer.exe
+          target/x86_64-pc-windows-gnu/release/web-server.exe
           moonlight-web/web-server/static

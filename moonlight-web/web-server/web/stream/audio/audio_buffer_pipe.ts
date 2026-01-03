@@ -6,7 +6,6 @@ export class AudioBufferPipe implements PcmAudioPlayer {
 
     static async getInfo(): Promise<PipeInfo> {
         return {
-            // TODO: what does this require?
             environmentSupported: "AudioBufferSourceNode" in globalObject()
         }
     }

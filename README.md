@@ -517,7 +517,6 @@ Required for building:
 - A [CMake installation](https://cmake.org/download/) which will automatically compile the [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library
 - [openssl-sys](https://docs.rs/openssl-sys/0.9.109/openssl_sys/): For information on building openssl sys go to the [openssl docs](https://docs.rs/openssl/latest/openssl/)
 - A [bindgen installation](https://rust-lang.github.io/rust-bindgen/requirements.html) for generating the bindings to the [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library
-- libcurl via [rust curl](https://docs.rs/curl/latest/curl/): Should also automatically compile if you've got a working CMake install
 
 ### Crate: Moonlight Web Server
 This is the web server for Moonlight Web found at `moonlight-web/web-server/`.

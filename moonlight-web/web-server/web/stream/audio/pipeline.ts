@@ -63,7 +63,6 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
     let pipelines = PIPELINES
 
     // TODO: use the depacketize pipe
-    // TODO: create a opus decoder using other js sound apis
 
     pipelineLoop: for (const pipeline of pipelines) {
         if (pipeline.input != type) {

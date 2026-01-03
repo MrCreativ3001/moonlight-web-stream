@@ -48,6 +48,6 @@ jobs:
       with:
         name: moonlight-web-${{ matrix.arch.name }}-unknown-linux-gnu
         path: |
-          streamer.exe
-          web-server.exe
+          streamer
+          web-server
           static

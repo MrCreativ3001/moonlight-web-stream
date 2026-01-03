@@ -23,7 +23,7 @@ export interface AudioPlayer extends Component, Pipe {
 }
 
 export interface TrackAudioPlayer extends Pipe {
-    // static readonly type: "audiotrack"
+    // static readonly type = "audiotrack"
 
     setTrack(track: MediaStreamTrack): void
 }
@@ -35,7 +35,7 @@ export type AudioDecodeUnit = {
 }
 
 export interface DataAudioPlayer extends Pipe {
-    // static readonly type: "audiodata"
+    // static readonly type = "audiodata"
 
     // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L356
     // The unit is only borrowed
@@ -43,7 +43,7 @@ export interface DataAudioPlayer extends Pipe {
 }
 
 export interface SampleAudioPlayer extends Pipe {
-    // static readonly type: "audiosample"
+    // static readonly type = "audiosample"
 
     submitSample(sample: AudioData): void
 }
@@ -55,14 +55,14 @@ export type AudioPcmUnit = {
 }
 
 export interface PcmAudioPlayer extends Pipe {
-    // static readonly type: "audiopcm"
+    // static readonly type = "audiopcm"
 
     // The unit is only borrowed
     playPcm(unit: AudioPcmUnit): void
 }
 
 export interface NodeAudioPlayer extends Pipe {
-    // static readonly type: "audionode"
+    // static readonly type = "audionode"
 
     setSource(source: AudioNode): void
 

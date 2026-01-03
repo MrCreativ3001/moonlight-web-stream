@@ -1,6 +1,7 @@
 
 import { Logger } from "../log.js";
 import { Pipe } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { AudioPlayerSetup, NodeAudioPlayer } from "./index.js";
 
 export abstract class AudioContextBasePipe implements NodeAudioPlayer {
@@ -18,6 +19,10 @@ export abstract class AudioContextBasePipe implements NodeAudioPlayer {
 
         this.implementationName = implementationName
         this.base = base
+    }
+
+    protected addPipePassthrough() {
+        addPipePassthrough(this, ["mount", "unmount"])
     }
 
     setup(setup: AudioPlayerSetup) {
@@ -44,6 +49,12 @@ export abstract class AudioContextBasePipe implements NodeAudioPlayer {
         this.audioContext?.close()
     }
 
+    onUserInteraction(): void {
+        if (this.base && "onUserInteraction" in this.base && typeof this.base.onUserInteraction == "function") {
+            return this.base.onUserInteraction(...arguments)
+        }
+    }
+
     abstract setSource(source: AudioNode): void
 
     getAudioContext(): AudioContext {
@@ -59,7 +70,6 @@ export abstract class AudioContextBasePipe implements NodeAudioPlayer {
     }
 
     // -- Only definition look addPipePassthrough
-    onUserInteraction(): void { }
     mount(_parent: HTMLElement): void { }
     unmount(_parent: HTMLElement): void { }
 }

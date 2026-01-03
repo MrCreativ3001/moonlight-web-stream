@@ -1,6 +1,5 @@
 import { Logger } from "../log.js";
 import { globalObject, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
 import { AudioContextBasePipe } from "./audio_context_base.js";
 import { AudioPlayer, AudioPlayerSetup } from "./index.js";
 
@@ -20,7 +19,7 @@ export class ContextDestinationNodeAudioPlayer extends AudioContextBasePipe impl
     constructor(logger?: Logger) {
         super("node_audio_element (player)", null, logger)
 
-        addPipePassthrough(this)
+        this.addPipePassthrough()
     }
 
     setup(setup: AudioPlayerSetup) {

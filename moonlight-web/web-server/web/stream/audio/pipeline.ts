@@ -24,10 +24,10 @@ export type AudioPipelineOptions = {
 type Pipeline = { input: string, pipes: Array<PipeStatic>, player: AudioPlayerStatic }
 
 const PIPELINES: Array<Pipeline> = [
-    // Convert track -> audio_element, All Browsers
-    { input: "audiotrack", pipes: [], player: AudioElementPlayer },
-    // Convert data -> audio_sample -> track (MediaStreamTrackGenerator) -> audio_element, Chromium
-    { input: "data", pipes: [AudioDecoderPipe, AudioMediaStreamTrackGeneratorPipe], player: AudioElementPlayer },
+    //    // Convert track -> audio_element, All Browsers
+    //    { input: "audiotrack", pipes: [], player: AudioElementPlayer },
+    //    // Convert data -> audio_sample -> track (MediaStreamTrackGenerator) -> audio_element, Chromium
+    //    { input: "data", pipes: [AudioDecoderPipe, AudioMediaStreamTrackGeneratorPipe], player: AudioElementPlayer },
     // Convert data -> audio_sample -> audio_sample_pcm -> audio_context_element -> audio_element, Safari / Firefox
     { input: "data", pipes: [AudioDecoderPcmPipe, AudioPcmBufferPipe, AudioContextTrackPipe], player: AudioElementPlayer },
     // Convert data -> audio_sample -> audio_sample_pcm -> audio_context_element -> audio_element, Safari / Firefox

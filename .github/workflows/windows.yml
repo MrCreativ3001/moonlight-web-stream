@@ -33,12 +33,15 @@ jobs:
        mv dist static
        popd
 
+       mv target/x86_64-pc-windows-gnu/release/streamer.exe streamer.exe
+       mv target/x86_64-pc-windows-gnu/release/web-server.exe web-server.exe
+       mv moonlight-web/web-server/static static
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
         name: moonlight-web-x86_64-pc-windows-gnu
         path: |
-          target/x86_64-pc-windows-gnu/release/streamer.exe
-          target/x86_64-pc-windows-gnu/release/web-server.exe
-          moonlight-web/web-server/static
+          streamer.exe
+          web-server.exe
+          static

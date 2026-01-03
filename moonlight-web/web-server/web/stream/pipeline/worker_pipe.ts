@@ -37,10 +37,8 @@ export class WorkerPipe implements WorkerReceiver {
                 if ("checkSupport" in message) {
                     resolve(message.checkSupport)
                 } else if ("log" in message) {
-                    // TODO: log this using a logger
                     throw message.log
                 } else {
-                    // TODO: log this
                     throw "Failed to get info about worker pipeline because it returned a wrong message"
                 }
             }

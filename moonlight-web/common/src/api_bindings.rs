@@ -425,6 +425,7 @@ pub enum LogMessageType {
     Fatal,
     FatalDescription,
     Recover,
+    InformError,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -449,8 +450,12 @@ pub enum StreamServerMessage {
         width: u32,
         height: u32,
         fps: u32,
-        audio_channels: u32,
         audio_sample_rate: u32,
+        audio_channel_count: u32,
+        audio_streams: u32,
+        audio_coupled_streams: u32,
+        audio_samples_per_frame: u32,
+        audio_mapping: [u8; 8],
     },
     ConnectionTerminated {
         error_code: i32,

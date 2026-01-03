@@ -22,11 +22,11 @@ async function detectCodec(): Promise<boolean> {
 export class AudioDecoderPipe implements DataAudioPlayer {
 
     static readonly baseType = "audiosample"
-    static readonly type = "audiodata"
+    static readonly type = "audiodata_opus"
 
     static async getInfo(): Promise<PipeInfo> {
         return {
-            environmentSupported: "AudioDecoder" in globalObject(),
+            environmentSupported: "AudioDecoder" in globalObject() && await detectCodec(),
         }
     }
 
@@ -90,8 +90,6 @@ export class AudioDecoderPipe implements DataAudioPlayer {
             data: unit.data,
             timestamp: unit.timestampMicroseconds,
             duration: unit.durationMicroseconds,
-            // We should be allowed to transfer because this data won't be used in the future
-            transfer: [unit.data]
         })
         this.isFirstPacket = false
 

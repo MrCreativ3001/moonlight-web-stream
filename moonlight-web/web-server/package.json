@@ -19,7 +19,7 @@
     "build": "npm run generate-bindings && npm run build-light",
     "build-light": "tsc && npm run copy-static",
     "generate-bindings": "cargo test export_bindings --package common",
-    "copy-static": "cpx \"web/**/*.{html,json,css,svg,png}\" dist/"
+    "copy-static": "cpx \"web/**/*.{html,json,css,svg,png,js,wasm}\" dist/"
   },
   "license": "GPL-3.0-or-later",
   "private": "true",

@@ -6,6 +6,6 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
-    "esModuleInterop": true,
+    "esModuleInterop": true
   }
 }

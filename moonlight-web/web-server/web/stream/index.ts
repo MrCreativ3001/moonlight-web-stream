@@ -175,8 +175,12 @@ export class Stream implements Component {
             const height = message.ConnectionComplete.height
             const fps = message.ConnectionComplete.fps
 
-            const audioChannels = message.ConnectionComplete.audio_channels
             const audioSampleRate = message.ConnectionComplete.audio_sample_rate
+            const audioChannelCount = message.ConnectionComplete.audio_channel_count
+            const audioStreams = message.ConnectionComplete.audio_streams
+            const audioCoupledStreams = message.ConnectionComplete.audio_coupled_streams
+            const audioSamplesPerFrame = message.ConnectionComplete.audio_samples_per_frame
+            const audioMapping = message.ConnectionComplete.audio_mapping
 
             const format = getSelectedVideoCodec(formatRaw)
             if (format == null) {
@@ -207,8 +211,12 @@ export class Stream implements Component {
                     height,
                 }),
                 this.audioPlayer?.setup({
-                    channels: audioChannels,
-                    sampleRate: audioSampleRate
+                    sampleRate: audioSampleRate,
+                    channels: audioChannelCount,
+                    streams: audioStreams,
+                    coupledStreams: audioCoupledStreams,
+                    samplesPerFrame: audioSamplesPerFrame,
+                    mapping: audioMapping,
                 })
             ])
         } else if ("ConnectionTerminated" in message) {
@@ -356,6 +364,17 @@ export class Stream implements Component {
     }
 
     private async createPipelines(): Promise<VideoCodecSupport | null> {
+        // Print supported pipes
+        const pipesInfo = await gatherPipeInfo()
+
+        this.logger.debug(`Supported Pipes: {`)
+        let isFirst = true
+        for (const [pipe, info] of pipesInfo) {
+            this.logger.debug(`${isFirst ? "" : ","}"${pipe.name}": ${JSON.stringify(info)}`)
+            isFirst = false
+        }
+        this.logger.debug(`}`)
+
         // Create pipelines
         const [supportedVideoCodecs] = await Promise.all([this.createVideoRenderer(), this.createAudioPlayer()])
 
@@ -460,7 +479,7 @@ export class Stream implements Component {
 
         const audio = this.transport?.getChannel(TransportChannelId.HOST_AUDIO)
         if (audio.type == "audiotrack") {
-            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", this.settings)
+            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", this.settings, this.logger)
 
             if (error) {
                 return false
@@ -472,7 +491,7 @@ export class Stream implements Component {
 
             this.audioPlayer = audioPlayer
         } else if (audio.type == "data") {
-            const { audioPlayer, error } = await buildAudioPipeline("data", this.settings)
+            const { audioPlayer, error } = await buildAudioPipeline("data", this.settings, this.logger)
 
             if (error) {
                 return false

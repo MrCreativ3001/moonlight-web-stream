@@ -715,8 +715,12 @@ impl StreamConnection {
                         width: video_setup.width,
                         height: video_setup.height,
                         fps: video_setup.redraw_rate,
-                        audio_channels: audio_setup.channel_count,
                         audio_sample_rate: audio_setup.sample_rate,
+                        audio_channel_count: audio_setup.channel_count,
+                        audio_streams: audio_setup.streams,
+                        audio_coupled_streams: audio_setup.coupled_streams,
+                        audio_samples_per_frame: audio_setup.samples_per_frame,
+                        audio_mapping: audio_setup.mapping,
                     },
                 ))
                 .await;

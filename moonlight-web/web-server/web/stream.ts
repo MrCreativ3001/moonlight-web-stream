@@ -587,6 +587,8 @@ class ConnectionInfoModal implements Modal<void> {
                 showModal(this)
             } else if (data.additional?.type == "recover") {
                 showModal(null)
+            } else if (data.additional?.type == "informError") {
+                showErrorPopup(data.line)
             }
         } else if (data.type == "serverMessage") {
             const text = `Server: ${data.message}`

@@ -485,6 +485,7 @@ Other changes:
 - Thanks to [@Argon2000](https://github.com/Argon2000) for implementing a canvas renderer, which makes this run in the Tesla browser.
 - Thanks to [@Maneetbal](https://github.com/Maneetbal) for creating a new beautiful GUI.
 - Thanks to [@chromaticpipe](https://github.com/chromaticpipe) for making Github CI.
+- Thanks to [@qiin2333](https://github.com/qiin2333) for implementing HDR support.
 
 ## Building
 Make sure you've cloned this repo with all it's submodules

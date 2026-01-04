@@ -26,6 +26,7 @@ export type Settings = {
     dataTransport: TransportType
     toggleFullscreenWithKeybind: boolean
     pageStyle: PageStyle
+    hdr: boolean
 }
 
 export type StreamCodec = "h264" | "auto" | "h265" | "av1"
@@ -79,6 +80,7 @@ export class StreamSettingsComponent implements Component {
     private videoCodec: SelectComponent
     private forceVideoElementRenderer: InputComponent
     private canvasRenderer: InputComponent
+    private hdr: InputComponent
 
     private videoSize: SelectComponent
     private videoSizeWidth: InputComponent
@@ -230,6 +232,13 @@ export class StreamSettingsComponent implements Component {
         })
         this.canvasRenderer.addChangeListener(this.onSettingsChange.bind(this))
         this.canvasRenderer.mount(this.divElement)
+
+        // HDR
+        this.hdr = new InputComponent("hdr", "checkbox", "Enable HDR", {
+            checked: settings?.hdr ?? defaultSettings_.hdr
+        })
+        this.hdr.addChangeListener(this.onSettingsChange.bind(this))
+        this.hdr.mount(this.divElement)
 
         // Audio local
         this.audioHeader.innerText = "Audio"
@@ -393,6 +402,8 @@ export class StreamSettingsComponent implements Component {
         settings.toggleFullscreenWithKeybind = this.toggleFullscreenWithKeybind.isChecked()
 
         settings.pageStyle = this.pageStyle.getValue() as any
+
+        settings.hdr = this.hdr.isChecked()
 
         return settings
     }

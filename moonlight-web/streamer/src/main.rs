@@ -8,6 +8,7 @@ use std::{
         Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
+    time::Duration,
 };
 
 use common::{
@@ -21,7 +22,7 @@ use common::{
 use log::{LevelFilter, debug, error, info, trace, warn};
 use moonlight_common::{
     MoonlightError,
-    high::{HostError, MoonlightHost},
+    high::{HostError, MoonlightHost, StreamConfigError},
     network::backend::reqwest::ReqwestClient,
     pair::ClientAuth,
     stream::{
@@ -41,6 +42,7 @@ use tokio::{
     spawn,
     sync::{Mutex, Notify, RwLock},
     task::spawn_blocking,
+    time::sleep,
 };
 
 use common::api_bindings::{StreamCapabilities, StreamServerMessage};
@@ -640,7 +642,7 @@ impl StreamConnection {
                 settings.width,
                 settings.height,
                 settings.fps,
-                false,
+                settings.hdr,
                 true,
                 settings.play_audio_local,
                 ActiveGamepads::empty(),
@@ -662,7 +664,7 @@ impl StreamConnection {
         {
             Ok(value) => value,
             Err(err) => {
-                warn!("[Stream]: failed to start moonlight stream: {err:?}");
+                warn!("[Stream]: failed to start moonlight stream: {err}");
 
                 #[allow(clippy::single_match)]
                 match err {
@@ -672,6 +674,14 @@ impl StreamConnection {
                                 StreamServerMessage::DebugLog { message: "Failed to start stream because this streamer is already streaming".to_string(), ty: None },
                             ))
                             .await;
+                    }
+                    HostError::StreamConfig(StreamConfigError::NotSupportedHdr) => {
+                        ipc_sender.send(
+                        StreamerIpcMessage::WebSocket(StreamServerMessage::DebugLog {
+                            message: "Failed to start stream because this app doesn't support HDR!"
+                                .to_string(),
+                            ty: Some(LogMessageType::FatalDescription),
+                        })).await;
                     }
                     _ => {}
                 }
@@ -764,6 +774,9 @@ impl StreamConnection {
 
         let mut ipc_sender = self.ipc_sender.clone();
         ipc_sender.send(StreamerIpcMessage::Stop).await;
+
+        // Wait for ipc message before stop
+        sleep(Duration::from_millis(200)).await;
 
         // TODO: should we terminate or wait for a new retry?
         info!("Terminating Self");
@@ -873,7 +886,32 @@ impl ConnectionListener for StreamConnectionListener {
         })
     }
 
-    fn set_hdr_mode(&mut self, _hdr_enabled: bool) {}
+    fn set_hdr_mode(&mut self, hdr_enabled: bool) {
+        info!(
+            "[HDR] Host called set_hdr_mode with enabled={}",
+            hdr_enabled
+        );
+
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        stream.clone().runtime.block_on(async move {
+            info!("[HDR] Sending HdrModeUpdate to client");
+            stream
+                .try_send_packet(
+                    OutboundPacket::General {
+                        message: GeneralServerMessage::HdrModeUpdate {
+                            enabled: hdr_enabled,
+                        },
+                    },
+                    "hdr mode update",
+                    true,
+                )
+                .await
+        })
+    }
 
     fn controller_rumble(
         &mut self,

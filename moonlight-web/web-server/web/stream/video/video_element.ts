@@ -89,6 +89,10 @@ export class VideoElementRenderer implements TrackVideoRenderer, VideoRenderer {
         this.oldTrack = track
     }
 
+    pollRequestIdr(): boolean {
+        return false
+    }
+
     mount(parent: HTMLElement): void {
         parent.appendChild(this.videoElement)
     }

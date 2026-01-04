@@ -398,7 +398,6 @@ impl WebRtcInner {
 
                 // TODO: check peer for supported formats via sdp
 
-                // TODO: remove unwrap
                 if let Err(err) = self
                     .event_sender
                     .send(TransportEvent::StartStream {

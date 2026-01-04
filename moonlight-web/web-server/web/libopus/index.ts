@@ -1,4 +1,4 @@
-// Take a look at 
+// Take a look at https://github.com/MrCreativ3001/libopus-js
 
 import type { MainModule } from "./libopus.js"
 

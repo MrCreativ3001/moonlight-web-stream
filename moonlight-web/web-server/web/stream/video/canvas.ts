@@ -22,6 +22,10 @@ export abstract class BaseCanvasVideoRenderer implements VideoRenderer {
 
     cleanup(): void { }
 
+    pollRequestIdr(): boolean {
+        return false
+    }
+
     onUserInteraction(): void {
         // Nothing
     }

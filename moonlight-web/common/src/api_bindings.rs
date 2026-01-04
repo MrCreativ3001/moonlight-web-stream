@@ -320,6 +320,7 @@ ts_consts!(
     pub const CONTROLLER13: u8 = 23;
     pub const CONTROLLER14: u8 = 24;
     pub const CONTROLLER15: u8 = 25;
+    pub const RTT: u8 = 26;
 );
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
@@ -501,7 +502,9 @@ pub struct StatsHostProcessingLatency {
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum StreamerStatsUpdate {
     Rtt {
+        /// The host to the streamer
         rtt_ms: f64,
+        /// The host to the streamer
         rtt_variance_ms: f64,
     },
     Video {
@@ -509,6 +512,11 @@ pub enum StreamerStatsUpdate {
         min_streamer_processing_time_ms: f64,
         max_streamer_processing_time_ms: f64,
         avg_streamer_processing_time_ms: f64,
+    },
+    BrowserRtt {
+        /// The browser to the streamer
+        /// Used with ws protocol to know backlog
+        rtt_ms: f64,
     },
 }
 

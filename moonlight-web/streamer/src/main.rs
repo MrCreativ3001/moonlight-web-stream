@@ -537,6 +537,7 @@ impl StreamConnection {
                     )
                     .err()
             }
+            _ => None,
         };
 
         if let Some(err) = err {

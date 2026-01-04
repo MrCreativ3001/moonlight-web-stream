@@ -5,7 +5,7 @@ import { Component } from "../component/index.js"
 import { Settings } from "../component/settings_menu.js"
 import { AudioPlayer } from "./audio/index.js"
 import { buildAudioPipeline } from "./audio/pipeline.js"
-import { BIG_BUFFER } from "./buffer.js"
+import { BIG_BUFFER, ByteBuffer } from "./buffer.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
 import { Logger, LogMessageInfo } from "./log.js"
 import { gatherPipeInfo, getPipe } from "./pipeline/index.js"
@@ -277,6 +277,22 @@ export class Stream implements Component {
 
         this.input.setTransport(this.transport)
         this.stats.setTransport(this.transport)
+
+        const rtt = this.transport.getChannel(TransportChannelId.RTT)
+        if (rtt.type == "data") {
+            rtt.addReceiveListener((data) => {
+                const buffer = new ByteBuffer(data.byteLength)
+                buffer.putU8Array(new Uint8Array(data))
+                buffer.flip()
+
+                const ty = buffer.getU8()
+                if (ty == 0) {
+                    rtt.send(data)
+                }
+            })
+        } else {
+            this.debugLog("Failed to get rtt as data transport channel. Cannot respond to rtt packets")
+        }
     }
 
     private async tryWebRTCTransport(): Promise<TransportShutdown> {
@@ -450,6 +466,17 @@ export class Stream implements Component {
 
             video.addReceiveListener((data) => {
                 videoRenderer.submitPacket(data)
+
+                // data pipeline support requesting idrs over video channel
+                if (videoRenderer.pollRequestIdr()) {
+                    const buffer = new ByteBuffer(1)
+
+                    buffer.putU8(0)
+
+                    buffer.flip()
+
+                    video.send(buffer.getRemainingBuffer().buffer)
+                }
             })
 
             this.videoRenderer = videoRenderer

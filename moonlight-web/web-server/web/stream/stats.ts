@@ -18,6 +18,7 @@ export type StreamStatsData = {
     minStreamerProcessingTimeMs: number | null
     maxStreamerProcessingTimeMs: number | null
     avgStreamerProcessingTimeMs: number | null
+    browserRtt: number | null
     transport: Record<string, string>
 }
 
@@ -37,6 +38,7 @@ audio pipeline: ${statsData.audioPipeline}
 streamer round trip time: ${num(statsData.streamerRttMs, "ms")} (variance: ${num(statsData.streamerRttVarianceMs, "ms")})
 host processing latency min/max/avg: ${num(statsData.minHostProcessingLatencyMs, "ms")} / ${num(statsData.maxHostProcessingLatencyMs, "ms")} / ${num(statsData.avgHostProcessingLatencyMs, "ms")}
 streamer processing latency min/max/avg: ${num(statsData.minStreamerProcessingTimeMs, "ms")} / ${num(statsData.maxStreamerProcessingTimeMs, "ms")} / ${num(statsData.avgStreamerProcessingTimeMs, "ms")}
+streamer to browser rtt (ws only): ${num(statsData.browserRtt, "ms")}
 `
     for (const key in statsData.transport) {
         const value = statsData.transport[key]
@@ -76,6 +78,7 @@ export class StreamStats {
         minStreamerProcessingTimeMs: null,
         maxStreamerProcessingTimeMs: null,
         avgStreamerProcessingTimeMs: null,
+        browserRtt: null,
         transport: {}
     }
 
@@ -160,6 +163,8 @@ export class StreamStats {
             this.statsData.minStreamerProcessingTimeMs = msg.Video.min_streamer_processing_time_ms
             this.statsData.maxStreamerProcessingTimeMs = msg.Video.max_streamer_processing_time_ms
             this.statsData.avgStreamerProcessingTimeMs = msg.Video.avg_streamer_processing_time_ms
+        } else if ("BrowserRtt" in msg) {
+            this.statsData.browserRtt = msg.BrowserRtt.rtt_ms
         }
     }
 

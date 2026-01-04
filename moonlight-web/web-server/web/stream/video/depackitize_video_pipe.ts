@@ -22,7 +22,7 @@ export class DepacketizeVideoPipe implements DataPipe {
 
     private base: DataVideoRenderer
 
-    private frameDurationMicroseconds = 0
+    private lastTimestampMicroseconds = 0
     private buffer = new ByteBuffer(5)
 
     constructor(base: DataVideoRenderer, logger?: Logger) {
@@ -44,19 +44,19 @@ export class DepacketizeVideoPipe implements DataPipe {
         const frameType = this.buffer.getU8()
         const timestamp = this.buffer.getU32()
 
+        const duration = timestamp - this.lastTimestampMicroseconds
         this.base.submitDecodeUnit({
             type: frameType == 0 ? "delta" : "key",
             data: array.slice(5).buffer,
-            durationMicroseconds: this.frameDurationMicroseconds,
+            durationMicroseconds: duration,
             timestampMicroseconds: timestamp,
         })
+        this.lastTimestampMicroseconds = timestamp
 
         addPipePassthrough(this)
     }
 
     setup(setup: VideoRendererSetup) {
-        this.frameDurationMicroseconds = 1000000 / setup.fps
-
         if ("setup" in this.base && typeof this.base.setup == "function") {
             return this.base.setup(...arguments)
         }

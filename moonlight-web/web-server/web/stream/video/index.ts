@@ -16,6 +16,9 @@ export interface VideoRenderer extends Component, Pipe {
     setup(setup: VideoRendererSetup): Promise<void>
     cleanup(): void
 
+    /// Only works on web socket pipeline currently
+    pollRequestIdr(): boolean
+
     /// Don't work inside a worker
     onUserInteraction(): void
     /// Don't work inside a worker

@@ -74,6 +74,8 @@ export class VideoDecoderPipe implements DataVideoRenderer {
 
     private base: FrameVideoRenderer
 
+    private fps = 0
+
     private errored = false
     private decoder: VideoDecoder
 
@@ -106,6 +108,8 @@ export class VideoDecoderPipe implements DataVideoRenderer {
     private translator: CodecStreamTranslator | null = null
 
     async setup(setup: VideoRendererSetup): Promise<void> {
+        this.fps = setup.fps
+
         const codec = VIDEO_DECODER_CODECS[setup.codec]
         if (!codec) {
             this.logger?.debug("Failed to get codec configuration for WebCodecs VideoDecoder", { type: "fatal" })
@@ -145,6 +149,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         if (!config) {
             config = { codec }
         }
+        console.debug("Using video decoder base config", config)
 
         translator.setBaseConfig(config)
         this.translator = translator
@@ -153,6 +158,8 @@ export class VideoDecoderPipe implements DataVideoRenderer {
             return await this.base.setup(...arguments)
         }
     }
+
+    private requestedIdr = false
 
     private bufferedUnits: Array<VideoDecodeUnit> = []
     submitDecodeUnit(unit: VideoDecodeUnit): void {
@@ -190,11 +197,43 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         }
 
         if (configure) {
+            console.debug("Resetting video decoder config with", configure)
+
             this.decoder.reset()
             this.decoder.configure(configure)
+
+            // This likely is an idr
+            this.requestedIdr = false
         }
 
         this.decoder.decode(chunk)
+    }
+
+    pollRequestIdr(): boolean {
+        let requestIdr = false
+
+        const estimatedQueueDelayMs = this.decoder.decodeQueueSize * 1000 / this.fps
+        if (estimatedQueueDelayMs > 200 && this.decoder.decodeQueueSize > 2) {
+            // We have more than 200ms second backlog in the decoder
+            // -> This decoder is ass, request idr, flush that decoder
+
+            if (!this.requestedIdr) {
+                requestIdr = true
+            }
+            console.debug(`Requesting idr because of decode queue size(${this.decoder.decodeQueueSize}) and estimated delay of the queue: ${estimatedQueueDelayMs}`)
+        }
+
+        if ("pollRequestIdr" in this.base && typeof this.base.pollRequestIdr == "function") {
+            if (this.base.pollRequestIdr(...arguments)) {
+                requestIdr = true
+            }
+        }
+
+        if (requestIdr) {
+            this.requestedIdr = true
+        }
+
+        return requestIdr
     }
 
     cleanup() {

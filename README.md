@@ -25,6 +25,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 - Features that only work in a [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts#:~:text=They%20must%20be,be%20considered%20deprecated.) -> [How to configure a Secure Context / https](#configuring-https)
   - Controllers: [Gamepad API](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API)
   - Keyboard Lock (allows to capture almost all keys also OS Keys): [Experimental Keyboard Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Keyboard_API)
+  - Web Socket Transport because of the [Web Codecs Api](https://developer.mozilla.org/en-US/docs/Web/API/VideoDecoder)
 
 ## Installation
 

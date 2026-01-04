@@ -1,5 +1,5 @@
 import { Api } from "../api.js"
-import { App, ConnectionStatus, StreamCapabilities, StreamClientMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
+import { App, ConnectionStatus, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
 import { showErrorPopup } from "../component/error.js"
 import { Component } from "../component/index.js"
 import { Settings } from "../component/settings_menu.js"
@@ -197,6 +197,12 @@ export class Stream implements Component {
             this.input.onStreamStart(capabilities, [width, height])
 
             this.stats.setVideoInfo(format ?? "Unknown", width, height, fps)
+            // HDR state will be set when server sends HdrModeUpdate message
+            // Don't initialize from settings.hdr because that's just the user's preference,
+            // not the actual HDR state (which depends on host support, display, and codec)
+            if (this.settings.hdr) {
+                this.debugLog("HDR requested by user, waiting for host confirmation...")
+            }
 
             // we should allow streaming without audio
             if (!this.audioPlayer) {
@@ -277,6 +283,71 @@ export class Stream implements Component {
 
         this.input.setTransport(this.transport)
         this.stats.setTransport(this.transport)
+        
+        // Setup GENERAL channel listener for HDR mode updates
+        const generalChannel = this.transport.getChannel(TransportChannelId.GENERAL)
+        this.debugLog(`[GENERAL] Setting up GENERAL channel listener, type=${generalChannel.type}`)
+        if (generalChannel.type === "data") {
+            generalChannel.addReceiveListener((data: ArrayBuffer) => {
+                this.onGeneralChannelMessage(data)
+            })
+            this.debugLog(`[GENERAL] GENERAL channel listener registered`)
+        } else {
+            this.debugLog(`[GENERAL] Cannot register listener, channel type is not 'data'`)
+        }
+    }
+    
+    private onGeneralChannelMessage(data: ArrayBuffer) {
+        this.debugLog(`[GENERAL] Received message on GENERAL channel, size=${data.byteLength}`)
+        const buffer = new Uint8Array(data)
+        if (buffer.length < 2) {
+            this.debugLog(`[GENERAL] Message too short: ${buffer.length} bytes`)
+            return
+        }
+        
+        const textLength = (buffer[0] << 8) | buffer[1]
+        if (buffer.length < 2 + textLength) {
+            this.debugLog(`[GENERAL] Message incomplete: expected ${2 + textLength} bytes, got ${buffer.length}`)
+            return
+        }
+        
+        const text = new TextDecoder().decode(buffer.slice(2, 2 + textLength))
+        this.debugLog(`[GENERAL] Parsed message: ${text}`)
+        try {
+            const message: GeneralServerMessage = JSON.parse(text)
+            this.handleGeneralMessage(message)
+        } catch (err) {
+            this.debugLog(`Failed to parse general message: ${err}`)
+        }
+    }
+    
+    private handleGeneralMessage(message: GeneralServerMessage) {
+        if ("HdrModeUpdate" in message) {
+            const hdrUpdate = message.HdrModeUpdate
+            if (hdrUpdate) {
+                const enabled = hdrUpdate.enabled
+                this.debugLog(`HDR mode ${enabled ? "enabled" : "disabled"}`)
+                this.setHdrMode(enabled)
+            }
+        } else if ("ConnectionStatusUpdate" in message) {
+            const statusUpdate = message.ConnectionStatusUpdate
+            if (statusUpdate) {
+                const status = statusUpdate.status
+                const event: InfoEvent = new CustomEvent("stream-info", {
+                    detail: { type: "connectionStatus", status }
+                })
+                this.eventTarget.dispatchEvent(event)
+            }
+        }
+    }
+    
+    private setHdrMode(enabled: boolean) {
+        this.stats.setHdrEnabled(enabled)
+        if (this.videoRenderer) {
+            if ("setHdrMode" in this.videoRenderer && typeof this.videoRenderer.setHdrMode === "function") {
+                this.videoRenderer.setHdrMode(enabled)
+            }
+        }
     }
 
     private async tryWebRTCTransport(): Promise<TransportShutdown> {
@@ -528,10 +599,21 @@ export class Stream implements Component {
                 video_supported_formats: createSupportedVideoFormatsBits(videoCodecSupport),
                 video_colorspace: "Rec709",
                 video_color_range_full: false,
+                hdr: this.settings.hdr ?? false,
             }
         }
         this.debugLog(`Starting stream with info: ${JSON.stringify(message)}`)
         this.debugLog(`Stream video codec info: ${JSON.stringify(videoCodecSupport)}`)
+
+        // Log HDR requirements if HDR is requested
+        if (this.settings.hdr) {
+            const hasHdrCodec = videoCodecSupport.H265_MAIN10 || videoCodecSupport.AV1_MAIN10
+            if (!hasHdrCodec) {
+                this.debugLog(`Warning: HDR requested but no 10-bit codec available. HDR requires H265_MAIN10 or AV1_MAIN10 support.`)
+            } else {
+                this.debugLog(`HDR codec available: H265_MAIN10=${videoCodecSupport.H265_MAIN10}, AV1_MAIN10=${videoCodecSupport.AV1_MAIN10}`)
+            }
+        }
 
         this.sendWsMessage(message)
     }

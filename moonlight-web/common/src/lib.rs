@@ -20,6 +20,7 @@ pub struct StreamSettings {
     pub video_supported_formats: SupportedVideoFormats,
     pub video_colorspace: Colorspace,
     pub video_color_range_full: bool,
+    pub hdr: bool,
 }
 
 impl Display for StreamSettings {

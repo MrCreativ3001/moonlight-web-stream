@@ -386,6 +386,7 @@ impl WebRtcInner {
                 video_supported_formats,
                 video_colorspace,
                 video_color_range_full,
+                hdr,
             } => {
                 let video_supported_formats = SupportedVideoFormats::from_bits(video_supported_formats).unwrap_or_else(|| {
                     warn!("Failed to deserialize SupportedVideoFormats: {video_supported_formats}, falling back to only H264");
@@ -412,6 +413,7 @@ impl WebRtcInner {
                             video_color_range_full,
                             video_colorspace: video_colorspace.into(),
                             play_audio_local,
+                            hdr,
                         },
                     })
                     .await

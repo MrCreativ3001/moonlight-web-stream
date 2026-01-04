@@ -46,6 +46,7 @@ export class VideoElementRenderer implements TrackVideoRenderer, VideoRenderer {
     private stream = new MediaStream()
 
     private size: [number, number] | null = null
+    private hdrEnabled: boolean = false
 
     constructor() {
         this.videoElement.classList.add("video-stream")
@@ -115,5 +116,25 @@ export class VideoElementRenderer implements TrackVideoRenderer, VideoRenderer {
 
     getBase(): Pipe | null {
         return null
+    }
+    
+    setHdrMode(enabled: boolean): void {
+        this.hdrEnabled = enabled
+        // Request HDR display mode if supported
+        if (enabled && "requestHDR" in this.videoElement) {
+            try {
+                (this.videoElement as any).requestHDR()
+            } catch (err) {
+                console.warn("Failed to request HDR mode:", err)
+            }
+        }
+        // Set color space attributes for HDR
+        if (enabled) {
+            this.videoElement.setAttribute("color-gamut", "rec2020")
+            this.videoElement.setAttribute("transfer-function", "pq")
+        } else {
+            this.videoElement.removeAttribute("color-gamut")
+            this.videoElement.removeAttribute("transfer-function")
+        }
     }
 }

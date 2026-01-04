@@ -384,6 +384,7 @@ pub enum StreamClientMessage {
         video_supported_formats: u32,
         video_colorspace: StreamColorspace,
         video_color_range_full: bool,
+        hdr: bool,
     },
 }
 
@@ -466,6 +467,7 @@ pub enum StreamServerMessage {
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum GeneralServerMessage {
     ConnectionStatusUpdate { status: ConnectionStatus },
+    HdrModeUpdate { enabled: bool },
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

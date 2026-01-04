@@ -639,7 +639,7 @@ impl StreamConnection {
                 settings.width,
                 settings.height,
                 settings.fps,
-                false,
+                settings.hdr,
                 true,
                 settings.play_audio_local,
                 ActiveGamepads::empty(),
@@ -872,7 +872,29 @@ impl ConnectionListener for StreamConnectionListener {
         })
     }
 
-    fn set_hdr_mode(&mut self, _hdr_enabled: bool) {}
+    fn set_hdr_mode(&mut self, hdr_enabled: bool) {
+        info!("[HDR] Host called set_hdr_mode with enabled={}", hdr_enabled);
+        
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        stream.clone().runtime.block_on(async move {
+            info!("[HDR] Sending HdrModeUpdate to client");
+            stream
+                .try_send_packet(
+                    OutboundPacket::General {
+                        message: GeneralServerMessage::HdrModeUpdate {
+                            enabled: hdr_enabled,
+                        },
+                    },
+                    "hdr mode update",
+                    true,
+                )
+                .await
+        })
+    }
 
     fn controller_rumble(
         &mut self,

@@ -10,6 +10,7 @@ export type StreamStatsData = {
     videoFps: number | null
     videoPipeline: string | null
     audioPipeline: string | null
+    hdrEnabled: boolean | null
     streamerRttMs: number | null
     streamerRttVarianceMs: number | null
     minHostProcessingLatencyMs: number | null
@@ -33,6 +34,7 @@ function num(value: number | null | undefined, suffix?: string): string | null {
 export function streamStatsToText(statsData: StreamStatsData): string {
     let text = `stats:
 video information: ${statsData.videoCodec}, ${statsData.videoWidth}x${statsData.videoHeight}, ${statsData.videoFps} fps
+HDR: ${statsData.hdrEnabled === true ? "Enabled" : statsData.hdrEnabled === false ? "Disabled" : "Unknown"}
 video pipeline: ${statsData.videoPipeline}
 audio pipeline: ${statsData.audioPipeline}
 streamer round trip time: ${num(statsData.streamerRttMs, "ms")} (variance: ${num(statsData.streamerRttVarianceMs, "ms")})
@@ -70,6 +72,7 @@ export class StreamStats {
         videoFps: null,
         videoPipeline: null,
         audioPipeline: null,
+        hdrEnabled: null,
         streamerRttMs: null,
         streamerRttVarianceMs: null,
         minHostProcessingLatencyMs: null,
@@ -193,6 +196,9 @@ export class StreamStats {
     }
     setAudioPipelineName(name: string) {
         this.statsData.audioPipeline = name
+    }
+    setHdrEnabled(enabled: boolean) {
+        this.statsData.hdrEnabled = enabled
     }
 
     getCurrentStats(): StreamStatsData {

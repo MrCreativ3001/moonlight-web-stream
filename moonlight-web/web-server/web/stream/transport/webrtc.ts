@@ -35,6 +35,7 @@ export class WebRTCTransport implements Transport {
         this.peer.addEventListener("icegatheringstatechange", this.onIceGatheringStateChange.bind(this))
 
         this.peer.addEventListener("track", this.onTrack.bind(this))
+        this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
 
         this.initChannels()
 
@@ -331,6 +332,33 @@ export class WebRTCTransport implements Transport {
         }
     }
 
+    // Handle data channels created by the remote peer (server)
+    private onDataChannel(event: RTCDataChannelEvent) {
+        const remoteChannel = event.channel
+        const label = remoteChannel.label
+
+        this.logger?.debug(`Received remote data channel: ${label}`)
+
+        // Map the channel label to the corresponding TransportChannelId
+        const channelKey = label.toUpperCase() as TransportChannelIdKey
+        if (channelKey in TransportChannelId) {
+            const id = TransportChannelId[channelKey]
+            const existingChannel = this.channels[id]
+            
+            // If we already have a channel for this ID, replace its underlying RTCDataChannel
+            // with the remote one so we can receive messages from the server
+            if (existingChannel && existingChannel.type === "data") {
+                this.logger?.debug(`Replacing underlying channel for ${label} with remote channel`)
+                ;(existingChannel as WebRTCDataTransportChannel).replaceChannel(remoteChannel)
+            } else {
+                this.logger?.debug(`Creating new channel for ${label}`)
+                this.channels[id] = new WebRTCDataTransportChannel(label, remoteChannel)
+            }
+        } else {
+            this.logger?.debug(`Unknown remote data channel: ${label}`)
+        }
+    }
+
     async setupHostVideo(_setup: TransportVideoSetup): Promise<VideoCodecSupport> {
         // TODO: check transport type
 
@@ -523,12 +551,25 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
 
     private label: string
     private channel: RTCDataChannel
+    private boundOnMessage: (event: MessageEvent) => void
 
     constructor(label: string, channel: RTCDataChannel) {
         this.label = label
         this.channel = channel
+        this.boundOnMessage = this.onMessage.bind(this)
 
-        this.channel.addEventListener("message", this.onMessage.bind(this))
+        this.channel.addEventListener("message", this.boundOnMessage)
+    }
+
+    // Replace the underlying channel with a new one (e.g., from remote peer)
+    // This is used when we receive a data channel from the server that should
+    // replace our locally created one for receiving messages
+    replaceChannel(newChannel: RTCDataChannel): void {
+        // Remove listener from old channel
+        this.channel.removeEventListener("message", this.boundOnMessage)
+        // Add listener to new channel
+        this.channel = newChannel
+        this.channel.addEventListener("message", this.boundOnMessage)
     }
 
     private sendQueue: Array<ArrayBuffer> = []

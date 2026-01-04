@@ -166,15 +166,17 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         }
 
         // Build that pipeline
+        logger?.debug(`Trying to build pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
         const videoRenderer = buildPipeline(pipeline.renderer, { pipes: pipeline.pipes }, logger)
         if (!videoRenderer) {
-            logger?.debug("Failed to build video pipeline")
-            return { videoRenderer: null, supportedCodecs: null, error: true }
+            logger?.debug(`Failed to build video pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
+            continue pipelineLoop
         }
 
+        logger?.debug(`Successfully built video pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
         return { videoRenderer: videoRenderer as VideoRenderer, supportedCodecs, error: false }
     }
 
-    logger?.debug("No supported video renderer found!")
+    logger?.debug("No supported video renderer found! Tried all available pipelines.")
     return { videoRenderer: null, supportedCodecs: null, error: true }
 }

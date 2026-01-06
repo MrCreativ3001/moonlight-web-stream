@@ -32,19 +32,6 @@ export const CAPABILITIES_CODECS: Record<keyof VideoCodecSupport, { mimeType: st
     "AV1_HIGH10": { mimeType: "video/AV1", fmtpLine: ["profile=1"] },
 }
 
-export const VIDEO_DECODER_CODECS: Record<keyof VideoCodecSupport, string> = {
-    "H264": "avc1.42E01E",
-    "H264_HIGH8_444": "avc1.640032",
-    "H265": "hvc1.1.6.L93.B0",
-    "H265_MAIN10": "hvc1.2.4.L120.90",
-    "H265_REXT8_444": "hvc1.6.6.L93.90",
-    "H265_REXT10_444": "hvc1.6.10.L120.90",
-    "AV1_MAIN8": "av01.0.04M.08",
-    "AV1_MAIN10": "av01.0.04M.10",
-    "AV1_HIGH8_444": "av01.0.08M.08",
-    "AV1_HIGH10_444": "av01.0.08M.10"
-}
-
 export function emptyVideoCodecs(): VideoCodecSupport {
     return {
         H264: false,

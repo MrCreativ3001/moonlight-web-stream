@@ -33,21 +33,6 @@ const VIDEO_DECODER_CODECS_OUT_OF_BAND: Record<keyof VideoCodecSupport, string> 
     "AV1_HIGH10_444": "av01.0.08M.10"
 }
 
-function createCodecConfig(codec: keyof VideoCodecSupport, in_band: boolean): VideoDecoderConfig {
-    let base
-    if (in_band) {
-        base = {
-            codec: VIDEO_DECODER_CODECS_IN_BAND[codec]
-        }
-    } else {
-        base = {
-            codec: VIDEO_DECODER_CODECS_OUT_OF_BAND[codec]
-        }
-    }
-
-    return base
-}
-
 async function detectCodecs(): Promise<VideoCodecSupport> {
     if (!("isConfigSupported" in VideoDecoder)) {
         return maybeVideoCodecs()
@@ -57,11 +42,13 @@ async function detectCodecs(): Promise<VideoCodecSupport> {
 
     for (const codec in codecs) {
         // TODO: parallelize await?
-        const configInBand = createCodecConfig(codec, true)
-        const supportedInBand = await VideoDecoder.isConfigSupported(configInBand)
+        const supportedInBand = await VideoDecoder.isConfigSupported({
+            codec: VIDEO_DECODER_CODECS_IN_BAND[codec]
+        })
 
-        const configOutOfBand = createCodecConfig(codec, false)
-        const supportedOutOfBand = await VideoDecoder.isConfigSupported(configOutOfBand)
+        const supportedOutOfBand = await VideoDecoder.isConfigSupported({
+            codec: VIDEO_DECODER_CODECS_OUT_OF_BAND[codec]
+        })
 
         codecs[codec] = supportedInBand.supported || supportedOutOfBand.supported ? true : false
     }
@@ -149,7 +136,6 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         if (!this.config) {
             this.config = await getIfConfigSupported({
                 codec,
-                optimizeForLatency: true
             })
         }
     }
@@ -186,6 +172,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
             this.logger?.debug(`Failed to setup VideoDecoder for codec ${setup.codec} because of missing config`)
             return
         }
+        this.translator?.setBaseConfig(this.config)
 
         this.logger?.debug(`VideoDecoder config: ${JSON.stringify(this.config)}`)
 

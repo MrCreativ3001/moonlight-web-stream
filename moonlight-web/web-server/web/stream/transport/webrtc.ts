@@ -344,12 +344,12 @@ export class WebRTCTransport implements Transport {
         if (channelKey in TransportChannelId) {
             const id = TransportChannelId[channelKey]
             const existingChannel = this.channels[id]
-            
+
             // If we already have a channel for this ID, replace its underlying RTCDataChannel
             // with the remote one so we can receive messages from the server
             if (existingChannel && existingChannel.type === "data") {
-                this.logger?.debug(`Replacing underlying channel for ${label} with remote channel`)
-                ;(existingChannel as WebRTCDataTransportChannel).replaceChannel(remoteChannel)
+                this.logger?.debug(`Replacing underlying channel for ${label} with remote channel`);
+                (existingChannel as WebRTCDataTransportChannel).replaceChannel(remoteChannel)
             } else {
                 this.logger?.debug(`Creating new channel for ${label}`)
                 this.channels[id] = new WebRTCDataTransportChannel(label, remoteChannel)
@@ -478,6 +478,9 @@ export class WebRTCTransport implements Transport {
             }
             if ("keyFramesDecoded" in value && value.keyFramesDecoded != null) {
                 statsData.webrtcKeyFramesDecoded = value.keyFramesDecoded
+            }
+            if ("nackCount" in value && value.nackCount != null) {
+                statsData.webrtcNackCount = value.nackCount
             }
         }
 

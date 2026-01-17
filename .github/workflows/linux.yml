@@ -96,5 +96,5 @@ jobs:
           context: ./docker/
           file: ./docker/Dockerfile.action
           platforms: ${{ matrix.platform }}
-          tags: mrcreativ3001/moonlight-web-stream:test-${{ matrix.arch }}-${{ github.run_id }}
+          tags: mrcreativ3001/moonlight-web-stream:test-${{ github.run_id }}
           push: true

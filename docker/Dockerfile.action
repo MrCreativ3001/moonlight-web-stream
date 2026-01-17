@@ -8,6 +8,9 @@ WORKDIR ${MOONLIGHT_WEB_PATH}
 # Copy prebuilt artifacts
 COPY moonlight-web/ ${MOONLIGHT_WEB_PATH}/
 
+# Mark executables as executable
+RUN chmod +x ${MOONLIGHT_WEB_PATH}/streamer ${MOONLIGHT_WEB_PATH}/web-server
+
 # Create a volume with the config.json and data.json
 VOLUME ${MOONLIGHT_WEB_PATH}/server
 

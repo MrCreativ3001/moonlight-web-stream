@@ -95,7 +95,7 @@ jobs:
         with:
           context: ./docker/
           file: ./docker/Dockerfile.action
-          tags: mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-${{ github.run_id }}-${{ matrix.platform }}
+          tags: mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-${{ matrix.platform }}
           push: true
 
   docker-manifest:

@@ -101,4 +101,4 @@ jobs:
           file: ./docker/Dockerfile.action
           platforms: ${{ matrix.platform }}
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:test-${{ matrix.arch }}-${{ github.run_id }}
-          push: false
+          push: true

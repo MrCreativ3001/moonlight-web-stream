@@ -90,11 +90,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Set image name (lowercase)
+        run: |
+          echo "IMAGE_PREFIX=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
           context: ./docker/
           file: ./docker/Dockerfile.action
           platforms: ${{ matrix.platform }}
-          tags: ghcr.io/${{ github.repository }}:test-${{ matrix.arch }}-${{ github.run_id }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:test-${{ matrix.arch }}-${{ github.run_id }}
           push: false

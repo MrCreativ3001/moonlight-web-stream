@@ -4,7 +4,6 @@ on: [push, pull_request]
 
 jobs:
   build:
-    continue-on-error: true
     strategy:
       matrix:
         arch:
@@ -52,6 +51,26 @@ jobs:
           web-server
           static
 
+  manifest:
+    name: Create multi-arch manifest
+    needs: docker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          docker manifest create mrcreativ3001/moonlight-web-stream:test-${{ github.run_id }} \
+            --amend mrcreativ3001/moonlight-web-stream:test-${{ github.run_id }}-amd64 \
+            --amend mrcreativ3001/moonlight-web-stream:test-${{ github.run_id }}-arm64
+
+          docker manifest push mrcreativ3001/moonlight-web-stream:test-${{ github.run_id }}
+
   docker:
     name: Docker ${{ matrix.name }}
     needs: build
@@ -63,10 +82,10 @@ jobs:
         include:
           - name: Linux amd64
             arch: x86_64
-            platform: linux/amd64
+            platform: amd64
           - name: Linux arm64
             arch: aarch64
-            platform: linux/arm64
+            platform: arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -86,15 +105,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Set image name (lowercase)
-        run: |
-          echo "IMAGE_PREFIX=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
-
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
           context: ./docker/
           file: ./docker/Dockerfile.action
-          platforms: ${{ matrix.platform }}
-          tags: mrcreativ3001/moonlight-web-stream:test-${{ github.run_id }}
+          tags: mrcreativ3001/moonlight-web-stream:test-${{ github.run_id }}-${{ matrix.platform }}
           push: true

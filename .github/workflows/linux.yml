@@ -114,7 +114,7 @@ jobs:
 
       - name: Create and push manifest
         run: |
-          docker manifest create mrcreativ3001/moonlight-web-stream:test-${{ github.run_id }} \
+          docker manifest create mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-${{ github.run_id }} \
             --amend mrcreativ3001/moonlight-web-stream/${{ github.ref_name }}-${{ github.run_id }}-amd64 \
             --amend mrcreativ3001/moonlight-web-stream/${{ github.ref_name }}-${{ github.run_id }}-arm64
 

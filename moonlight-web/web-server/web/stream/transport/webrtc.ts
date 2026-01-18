@@ -191,7 +191,6 @@ export class WebRTCTransport implements Transport {
 
         if (this.peer.connectionState == "connected") {
             type = "recover"
-            this.setDelayHintInterval(true)
 
             if (this.onconnect) {
                 this.onconnect()
@@ -199,7 +198,6 @@ export class WebRTCTransport implements Transport {
             this.wasConnected = true
         } else if ((this.peer.connectionState == "failed" || this.peer.connectionState == "closed" || this.peer.connectionState == "disconnected") && this.peer.iceGatheringState == "complete") {
             type = "fatal"
-            this.setDelayHintInterval(false)
         }
 
         if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
@@ -242,24 +240,6 @@ export class WebRTCTransport implements Transport {
             if (this.onclose) {
                 this.onclose("failednoconnect")
             }
-        }
-    }
-
-    private forceDelayInterval: number | null = null
-    private setDelayHintInterval(setRunning: boolean) {
-        if (this.forceDelayInterval == null && setRunning) {
-            this.forceDelayInterval = setInterval(() => {
-                if (!this.peer) {
-                    return
-                }
-
-                for (const receiver of this.peer.getReceivers()) {
-                    // @ts-ignore
-                    receiver.jitterBufferTarget = receiver.jitterBufferDelayHint = receiver.playoutDelayHint = 0
-                }
-            }, 15)
-        } else if (this.forceDelayInterval != null && !setRunning) {
-            clearInterval(this.forceDelayInterval)
         }
     }
 

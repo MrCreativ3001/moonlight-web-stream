@@ -741,6 +741,7 @@ export class StreamInput {
             if (state == oldGamepadState.oldState) {
                 continue
             }
+            oldGamepadState.oldState = state
 
             this.sendController(gamepadId, state)
         }

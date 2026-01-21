@@ -32,7 +32,9 @@ jobs:
       with:
         node-version: 24
     - run: sudo apt-get install clang -y
-      
+
+    - name: Run tests
+      run: cargo test --all --locked
 
     - name: Build
       run: |

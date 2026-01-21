@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_parse_forbidden_zero_bit() {
-        let header_bytes = [0b00000001, 0b00000000]; // forbidden_zero_bit = 1
+        let header_bytes = [0b10000000, 0b00000000]; // forbidden_zero_bit = 1
         let nal = NalHeader::parse(header_bytes);
         assert!(nal.forbidden_zero_bit);
 
@@ -226,10 +226,10 @@ mod tests {
     fn test_parse_layer_id_and_tid() {
         let header_bytes = [0b10000010, 0b10101100];
         let nal = NalHeader::parse(header_bytes);
-        // nuh_layer_id = (header[0] >> 7) | ((header[1] & 0b00011111) << 1)
-        let expected_layer_id = (header_bytes[0] >> 7) | ((header_bytes[1] & 0b00011111) << 1);
+        let expected_layer_id =
+            ((header_bytes[0] & 0b0000_0001) << 5) | ((header_bytes[1] & 0b1111_1000) >> 3);
         assert_eq!(nal.nuh_layer_id, expected_layer_id);
-        let expected_tid = (header_bytes[1] >> 5) & 0b00000111;
+        let expected_tid = header_bytes[1] & 0b0000_0111;
         assert_eq!(nal.nuh_temporal_id_plus1, expected_tid);
     }
 

@@ -356,6 +356,10 @@ pub struct VideoDecodeUnit<'a> {
     /// This can be used to aid frame pacing or to drop old frames that were queued too
     /// long prior to display.
     pub presentation_time: Duration,
+    /// Original RTP timestamp in 90kHz units. Useful when using APIs that deal with integer
+    /// time such as Apple's CMTime. To exactly recover the RTP timestamp, use something like
+    /// CMTimeMake((int64_t)du->rtpTimestamp, 90000);
+    pub rtp_timestamp: u32,
     /// Determines if this frame is SDR or HDR
     ///
     /// Note: This is not currently parsed from the actual bitstream, so if your

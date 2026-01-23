@@ -164,9 +164,10 @@ unsafe fn convert_decode_unit<'a>(
                 (raw.frameHostProcessingLatency / 10) as u64,
             ))
         },
-        receive_time: Duration::from_millis(raw.receiveTimeMs),
-        enqueue_time: Duration::from_millis(raw.enqueueTimeMs),
-        presentation_time: Duration::from_millis(raw.presentationTimeMs as u64),
+        receive_time: Duration::from_millis(raw.receiveTimeUs),
+        enqueue_time: Duration::from_millis(raw.enqueueTimeUs),
+        presentation_time: Duration::from_millis(raw.presentationTimeUs),
+        rtp_timestamp: raw.rtpTimestamp,
         color_space: Colorspace::from_u8(raw.colorspace).expect("valid Colorspace"),
         hdr_active: raw.hdrActive,
         buffers,

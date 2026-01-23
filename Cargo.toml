@@ -24,9 +24,7 @@ license = "GPL-3.0-or-later"
 moonlight-common = { path = "./moonlight-common", features = [
     "backend_reqwest",
 ], default-features = false }
-moonlight-common-sys = { path = "./moonlight-common-sys", features = [
-    "generate-bindings",
-] }
+moonlight-common-sys = { path = "./moonlight-common-sys" }
 
 # Log
 log = "0.4.28"

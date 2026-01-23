@@ -49,7 +49,9 @@ async function startApp() {
 
     // Start and Mount App
     const app = new ViewerApp(api, hostId, appId)
-    app.mount(rootElement)
+    app.mount(rootElement);
+
+    (window as any)["app"] = app
 }
 
 // Prevent starting transition
@@ -145,6 +147,7 @@ class ViewerApp implements Component {
     private addListeners(element: GlobalEventHandlers) {
         element.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
         element.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
+        element.addEventListener("paste", this.onPaste.bind(this))
 
         element.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
         element.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
@@ -235,8 +238,13 @@ class ViewerApp implements Component {
     onKeyDown(event: KeyboardEvent) {
         this.onUserInteraction()
 
-        event.preventDefault()
-        this.stream?.getInput().onKeyDown(event)
+        console.debug(event)
+        if (event.ctrlKey && event.code == "KeyV") {
+            // We are likely pasting -> don't send keys
+        } else {
+            event.preventDefault()
+            this.stream?.getInput().onKeyDown(event)
+        }
 
         event.stopPropagation()
     }
@@ -267,6 +275,14 @@ class ViewerApp implements Component {
                 this.isTogglingFullscreenWithKeybind = "none"
             })()
         }
+    }
+
+    onPaste(event: ClipboardEvent) {
+        this.onUserInteraction()
+
+        this.stream?.getInput().onPaste(event)
+
+        event.stopPropagation()
     }
 
     // Mouse

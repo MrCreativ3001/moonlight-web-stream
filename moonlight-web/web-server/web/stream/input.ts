@@ -161,6 +161,25 @@ export class StreamInput {
         this.sendKeyEvent(false, event)
     }
 
+    onPaste(event: ClipboardEvent) {
+        this.raiseAllKeys()
+
+        const data = event.clipboardData
+        if (!data) {
+            return
+        }
+
+        console.debug("PASTE", data)
+
+        const text = data.getData("text/plain")
+        if (text) {
+            console.debug("PASTE TEXT", text)
+
+            // Before sending text raise all keys
+            this.sendText(text)
+        }
+    }
+
     private sendKeyEvent(isDown: boolean, event: KeyboardEvent) {
         const key = convertToKey(event)
         if (key == null) {

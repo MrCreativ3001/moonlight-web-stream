@@ -16,7 +16,7 @@ use common::{
     config::{PortRange, WebRtcConfig},
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, trace, warn};
 use moonlight_common::stream::{
     bindings::{
         AudioConfig, DecodeResult, OpusMultistreamConfig, SupportedVideoFormats, VideoDecodeUnit,
@@ -53,6 +53,7 @@ use webrtc::{
 };
 
 use crate::{
+    TIMEOUT_DURATION,
     convert::{
         from_webrtc_sdp, into_webrtc_ice, into_webrtc_ice_candidate, into_webrtc_network_type,
     },
@@ -66,8 +67,6 @@ use crate::{
         },
     },
 };
-
-pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 
 mod audio;
 mod sender;
@@ -593,12 +592,10 @@ impl WebRtcInner {
             let terminate_request = this.timeout_terminate_request.lock().await;
             if let Some(terminate_request) = *terminate_request
                 && (now - terminate_request) > TIMEOUT_DURATION
+                && let Err(err) = this.event_sender.send(TransportEvent::Closed).await
             {
-                info!("Stopping because of timeout");
-                if let Err(err) = this.event_sender.send(TransportEvent::Closed).await {
-                    warn!("Failed to send that the peer should close: {err:?}");
-                };
-            }
+                warn!("Failed to send that the peer is closed: {err:?}");
+            };
         });
     }
     async fn clear_terminate_request(&self) {

@@ -8,7 +8,7 @@ use std::{
         Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use common::{
@@ -51,12 +51,15 @@ use crate::{
     audio::StreamAudioDecoder,
     transport::{
         InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
-        TransportSender, web_socket, webrtc,
+        TransportSender, web_socket,
+        webrtc::{self},
     },
     video::StreamVideoDecoder,
 };
 
 pub type RequestClient = ReqwestClient;
+
+pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 
 mod audio;
 mod buffer;
@@ -219,6 +222,8 @@ struct StreamConnection {
     pub stream: RwLock<Option<MoonlightStream>>,
     pub active_gamepads: RwLock<ActiveGamepads>,
     pub transport_sender: Mutex<Option<Box<dyn TransportSender + Send + Sync + 'static>>>,
+    // Timeout / Terminate
+    pub timeout_terminate_request: Mutex<Option<Instant>>,
     pub terminate: Notify,
     is_terminating: AtomicBool,
 }
@@ -248,6 +253,7 @@ impl StreamConnection {
             stream: RwLock::new(None),
             active_gamepads: RwLock::new(ActiveGamepads::empty()),
             transport_sender: Mutex::new(None),
+            timeout_terminate_request: Default::default(),
             terminate: Notify::default(),
             is_terminating: AtomicBool::new(false),
         });
@@ -329,6 +335,15 @@ impl StreamConnection {
                             this.on_packet(packet).await;
                         }
                         Err(TransportError::Closed) | Ok(TransportEvent::Closed) => {
+                            let Some(this) = this.upgrade() else {
+                                warn!(
+                                    "Failed request session termination because of missing stream (maybe it was already terminated)"
+                                );
+                                return;
+                            };
+
+                            this.request_terminate().await;
+
                             break;
                         }
                         // It wouldn't make sense to return this
@@ -551,6 +566,8 @@ impl StreamConnection {
         if let ServerIpcMessage::WebSocket(StreamClientMessage::SetTransport(transport_type)) =
             &message
         {
+            self.clear_terminate_request().await;
+
             match transport_type {
                 TransportType::WebRTC => {
                     info!("Trying WebRTC transport");
@@ -741,6 +758,35 @@ impl StreamConnection {
         stream_guard.replace(stream);
 
         Ok(())
+    }
+
+    // -- Termination
+    async fn request_terminate(self: &Arc<Self>) {
+        let this = self.clone();
+
+        let mut terminate_request = self.timeout_terminate_request.lock().await;
+        *terminate_request = Some(Instant::now());
+        drop(terminate_request);
+
+        spawn(async move {
+            sleep(TIMEOUT_DURATION + Duration::from_millis(200)).await;
+
+            let now = Instant::now();
+
+            let terminate_request = this.timeout_terminate_request.lock().await;
+            if let Some(terminate_request) = *terminate_request
+                && (now - terminate_request) > TIMEOUT_DURATION
+            {
+                info!("Stopping because of timeout");
+
+                this.stop().await;
+            }
+        });
+    }
+    async fn clear_terminate_request(&self) {
+        let mut request = self.timeout_terminate_request.lock().await;
+
+        *request = None;
     }
 
     async fn stop(&self) {

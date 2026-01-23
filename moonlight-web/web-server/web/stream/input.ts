@@ -162,7 +162,6 @@ export class StreamInput {
     }
 
     onPaste(event: ClipboardEvent) {
-        this.raiseAllKeys()
 
         const data = event.clipboardData
         if (!data) {
@@ -176,6 +175,8 @@ export class StreamInput {
             console.debug("PASTE TEXT", text)
 
             // Before sending text raise all keys
+            this.raiseAllKeys()
+
             this.sendText(text)
         }
     }

@@ -287,8 +287,14 @@ export class WebRTCTransport implements Transport {
     private onTrack(event: RTCTrackEvent) {
         const track = event.track
 
+        const receiver = event.receiver
         if (track.kind == "video") {
-            this.videoReceiver = event.receiver
+            this.videoReceiver = receiver
+        }
+
+        receiver.jitterBufferTarget = 0
+        if ("playoutDelayHint" in receiver) {
+            receiver.playoutDelayHint = 0
         }
 
         this.logger?.debug(`Adding receiver: ${track.kind}, ${track.id}, ${track.label}`)

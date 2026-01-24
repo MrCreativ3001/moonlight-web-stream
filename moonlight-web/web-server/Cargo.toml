@@ -32,6 +32,7 @@ uuid.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 hex.workspace = true
+sha2 = "0.10.9"
 
 [lints]
 workspace = true

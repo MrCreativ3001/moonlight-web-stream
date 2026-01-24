@@ -28,8 +28,8 @@ export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {
         return;
     }
 
-    contextMenuElement.style.setProperty("left", `${event.pageX}px`)
-    contextMenuElement.style.setProperty("top", `${event.pageY}px`)
+    contextMenuElement.style.setProperty("left", `${event.clientX}px`)
+    contextMenuElement.style.setProperty("top", `${event.clientY}px`)
 
     contextMenuList.clear()
 

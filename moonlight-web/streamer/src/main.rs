@@ -13,7 +13,10 @@ use std::{
 
 use common::{
     StreamSettings,
-    api_bindings::{GeneralServerMessage, LogMessageType, StreamClientMessage, TransportType},
+    api_bindings::{
+        GeneralClientMessage, GeneralServerMessage, LogMessageType, StreamClientMessage,
+        TransportType,
+    },
     ipc::{
         IpcReceiver, IpcSender, ServerIpcMessage, StreamerConfig, StreamerIpcMessage,
         create_process_ipc,
@@ -393,16 +396,28 @@ impl StreamConnection {
     }
 
     async fn on_packet(&self, packet: InboundPacket) {
-        let stream = self.stream.read().await;
-        let Some(stream) = stream.as_ref() else {
+        let stream_lock = self.stream.read().await;
+        let Some(stream) = stream_lock.as_ref() else {
             warn!("Failed to send packet {packet:?} because of missing stream");
             return;
         };
 
         let err = match packet {
             InboundPacket::General { message } => {
+                debug!("General message: {message:?}");
+
                 // currently there are no packets associated with that
-                match message {}
+                match message {
+                    GeneralClientMessage::Stop => {
+                        debug!("Received stop from client. Stopping stream now!");
+
+                        drop(stream_lock);
+
+                        self.stop().await;
+
+                        None
+                    }
+                }
             }
             InboundPacket::MousePosition {
                 x,

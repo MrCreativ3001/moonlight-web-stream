@@ -270,7 +270,7 @@ export class WebRTCTransport implements Transport {
             }
 
             const id = TransportChannelId[channel]
-            const dataChannel = this.peer.createDataChannel(channel.toLowerCase(), {
+            const dataChannel = options.serverCreated ? null : this.peer.createDataChannel(channel.toLowerCase(), {
                 ordered: options.ordered,
                 maxRetransmits: options.reliable ? undefined : 0
             })
@@ -539,15 +539,15 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
     canSend: boolean = true
 
     private label: string
-    private channel: RTCDataChannel
+    private channel: RTCDataChannel | null
     private boundOnMessage: (event: MessageEvent) => void
 
-    constructor(label: string, channel: RTCDataChannel) {
+    constructor(label: string, channel: RTCDataChannel | null) {
         this.label = label
         this.channel = channel
         this.boundOnMessage = this.onMessage.bind(this)
 
-        this.channel.addEventListener("message", this.boundOnMessage)
+        this.channel?.addEventListener("message", this.boundOnMessage)
     }
 
     // Replace the underlying channel with a new one (e.g., from remote peer)
@@ -555,7 +555,7 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
     // replace our locally created one for receiving messages
     replaceChannel(newChannel: RTCDataChannel): void {
         // Remove listener from old channel
-        this.channel.removeEventListener("message", this.boundOnMessage)
+        this.channel?.removeEventListener("message", this.boundOnMessage)
         // Add listener to new channel
         this.channel = newChannel
         this.channel.addEventListener("message", this.boundOnMessage)
@@ -564,6 +564,10 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
     private sendQueue: Array<ArrayBuffer> = []
     send(message: ArrayBuffer): void {
         console.debug(this.label, message)
+
+        if (!this.channel) {
+            throw `Failed to send message on channel ${this.label}`
+        }
 
         if (this.channel.readyState != "open") {
             console.debug(`Tried sending packet to ${this.label} with readyState ${this.channel.readyState}. Buffering it for the future.`)
@@ -575,7 +579,7 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
     }
     private tryDequeueSendQueue() {
         for (const message of this.sendQueue) {
-            this.channel.send(message)
+            this.channel?.send(message)
         }
         this.sendQueue.length = 0
     }
@@ -601,7 +605,7 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
             this.receiveListeners.splice(index, 1)
         }
     }
-    estimatedBufferedBytes(): number {
-        return this.channel.bufferedAmount
+    estimatedBufferedBytes(): number | null {
+        return this.channel?.bufferedAmount ?? null
     }
 }

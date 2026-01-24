@@ -657,6 +657,7 @@ class ViewerSidebar implements Component, Sidebar {
     private fullscreenButton = document.createElement("button")
 
     private statsButton = document.createElement("button")
+    private exitStreamButton = document.createElement("button")
 
     private mouseMode: SelectComponent
     private touchMode: SelectComponent
@@ -725,6 +726,21 @@ class ViewerSidebar implements Component, Sidebar {
             }
         })
         this.buttonDiv.appendChild(this.statsButton)
+
+        // Close stream
+        this.exitStreamButton.innerText = "Exit"
+        this.exitStreamButton.addEventListener("click", async () => {
+            const stream = this.app.getStream()
+            if (stream) {
+                const success = await stream.stop()
+                if (!success) {
+                    console.debug("Failed to close stream correctly")
+                }
+            }
+
+            window.close()
+        })
+        this.buttonDiv.appendChild(this.exitStreamButton)
 
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [

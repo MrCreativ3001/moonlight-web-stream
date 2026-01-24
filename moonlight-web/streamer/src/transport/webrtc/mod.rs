@@ -157,7 +157,7 @@ pub async fn new(
     let this_owned = Arc::new(WebRtcInner {
         peer: peer.clone(),
         event_sender,
-        general_channel,
+        general_channel: general_channel.clone(),
         stats_channel: Mutex::new(None),
         video: Mutex::new(WebRtcVideo::new(
             runtime.clone(),
@@ -171,6 +171,12 @@ pub async fn new(
         )),
         timeout_terminate_request: Mutex::new(None),
     });
+
+    // don't forget to register the general channel created by us
+    {
+        let this = this_owned.clone();
+        this.on_data_channel(general_channel).await;
+    }
 
     let this = Arc::downgrade(&this_owned);
 
@@ -256,6 +262,7 @@ fn create_channel_message_handler(
         + Sync
         + 'static,
 > {
+    debug!("setting up channel {:?}", channel);
     create_event_handler(inner, async move |inner, message: DataChannelMessage| {
         let Some(packet) = InboundPacket::deserialize(channel, &message.data) else {
             return;
@@ -511,6 +518,13 @@ impl WebRtcInner {
         let inner = Arc::downgrade(&self);
 
         match label {
+            "general" => {
+                debug!("setting up general channel message handler");
+                channel.on_message(create_channel_message_handler(
+                    inner,
+                    TransportChannel(TransportChannelId::GENERAL),
+                ));
+            }
             "stats" => {
                 let mut stats = self.stats_channel.lock().await;
 

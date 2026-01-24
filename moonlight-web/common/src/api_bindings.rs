@@ -473,7 +473,9 @@ pub enum GeneralServerMessage {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub enum GeneralClientMessage {}
+pub enum GeneralClientMessage {
+    Stop,
+}
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]

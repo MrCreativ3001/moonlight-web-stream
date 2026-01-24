@@ -1,5 +1,5 @@
 import { Api } from "../api.js"
-import { App, ConnectionStatus, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
+import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
 import { showErrorPopup } from "../component/error.js"
 import { Component } from "../component/index.js"
 import { Settings } from "../component/settings_menu.js"
@@ -366,6 +366,26 @@ export class Stream implements Component {
         }
     }
 
+    private sendGeneralMessage(message: GeneralClientMessage): boolean {
+        const general = this.transport?.getChannel(TransportChannelId.GENERAL)
+
+        if (!general || general.type != "data") {
+            return false
+        }
+
+        const text = JSON.stringify(message)
+
+        const buffer = BIG_BUFFER
+        buffer.reset()
+        buffer.putU16(text.length)
+        buffer.putUtf8Raw(text)
+        buffer.flip()
+
+        general.send(buffer.getRemainingBuffer().buffer)
+
+        return true
+    }
+
     private async tryWebRTCTransport(): Promise<TransportShutdown> {
         this.debugLog("Trying WebRTC transport")
 
@@ -693,6 +713,17 @@ export class Stream implements Component {
 
             this.onMessage(json)
         }
+    }
+
+    stop(): Promise<boolean> {
+        if (!this.sendGeneralMessage("Stop")) {
+            return Promise.resolve(false)
+        }
+
+        // Wait for the message to get sent
+        return new Promise((resolve, _reject) => {
+            setTimeout(() => resolve(true), 100)
+        })
     }
 
     // -- Class Api

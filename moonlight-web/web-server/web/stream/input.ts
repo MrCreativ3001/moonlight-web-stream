@@ -47,7 +47,7 @@ export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         mouseMode: "follow",
         mouseScrollMode: "highres",
-        touchMode: "pointAndDrag",
+        touchMode: "mouseRelative",
         controllerConfig: {
             invertAB: false,
             invertXY: false,

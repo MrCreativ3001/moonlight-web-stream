@@ -487,6 +487,7 @@ Other changes:
 - Thanks to [@Maneetbal](https://github.com/Maneetbal) for creating a new beautiful GUI.
 - Thanks to [@chromaticpipe](https://github.com/chromaticpipe) for making Github CI.
 - Thanks to [@qiin2333](https://github.com/qiin2333) for implementing HDR support.
+- Thanks to [@Idefix2020](https://github.com/Idefix2020) for fixing the context menu and implementing caching for app images
 
 ## Building
 Make sure you've cloned this repo with all it's submodules

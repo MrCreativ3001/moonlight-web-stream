@@ -539,7 +539,10 @@ class ConnectionInfoModal implements Modal<void> {
     private textTy: LogMessageType | null = null
     private text = document.createElement("p")
 
+    private options = document.createElement("div")
     private debugDetailButton = document.createElement("button")
+    private closeButton = document.createElement("button")
+
     private debugDetail = "" // We store this seperate because line breaks don't work when the element is not mounted on the dom
     private debugDetailDisplay = document.createElement("div")
 
@@ -549,9 +552,16 @@ class ConnectionInfoModal implements Modal<void> {
         this.text.innerText = "Connecting"
         this.root.appendChild(this.text)
 
+        this.root.appendChild(this.options)
+        this.options.classList.add("modal-video-connect-options")
+
         this.debugDetailButton.innerText = "Show Logs"
         this.debugDetailButton.addEventListener("click", this.onDebugDetailClick.bind(this))
-        this.root.appendChild(this.debugDetailButton)
+        this.options.appendChild(this.debugDetailButton)
+
+        this.closeButton.innerText = "Close"
+        this.closeButton.addEventListener("click", this.onClose.bind(this))
+        this.options.appendChild(this.closeButton)
 
         this.debugDetailDisplay.classList.add("textlike")
         this.debugDetailDisplay.classList.add("modal-video-connect-debug")
@@ -611,6 +621,10 @@ class ConnectionInfoModal implements Modal<void> {
             this.text.innerText = text
             this.debugLog(text)
         }
+    }
+
+    onClose() {
+        showModal(null)
     }
 
     onFinish(abort: AbortSignal): Promise<void> {

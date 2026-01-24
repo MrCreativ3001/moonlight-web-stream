@@ -1004,6 +1004,11 @@ input[type=number] {
     max-height: 100%;
 }
 
+.modal-video-connect .modal-video-connect-options {
+    display: flex;
+    flex-direction: row;
+}
+
 .modal-video-connect .modal-video-connect-debug {
     max-width: 75vw;
     max-height: 40vh;

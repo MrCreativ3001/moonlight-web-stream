@@ -241,6 +241,8 @@ class ViewerApp implements Component {
         console.debug(event)
         if (event.ctrlKey && event.code == "KeyV") {
             // We are likely pasting -> don't send keys
+        } else if (event.code == "F11") {
+            // Allow manual fullscreen
         } else {
             event.preventDefault()
             this.stream?.getInput().onKeyDown(event)

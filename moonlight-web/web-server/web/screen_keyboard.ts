@@ -75,9 +75,28 @@ export class ScreenKeyboard {
 
             this.eventTarget.dispatchEvent(customEvent)
         } else if (event.inputType == "deleteContentBackward" || event.inputType == "deleteByCut") {
-            // these are handled by on key down / up on mobile
+            const keyDown = new KeyboardEvent("keydown", {
+                code: "Backspace"
+            })
+            const keyUp = new KeyboardEvent("keyup", {
+                code: "Backspace"
+            })
+
+            this.eventTarget.dispatchEvent(keyDown)
+            this.eventTarget.dispatchEvent(keyUp)
         } else if (event.inputType == "deleteContentForward") {
-            // these are handled by on key down / up on mobile
+            const keyDown = new KeyboardEvent("keydown", {
+                code: "Delete"
+            })
+            const keyUp = new KeyboardEvent("keyup", {
+                code: "Delete"
+            })
+
+            this.eventTarget.dispatchEvent(keyDown)
+            this.eventTarget.dispatchEvent(keyUp)
         }
+
+        // Repopulate the input so that the deleteContent commands will work
+        this.fakeElement.value = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
 }

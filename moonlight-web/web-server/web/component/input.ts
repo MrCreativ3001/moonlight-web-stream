@@ -1,4 +1,5 @@
 import { Component, ComponentEvent } from "./index.js"
+import { getLocalStreamSettings } from "./settings_menu.js"
 
 export class ElementWithLabel implements Component {
     protected div: HTMLDivElement = document.createElement("div")
@@ -212,15 +213,21 @@ export type SelectInit = {
     displayName?: string,
 }
 
-export class SelectComponent extends ElementWithLabel {
+type SelectStrategy =
+    { name: "select", optionRoot: HTMLSelectElement } |
+    { name: "datalist", optionRoot: HTMLDataListElement, inputElement: HTMLInputElement } |
+    { name: "polyfill", opened: boolean, wrapper: HTMLDivElement, display: HTMLParagraphElement, list: HTMLDivElement, value: string | null, disabled: Set<string> }
 
-    private strategy: "select" | "datalist"
+function useSelectElementPolyfill(): boolean {
+    return getLocalStreamSettings()?.useSelectElementPolyfill ?? false
+}
+
+export class SelectComponent extends ElementWithLabel {
 
     private preSelectedOption: string = ""
     private options: Array<{ value: string, name: string }>
 
-    private inputElement: null | HTMLInputElement
-    private optionRoot: HTMLSelectElement | HTMLDataListElement
+    private strategy: SelectStrategy
 
     constructor(internalName: string, options: Array<{ value: string, name: string }>, init?: SelectInit) {
         super(internalName, init?.displayName)
@@ -230,84 +237,256 @@ export class SelectComponent extends ElementWithLabel {
         }
         this.options = options
 
-        if (init && init.hasSearch && isElementSupported("datalist")) {
-            this.strategy = "datalist"
+        // Create base
+        if (useSelectElementPolyfill() || !isElementSupported("select")) {
+            const wrapper = document.createElement("div")
 
-            this.optionRoot = document.createElement("datalist")
-            this.optionRoot.id = `${internalName}-list`
+            wrapper.classList.add("select-polyfill-wrapper")
 
-            this.inputElement = document.createElement("input")
-            this.inputElement.type = "text"
-            this.inputElement.id = internalName
-            this.inputElement.setAttribute("list", this.optionRoot.id)
+            this.div.appendChild(wrapper)
+            this.div.classList.add("input-div")
+
+            const display = document.createElement("p")
+            display.classList.add("select-polyfill-display")
+
+            display.addEventListener("click", () => {
+                if (this.strategy.name != "polyfill") {
+                    throw "SelectComponent strategy is not polyfill"
+                }
+
+                this.setStrategyPolyfillOpened(!this.strategy.opened)
+            })
+
+            const list = document.createElement("div")
+
+            list.classList.add("select-polyfill-list")
+
+            wrapper.appendChild(display)
+
+            this.strategy = {
+                name: "polyfill",
+                opened: false,
+                wrapper,
+                display,
+                list,
+                value: init?.preSelectedOption ?? "",
+                disabled: new Set()
+            }
+        } else if (init && init.hasSearch && isElementSupported("datalist")) {
+            const dataListElement = document.createElement("datalist")
+
+            dataListElement.id = `${internalName}-list`
+
+            const inputElement = document.createElement("input")
+            inputElement.type = "text"
+            inputElement.id = internalName
+            inputElement.setAttribute("list", dataListElement.id)
 
             if (init && init.preSelectedOption) {
-                this.inputElement.defaultValue = init.preSelectedOption
+                inputElement.defaultValue = init.preSelectedOption
             }
 
-            this.div.appendChild(this.inputElement)
-            this.div.appendChild(this.optionRoot)
+            this.div.appendChild(inputElement)
+            this.div.appendChild(dataListElement)
+
+            this.strategy = {
+                name: "datalist",
+                optionRoot: dataListElement,
+                inputElement,
+            }
         } else {
-            this.strategy = "select"
+            const selectElement = document.createElement("select")
+            selectElement.id = internalName
 
-            this.inputElement = null
+            this.div.appendChild(selectElement)
 
-            this.optionRoot = document.createElement("select")
-            this.optionRoot.id = internalName
-
-            this.div.appendChild(this.optionRoot)
+            this.strategy = {
+                name: "select",
+                optionRoot: selectElement,
+            }
         }
 
-        for (const option of options) {
-            const optionElement = document.createElement("option")
+        // Append values
+        if (this.strategy.name == "datalist" || this.strategy.name == "select") {
+            const optionRoot = this.strategy.optionRoot
 
-            if (this.strategy == "datalist") {
-                optionElement.value = option.name
-            } else if (this.strategy == "select") {
+            for (const option of options) {
+                const optionElement = document.createElement("option")
+
+                if (this.strategy.name == "datalist") {
+                    optionElement.value = option.name
+                } else if (this.strategy.name == "select") {
+                    optionElement.innerText = option.name
+                    optionElement.value = option.value
+                }
+
+                if (init && init.preSelectedOption == option.value) {
+                    optionElement.selected = true
+                }
+
+                optionRoot.appendChild(optionElement)
+            }
+
+            optionRoot.addEventListener("change", () => {
+                this.dispatchChange()
+            })
+        } else if (this.strategy.name == "polyfill") {
+            const optionRoot = this.strategy.list
+
+            for (const option of options) {
+                const optionElement = document.createElement("p")
+
                 optionElement.innerText = option.name
+
+                // @ts-ignore
                 optionElement.value = option.value
+
+                optionElement.addEventListener("click", () => {
+                    if (this.strategy.name != "polyfill") {
+                        throw "SelectComponent strategy is not polyfill even though it was initialized using polyfill strategy"
+                    }
+
+                    if (this.strategy.disabled.has(option.value)) {
+                        return
+                    }
+
+                    this.strategy.value = option.value
+                    this.setStrategyPolyfillOpened(false)
+
+                    this.updateStrategyPolyfill()
+
+                    this.dispatchChange()
+                })
+
+                optionRoot.appendChild(optionElement)
             }
 
-            if (init && init.preSelectedOption == option.value) {
-                optionElement.selected = true
-            }
-
-            this.optionRoot.appendChild(optionElement)
+            this.updateStrategyPolyfill()
         }
+    }
 
-        this.optionRoot.addEventListener("change", () => {
-            this.div.dispatchEvent(new ComponentEvent("ml-change", this))
-        })
+    private dispatchChange() {
+        this.div.dispatchEvent(new ComponentEvent("ml-change", this))
     }
 
     reset() {
-        if (this.strategy == "datalist") {
-            const inputElement = (this.inputElement as HTMLInputElement)
+        if (this.strategy.name == "datalist") {
+            const inputElement = this.strategy.inputElement
+
             inputElement.value = ""
-        } else {
-            const selectElement = (this.optionRoot as HTMLSelectElement)
+        } else if (this.strategy.name == "select") {
+            const selectElement = this.strategy.optionRoot
+
             selectElement.value = this.preSelectedOption
+        } else if (this.strategy.name == "polyfill") {
+            this.strategy.value = this.preSelectedOption
+
+            this.updateStrategyPolyfill()
         }
     }
 
     getValue(): string | null {
-        if (this.strategy == "datalist") {
-            const name = (this.inputElement as HTMLInputElement).value
+        if (this.strategy.name == "datalist") {
+            const name = this.strategy.inputElement.value
 
             return this.options.find(option => option.name == name)?.value ?? ""
-        } else if (this.strategy == "select") {
-            return (this.optionRoot as HTMLSelectElement).value
+        } else if (this.strategy.name == "select") {
+            const selectElement = this.strategy.optionRoot
+
+            return selectElement.value
+        } else if (this.strategy.name == "polyfill") {
+            return this.strategy.value
         }
 
         throw "Invalid strategy for select input field"
     }
 
     setOptionEnabled(value: string, enabled: boolean) {
-        for (const optionElement of this.optionRoot.options) {
-            if (optionElement.value == value) {
-                optionElement.disabled = !enabled
+        if (this.strategy.name == "datalist" || this.strategy.name == "select") {
+            const optionRoot = this.strategy.optionRoot
+
+            for (const optionElement of optionRoot.options) {
+                if (optionElement.value == value) {
+                    optionElement.disabled = !enabled
+                }
+            }
+        } else if (this.strategy.name == "polyfill") {
+            const element = this.strategy.list
+
+            for (const optionElement of element.children) {
+                // @ts-ignore
+                const elementValue = optionElement.value
+
+                if (elementValue != value) {
+                    continue
+                }
+
+                if (enabled) {
+                    this.strategy.disabled.delete(value)
+
+                    optionElement.classList.remove("select-polyfill-option-disabled")
+                } else {
+                    this.strategy.disabled.add(value)
+
+                    optionElement.classList.add("select-polyfill-option-disabled")
+                }
             }
         }
+    }
+
+    private updateStrategyPolyfill() {
+        if (this.strategy.name != "polyfill") {
+            throw "SelectComponent strategy is not polyfill"
+        }
+
+        for (const optionElement of this.strategy.list.children) {
+            // @ts-ignore
+            const value = optionElement.value
+
+            if (value == this.strategy.value) {
+                optionElement.classList.add("select-polyfill-selected")
+            } else {
+                optionElement.classList.remove("select-polyfill-selected")
+            }
+        }
+
+        const value = this.strategy.value
+        const selectedOption = this.options.find(option => option.value == value)
+
+        this.strategy.display.innerText = selectedOption?.name ?? "(Not Selected)"
+    }
+    private setStrategyPolyfillOpened(opened: boolean) {
+        if (this.strategy.name != "polyfill") {
+            throw "SelectComponent strategy is not polyfill"
+        }
+
+        if (opened != this.strategy.opened) {
+            if (opened) {
+                const list = this.strategy.list
+
+                this.strategy.wrapper.appendChild(this.strategy.list)
+
+                if ("screenTop" in window && "innerHeight" in window) {
+                    const displayRect = list.getBoundingClientRect()
+                    const viewportBottom = window.screenTop + window.innerHeight
+
+                    const spaceBelow = viewportBottom - displayRect.bottom
+
+                    if (spaceBelow < 20) {
+                        list.classList.add("top")
+                    } else {
+                        list.classList.add("bottom")
+                    }
+                } else {
+                    list.classList.add("bottom")
+                }
+            } else {
+                this.strategy.wrapper.removeChild(this.strategy.list)
+                this.strategy.list.classList.remove("top")
+                this.strategy.list.classList.remove("bottom")
+            }
+        }
+        this.strategy.opened = opened
     }
 
     addChangeListener(listener: InputChangeListener, options?: AddEventListenerOptions) {

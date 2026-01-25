@@ -216,6 +216,7 @@ input[type="range"]:active {
 .textlike,
 textarea,
 select,
+.select-polyfill-display,
 input[type=text],
 input[type=password],
 input[type=number] {
@@ -239,6 +240,7 @@ input[type=number] {
 .textlike:hover,
 textarea:hover:enabled,
 select:hover:enabled,
+.select-polyfill-display:hover,
 input[type=text]:hover:enabled,
 input[type=password]:hover:enabled,
 input[type="number"]:hover:enabled {
@@ -250,6 +252,7 @@ input[type="number"]:hover:enabled {
 
 textarea:disabled,
 select:disabled,
+.select-polyfill-display:disabled,
 input[type=text]:disabled,
 input[type=password]:disabled,
 input[type=number]:disabled {
@@ -284,6 +287,58 @@ input[type=number] {
     list-style-type: none;
     margin: 0;
     padding: 0;
+}
+
+/** Select element (dropdown) polyfill */
+.select-polyfill-display::after {
+    content: "▾";
+    float: right;
+}
+
+.select-polyfill-wrapper {
+    position: relative;
+}
+
+.select-polyfill-list {
+    position: absolute;
+    background-color: var(--bg-1);
+    border: 1px solid gray;
+    margin-top: 4px;
+    left: 0;
+    z-index: 1;
+    cursor: pointer;
+
+    max-height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.select-polyfill-list.bottom {
+    top: 100%;
+    bottom: auto;
+}
+
+.select-polyfill-list.top {
+    bottom: 100%;
+    top: auto;
+}
+
+.select-polyfill-list p {
+    color: rgb(0, 245, 255);
+    padding-top: 5px;
+    padding-bottom: 5px;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.select-polyfill-list p:hover {
+    background-color: rgb(25, 103, 210);
+    color: white;
+}
+
+.select-polyfill-wrapper:hover:not(:has(.select-polyfill-list p:hover)) .select-polyfill-selected {
+    background-color: rgb(25, 103, 210);
+    color: white;
 }
 
 /** Modal */
@@ -496,8 +551,6 @@ input[type=number] {
     border: 2px solid #00a3cc;
     box-shadow: 0 0 25px rgba(0, 212, 255, 0.3), 0 0 50px rgba(0, 212, 255, 0.15);
 }
-
-/** TODO: reorder stream sidebar */
 
 /** Errors */
 .error-list {

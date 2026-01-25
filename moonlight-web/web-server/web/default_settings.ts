@@ -37,7 +37,8 @@ const trueDefaultSettings: Settings =
     "toggleFullscreenWithKeybind": false,
     // possible values: "standard", "old"
     "pageStyle": "standard",
-    "hdr": false
+    "hdr": false,
+    "useSelectElementPolyfill": false
 }
 
 function assignIfMissing(target: any, source: any) {

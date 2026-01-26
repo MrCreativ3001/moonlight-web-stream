@@ -220,6 +220,7 @@ select,
 input[type=text],
 input[type=password],
 input[type=number] {
+    width: 100%;
     color: #ffffff;
     font-size: 1.2rem;
     margin: 5px;

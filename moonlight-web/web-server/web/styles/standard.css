@@ -72,6 +72,7 @@ body::before {
 *,
 *::before,
 *::after {
+    touch-action: manipulation;
     box-sizing: inherit;
     transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
 }
@@ -90,6 +91,20 @@ body::before {
 html.stream,
 body.stream {
     overscroll-behavior: none !important;
+}
+
+.root:not(input) {
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+img {
+    -webkit-user-drag: none;
 }
 
 h2,

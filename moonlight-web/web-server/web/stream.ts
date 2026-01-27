@@ -740,7 +740,12 @@ class ViewerSidebar implements Component, Sidebar {
                 }
             }
 
-            window.close()
+            if (window.matchMedia('(display-mode: standalone)').matches) {
+                history.back()
+            } else {
+                window.close()
+            }
+
         })
         this.buttonDiv.appendChild(this.exitStreamButton)
 

@@ -45,19 +45,31 @@
 }
 
 body {
-    background: linear-gradient(135deg, var(--bg-0) 0%, var(--bg-1) 50%, var(--bg-2) 100%);
-    background-attachment: fixed;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: env(safe-area-inset-top);
+    box-sizing: border-box;
     font-size: 1.2rem;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     transition: background-color var(--dur-med) ease, color var(--dur-med) ease;
     color: #ffffff;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    min-height: 100vh;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(135deg, var(--bg-0) 0%, var(--bg-1) 50%, var(--bg-2) 100%);
 }
 
 /* Global smooth animations for interactive changes */
 *,
 *::before,
 *::after {
+    touch-action: manipulation;
     transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
 }
 
@@ -75,6 +87,20 @@ body {
 html.stream,
 body.stream {
     overscroll-behavior: none !important;
+}
+
+.root:not(input) {
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+img {
+    -webkit-user-drag: none;
 }
 
 h2,
@@ -220,6 +246,7 @@ select,
 input[type=text],
 input[type=password],
 input[type=number] {
+    width: 100%;
     color: #ffffff;
     font-size: 1.2rem;
     margin: 5px;
@@ -606,15 +633,17 @@ input[type=number] {
 .top-line {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     gap: var(--space-md);
-    padding: var(--space-md);
+    padding: 0 0 0 var(--space-md);
     animation: fadeIn var(--dur-slow) ease;
 }
 
 .top-line-actions {
     display: flex;
+    flex: 1 1;
     flex-direction: row-reverse;
     justify-content: right;
     gap: var(--space-sm);
@@ -999,6 +1028,12 @@ input[type=number] {
     gap: 10px;
 }
 
+.app-element {
+    flex: 0 1 200px;
+    /** subtract half the flex gap */
+    max-width: calc(50% - (10px / 2));
+}
+
 .app-element>div {
     cursor: pointer;
     display: flex;
@@ -1014,8 +1049,9 @@ input[type=number] {
 
 .app-image {
     /** Ratio: w:h 200:266 */
-    width: 200px;
-    height: 266px;
+    width: 100%;
+    aspect-ratio: 200 / 266;
+    object-fit: cover;
     /** animation */
     transition: all 0.4s linear;
     opacity: 0;

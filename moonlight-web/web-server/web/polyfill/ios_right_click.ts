@@ -38,7 +38,7 @@ function onTouchStart(event: TouchEvent) {
             oldX: touch.clientX,
             oldY: touch.clientY
         })
-        
+
         const eventInit = {
             clientX: touch.clientX,
             clientY: touch.clientY,
@@ -111,16 +111,6 @@ function onTouchEnd(event: TouchEvent) {
                 const contextMenuEvent = new MouseEvent("contextmenu", eventInit)
 
                 touch?.target.dispatchEvent(contextMenuEvent)
-            } else {
-                // dispatch click
-                const clickEvent = new MouseEvent("click", eventInit)
-
-                if ("target" in touch) {
-                    touch.target.dispatchEvent(clickEvent)
-                    if ("focus" in touch.target && typeof touch.target.focus == "function") {
-                        touch.target.focus()
-                    }
-                }
             }
         }
     }

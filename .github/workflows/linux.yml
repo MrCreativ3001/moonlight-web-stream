@@ -117,8 +117,8 @@ jobs:
       - name: Create and push manifest
         run: |
           docker manifest create mrcreativ3001/moonlight-web-stream:${{ github.ref_name }} \
-            --amend mrcreativ3001/moonlight-web-stream/${{ github.ref_name }}-amd64 \
-            --amend mrcreativ3001/moonlight-web-stream/${{ github.ref_name }}-arm64
+            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-amd64 \
+            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-arm64
 
           docker manifest push mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}
 
@@ -139,7 +139,7 @@ jobs:
       - name: Create and push manifest
         run: |
           docker manifest create mrcreativ3001/moonlight-web-stream:latest \
-            --amend mrcreativ3001/moonlight-web-stream/${{ github.ref_name }}-amd64 \
-            --amend mrcreativ3001/moonlight-web-stream/${{ github.ref_name }}-arm64
+            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-amd64 \
+            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-arm64
 
           docker manifest push mrcreativ3001/moonlight-web-stream:latest

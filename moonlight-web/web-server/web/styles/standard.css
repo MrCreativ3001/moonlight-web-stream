@@ -44,14 +44,11 @@
     --dur-slow: 0.4s;
 }
 
-html {
-    box-sizing: border-box;
-}
-
 body {
     margin-top: 0;
     margin-bottom: 0;
     padding-top: env(safe-area-inset-top);
+    box-sizing: border-box;
     font-size: 1.2rem;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     transition: background-color var(--dur-med) ease, color var(--dur-med) ease;
@@ -73,7 +70,6 @@ body::before {
 *::before,
 *::after {
     touch-action: manipulation;
-    box-sizing: inherit;
     transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
 }
 

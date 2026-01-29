@@ -196,7 +196,7 @@ export class WebRTCTransport implements Transport {
                 this.onconnect()
             }
             this.wasConnected = true
-        } else if ((this.peer.connectionState == "failed" || this.peer.connectionState == "closed" || this.peer.connectionState == "disconnected") && this.peer.iceGatheringState == "complete") {
+        } else if ((this.peer.connectionState == "failed" || this.peer.connectionState == "closed") && this.peer.iceGatheringState == "complete") {
             type = "fatal"
         }
 

@@ -7,7 +7,7 @@ import { DepacketizeVideoPipe } from "./depackitize_video_pipe.js"
 import { Logger } from "../log.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
 import { andVideoCodecs, hasAnyCodec, VideoCodecSupport } from "../video.js"
-import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
+import { buildPipeline, gatherPipeInfo, globalObject, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { workerPipe } from "../pipeline/worker_pipe.js"
 import { WorkerDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io.js"
@@ -168,16 +168,25 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         }
 
         // Build that pipeline
+        logger?.debug(`Trying to build pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
         const rendererOptions = { drawOnSubmit: !settings.canvasVsync }
         const videoRenderer = buildPipeline(pipeline.renderer, { pipes: pipeline.pipes }, logger, rendererOptions)
         if (!videoRenderer) {
-            logger?.debug("Failed to build video pipeline")
-            return { videoRenderer: null, supportedCodecs: null, error: true }
+            logger?.debug(`Failed to build video pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
+            continue pipelineLoop
         }
 
+        logger?.debug(`Successfully built video pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
         return { videoRenderer: videoRenderer as VideoRenderer, supportedCodecs, error: false }
     }
 
-    logger?.debug("No supported video renderer found!")
+    let message = "No supported video renderer found! Tried all available pipelines."
+
+    const globalObj = globalObject()
+    if (type == "data" && "isSecureContext" in globalObj && !globalObj.isSecureContext) {
+        message += " If you want to stream using Web Sockets the website must be in a Secure Context!"
+    }
+
+    logger?.debug(message)
     return { videoRenderer: null, supportedCodecs: null, error: true }
 }

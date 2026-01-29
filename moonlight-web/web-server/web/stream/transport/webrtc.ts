@@ -35,6 +35,7 @@ export class WebRTCTransport implements Transport {
         this.peer.addEventListener("icegatheringstatechange", this.onIceGatheringStateChange.bind(this))
 
         this.peer.addEventListener("track", this.onTrack.bind(this))
+        this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
 
         this.initChannels()
 
@@ -190,7 +191,6 @@ export class WebRTCTransport implements Transport {
 
         if (this.peer.connectionState == "connected") {
             type = "recover"
-            this.setDelayHintInterval(true)
 
             if (this.onconnect) {
                 this.onconnect()
@@ -198,7 +198,6 @@ export class WebRTCTransport implements Transport {
             this.wasConnected = true
         } else if ((this.peer.connectionState == "failed" || this.peer.connectionState == "closed" || this.peer.connectionState == "disconnected") && this.peer.iceGatheringState == "complete") {
             type = "fatal"
-            this.setDelayHintInterval(false)
         }
 
         if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
@@ -244,24 +243,6 @@ export class WebRTCTransport implements Transport {
         }
     }
 
-    private forceDelayInterval: number | null = null
-    private setDelayHintInterval(setRunning: boolean) {
-        if (this.forceDelayInterval == null && setRunning) {
-            this.forceDelayInterval = setInterval(() => {
-                if (!this.peer) {
-                    return
-                }
-
-                for (const receiver of this.peer.getReceivers()) {
-                    // @ts-ignore
-                    receiver.jitterBufferTarget = receiver.jitterBufferDelayHint = receiver.playoutDelayHint = 0
-                }
-            }, 15)
-        } else if (this.forceDelayInterval != null && !setRunning) {
-            clearInterval(this.forceDelayInterval)
-        }
-    }
-
     private channels: Array<TransportChannel | null> = []
     private initChannels() {
         if (!this.peer) {
@@ -289,7 +270,7 @@ export class WebRTCTransport implements Transport {
             }
 
             const id = TransportChannelId[channel]
-            const dataChannel = this.peer.createDataChannel(channel.toLowerCase(), {
+            const dataChannel = options.serverCreated ? null : this.peer.createDataChannel(channel.toLowerCase(), {
                 ordered: options.ordered,
                 maxRetransmits: options.reliable ? undefined : 0
             })
@@ -306,8 +287,14 @@ export class WebRTCTransport implements Transport {
     private onTrack(event: RTCTrackEvent) {
         const track = event.track
 
+        const receiver = event.receiver
         if (track.kind == "video") {
-            this.videoReceiver = event.receiver
+            this.videoReceiver = receiver
+        }
+
+        receiver.jitterBufferTarget = 0
+        if ("playoutDelayHint" in receiver) {
+            receiver.playoutDelayHint = 0
         }
 
         this.logger?.debug(`Adding receiver: ${track.kind}, ${track.id}, ${track.label}`)
@@ -328,6 +315,33 @@ export class WebRTCTransport implements Transport {
                 throw "No audio track listener registered!"
             }
             this.audioTrackHolder.ontrack()
+        }
+    }
+
+    // Handle data channels created by the remote peer (server)
+    private onDataChannel(event: RTCDataChannelEvent) {
+        const remoteChannel = event.channel
+        const label = remoteChannel.label
+
+        this.logger?.debug(`Received remote data channel: ${label}`)
+
+        // Map the channel label to the corresponding TransportChannelId
+        const channelKey = label.toUpperCase() as TransportChannelIdKey
+        if (channelKey in TransportChannelId) {
+            const id = TransportChannelId[channelKey]
+            const existingChannel = this.channels[id]
+
+            // If we already have a channel for this ID, replace its underlying RTCDataChannel
+            // with the remote one so we can receive messages from the server
+            if (existingChannel && existingChannel.type === "data") {
+                this.logger?.debug(`Replacing underlying channel for ${label} with remote channel`);
+                (existingChannel as WebRTCDataTransportChannel).replaceChannel(remoteChannel)
+            } else {
+                this.logger?.debug(`Creating new channel for ${label}`)
+                this.channels[id] = new WebRTCDataTransportChannel(label, remoteChannel)
+            }
+        } else {
+            this.logger?.debug(`Unknown remote data channel: ${label}`)
         }
     }
 
@@ -451,6 +465,9 @@ export class WebRTCTransport implements Transport {
             if ("keyFramesDecoded" in value && value.keyFramesDecoded != null) {
                 statsData.webrtcKeyFramesDecoded = value.keyFramesDecoded
             }
+            if ("nackCount" in value && value.nackCount != null) {
+                statsData.webrtcNackCount = value.nackCount
+            }
         }
 
         return statsData
@@ -522,18 +539,35 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
     canSend: boolean = true
 
     private label: string
-    private channel: RTCDataChannel
+    private channel: RTCDataChannel | null
+    private boundOnMessage: (event: MessageEvent) => void
 
-    constructor(label: string, channel: RTCDataChannel) {
+    constructor(label: string, channel: RTCDataChannel | null) {
         this.label = label
         this.channel = channel
+        this.boundOnMessage = this.onMessage.bind(this)
 
-        this.channel.addEventListener("message", this.onMessage.bind(this))
+        this.channel?.addEventListener("message", this.boundOnMessage)
+    }
+
+    // Replace the underlying channel with a new one (e.g., from remote peer)
+    // This is used when we receive a data channel from the server that should
+    // replace our locally created one for receiving messages
+    replaceChannel(newChannel: RTCDataChannel): void {
+        // Remove listener from old channel
+        this.channel?.removeEventListener("message", this.boundOnMessage)
+        // Add listener to new channel
+        this.channel = newChannel
+        this.channel.addEventListener("message", this.boundOnMessage)
     }
 
     private sendQueue: Array<ArrayBuffer> = []
     send(message: ArrayBuffer): void {
         console.debug(this.label, message)
+
+        if (!this.channel) {
+            throw `Failed to send message on channel ${this.label}`
+        }
 
         if (this.channel.readyState != "open") {
             console.debug(`Tried sending packet to ${this.label} with readyState ${this.channel.readyState}. Buffering it for the future.`)
@@ -545,7 +579,7 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
     }
     private tryDequeueSendQueue() {
         for (const message of this.sendQueue) {
-            this.channel.send(message)
+            this.channel?.send(message)
         }
         this.sendQueue.length = 0
     }
@@ -571,7 +605,7 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
             this.receiveListeners.splice(index, 1)
         }
     }
-    estimatedBufferedBytes(): number {
-        return this.channel.bufferedAmount
+    estimatedBufferedBytes(): number | null {
+        return this.channel?.bufferedAmount ?? null
     }
 }

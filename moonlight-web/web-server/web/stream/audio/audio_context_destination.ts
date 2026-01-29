@@ -17,7 +17,7 @@ export class ContextDestinationNodeAudioPlayer extends AudioContextBasePipe impl
     private currentSource: AudioNode | null = null
 
     constructor(logger?: Logger) {
-        super("node_audio_element (player)", null, logger)
+        super("node_audio_element", null, logger)
 
         this.addPipePassthrough()
     }

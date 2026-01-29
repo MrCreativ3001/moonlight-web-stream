@@ -8,11 +8,15 @@ use std::{
         Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 use common::{
     StreamSettings,
-    api_bindings::{GeneralServerMessage, LogMessageType, StreamClientMessage, TransportType},
+    api_bindings::{
+        GeneralClientMessage, GeneralServerMessage, LogMessageType, StreamClientMessage,
+        TransportType,
+    },
     ipc::{
         IpcReceiver, IpcSender, ServerIpcMessage, StreamerConfig, StreamerIpcMessage,
         create_process_ipc,
@@ -21,7 +25,7 @@ use common::{
 use log::{LevelFilter, debug, error, info, trace, warn};
 use moonlight_common::{
     MoonlightError,
-    high::{HostError, MoonlightHost},
+    high::{HostError, MoonlightHost, StreamConfigError},
     network::backend::reqwest::ReqwestClient,
     pair::ClientAuth,
     stream::{
@@ -41,6 +45,7 @@ use tokio::{
     spawn,
     sync::{Mutex, Notify, RwLock},
     task::spawn_blocking,
+    time::sleep,
 };
 
 use common::api_bindings::{StreamCapabilities, StreamServerMessage};
@@ -49,12 +54,15 @@ use crate::{
     audio::StreamAudioDecoder,
     transport::{
         InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
-        TransportSender, web_socket, webrtc,
+        TransportSender, web_socket,
+        webrtc::{self},
     },
     video::StreamVideoDecoder,
 };
 
 pub type RequestClient = ReqwestClient;
+
+pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 
 mod audio;
 mod buffer;
@@ -217,6 +225,8 @@ struct StreamConnection {
     pub stream: RwLock<Option<MoonlightStream>>,
     pub active_gamepads: RwLock<ActiveGamepads>,
     pub transport_sender: Mutex<Option<Box<dyn TransportSender + Send + Sync + 'static>>>,
+    // Timeout / Terminate
+    pub timeout_terminate_request: Mutex<Option<Instant>>,
     pub terminate: Notify,
     is_terminating: AtomicBool,
 }
@@ -246,6 +256,7 @@ impl StreamConnection {
             stream: RwLock::new(None),
             active_gamepads: RwLock::new(ActiveGamepads::empty()),
             transport_sender: Mutex::new(None),
+            timeout_terminate_request: Default::default(),
             terminate: Notify::default(),
             is_terminating: AtomicBool::new(false),
         });
@@ -327,6 +338,15 @@ impl StreamConnection {
                             this.on_packet(packet).await;
                         }
                         Err(TransportError::Closed) | Ok(TransportEvent::Closed) => {
+                            let Some(this) = this.upgrade() else {
+                                warn!(
+                                    "Failed request session termination because of missing stream (maybe it was already terminated)"
+                                );
+                                return;
+                            };
+
+                            this.request_terminate().await;
+
                             break;
                         }
                         // It wouldn't make sense to return this
@@ -376,16 +396,28 @@ impl StreamConnection {
     }
 
     async fn on_packet(&self, packet: InboundPacket) {
-        let stream = self.stream.read().await;
-        let Some(stream) = stream.as_ref() else {
+        let stream_lock = self.stream.read().await;
+        let Some(stream) = stream_lock.as_ref() else {
             warn!("Failed to send packet {packet:?} because of missing stream");
             return;
         };
 
         let err = match packet {
             InboundPacket::General { message } => {
+                debug!("General message: {message:?}");
+
                 // currently there are no packets associated with that
-                match message {}
+                match message {
+                    GeneralClientMessage::Stop => {
+                        debug!("Received stop from client. Stopping stream now!");
+
+                        drop(stream_lock);
+
+                        self.stop().await;
+
+                        None
+                    }
+                }
             }
             InboundPacket::MousePosition {
                 x,
@@ -537,6 +569,7 @@ impl StreamConnection {
                     )
                     .err()
             }
+            _ => None,
         };
 
         if let Some(err) = err {
@@ -548,6 +581,8 @@ impl StreamConnection {
         if let ServerIpcMessage::WebSocket(StreamClientMessage::SetTransport(transport_type)) =
             &message
         {
+            self.clear_terminate_request().await;
+
             match transport_type {
                 TransportType::WebRTC => {
                     info!("Trying WebRTC transport");
@@ -639,7 +674,7 @@ impl StreamConnection {
                 settings.width,
                 settings.height,
                 settings.fps,
-                false,
+                settings.hdr,
                 true,
                 settings.play_audio_local,
                 ActiveGamepads::empty(),
@@ -661,7 +696,7 @@ impl StreamConnection {
         {
             Ok(value) => value,
             Err(err) => {
-                warn!("[Stream]: failed to start moonlight stream: {err:?}");
+                warn!("[Stream]: failed to start moonlight stream: {err}");
 
                 #[allow(clippy::single_match)]
                 match err {
@@ -671,6 +706,14 @@ impl StreamConnection {
                                 StreamServerMessage::DebugLog { message: "Failed to start stream because this streamer is already streaming".to_string(), ty: None },
                             ))
                             .await;
+                    }
+                    HostError::StreamConfig(StreamConfigError::NotSupportedHdr) => {
+                        ipc_sender.send(
+                        StreamerIpcMessage::WebSocket(StreamServerMessage::DebugLog {
+                            message: "Failed to start stream because this app doesn't support HDR!"
+                                .to_string(),
+                            ty: Some(LogMessageType::FatalDescription),
+                        })).await;
                     }
                     _ => {}
                 }
@@ -732,6 +775,35 @@ impl StreamConnection {
         Ok(())
     }
 
+    // -- Termination
+    async fn request_terminate(self: &Arc<Self>) {
+        let this = self.clone();
+
+        let mut terminate_request = self.timeout_terminate_request.lock().await;
+        *terminate_request = Some(Instant::now());
+        drop(terminate_request);
+
+        spawn(async move {
+            sleep(TIMEOUT_DURATION + Duration::from_millis(200)).await;
+
+            let now = Instant::now();
+
+            let terminate_request = this.timeout_terminate_request.lock().await;
+            if let Some(terminate_request) = *terminate_request
+                && (now - terminate_request) > TIMEOUT_DURATION
+            {
+                info!("Stopping because of timeout");
+
+                this.stop().await;
+            }
+        });
+    }
+    async fn clear_terminate_request(&self) {
+        let mut request = self.timeout_terminate_request.lock().await;
+
+        *request = None;
+    }
+
     async fn stop(&self) {
         if self
             .is_terminating
@@ -763,6 +835,9 @@ impl StreamConnection {
 
         let mut ipc_sender = self.ipc_sender.clone();
         ipc_sender.send(StreamerIpcMessage::Stop).await;
+
+        // Wait for ipc message before stop
+        sleep(Duration::from_millis(200)).await;
 
         // TODO: should we terminate or wait for a new retry?
         info!("Terminating Self");
@@ -872,7 +947,32 @@ impl ConnectionListener for StreamConnectionListener {
         })
     }
 
-    fn set_hdr_mode(&mut self, _hdr_enabled: bool) {}
+    fn set_hdr_mode(&mut self, hdr_enabled: bool) {
+        info!(
+            "[HDR] Host called set_hdr_mode with enabled={}",
+            hdr_enabled
+        );
+
+        let Some(stream) = self.stream.upgrade() else {
+            warn!("Failed to get stream because it is already deallocated");
+            return;
+        };
+
+        stream.clone().runtime.block_on(async move {
+            info!("[HDR] Sending HdrModeUpdate to client");
+            stream
+                .try_send_packet(
+                    OutboundPacket::General {
+                        message: GeneralServerMessage::HdrModeUpdate {
+                            enabled: hdr_enabled,
+                        },
+                    },
+                    "hdr mode update",
+                    true,
+                )
+                .await
+        })
+    }
 
     fn controller_rumble(
         &mut self,

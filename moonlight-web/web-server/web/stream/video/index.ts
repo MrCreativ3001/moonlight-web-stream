@@ -16,6 +16,9 @@ export interface VideoRenderer extends Component, Pipe {
     setup(setup: VideoRendererSetup): Promise<void>
     cleanup(): void
 
+    /// Only works on web socket pipeline currently
+    pollRequestIdr(): boolean
+
     /// Don't work inside a worker
     onUserInteraction(): void
     /// Don't work inside a worker
@@ -25,6 +28,9 @@ export interface VideoRenderer extends Component, Pipe {
     mount(parent: HTMLElement): void
     /// Don't work inside a worker
     unmount(parent: HTMLElement): void
+    
+    /// Optional: Set HDR mode (enabled/disabled)
+    setHdrMode?(enabled: boolean): void
 }
 
 export function getStreamRectCorrected(boundingRect: DOMRect, videoSize: [number, number]): DOMRect {

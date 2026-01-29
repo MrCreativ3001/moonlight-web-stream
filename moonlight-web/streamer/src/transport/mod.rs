@@ -104,6 +104,10 @@ pub enum InboundPacket {
         rotation: Option<u16>,
         event_type: TouchEventType,
     },
+    Rtt {
+        sequence_number: u16,
+    },
+    RequestVideoIdr,
 }
 
 impl InboundPacket {
@@ -162,10 +166,18 @@ impl InboundPacket {
                 None
             }
             TransportChannel(TransportChannelId::HOST_VIDEO) => {
-                warn!(
-                    "[InboundPacket]: tried to deserialize host video packet, this shouldn't happen"
-                );
-                None
+                if buffer.remaining() < 1 {
+                    warn!("[InboudPacket]: failed to video message");
+                    return None;
+                }
+
+                let ty = buffer.get_u8();
+                if ty == 0 {
+                    Some(InboundPacket::RequestVideoIdr)
+                } else {
+                    warn!("[InboundPacket]: failed to deserialize host video packet");
+                    None
+                }
             }
             TransportChannel(TransportChannelId::HOST_AUDIO) => {
                 warn!(
@@ -449,6 +461,26 @@ impl InboundPacket {
                         right_stick_y,
                     })
                 } else {
+                    warn!(
+                        "[InboundPacket]: tried to deserialize controller {gamepad_id} packet with type {ty}, this shouldn't happen"
+                    );
+                    None
+                }
+            }
+            TransportChannel(TransportChannelId::RTT) => {
+                let ty = buffer.get_u8();
+
+                if ty == 0 {
+                    if buffer.remaining() < 2 {
+                        return None;
+                    }
+                    let sequence_number = buffer.get_u16();
+
+                    Some(InboundPacket::Rtt { sequence_number })
+                } else {
+                    warn!(
+                        "[InboundPacket]: tried to deserialize rtt packet with type {ty}, this shouldn't happen"
+                    );
                     None
                 }
             }
@@ -472,6 +504,9 @@ pub enum OutboundPacket {
         controller_number: u8,
         left_trigger_motor: u16,
         right_trigger_motor: u16,
+    },
+    Rtt {
+        sequence_number: u16,
     },
 }
 
@@ -552,6 +587,18 @@ impl OutboundPacket {
                     buffer.into_raw().1,
                 ))
             }
+            Self::Rtt { sequence_number } => {
+                raw_buffer.resize(3, 0);
+                let mut buffer = ByteBuffer::new(raw_buffer as &mut [u8]);
+
+                buffer.put_u8(0);
+                buffer.put_u16(*sequence_number);
+
+                Some((
+                    TransportChannel(TransportChannelId::RTT),
+                    buffer.into_raw().1,
+                ))
+            }
         }
     }
 }
@@ -566,6 +613,8 @@ pub enum TransportEvent {
 
 #[async_trait]
 pub trait TransportEvents {
+    /// Some InboundPackets are not handled by the consumer of this interface -> they must be handled by this Transport impl:
+    /// - RequestIdr -> you should request an idr via the send_video_unit fn
     async fn poll_event(&mut self) -> Result<TransportEvent, TransportError>;
 }
 #[async_trait]

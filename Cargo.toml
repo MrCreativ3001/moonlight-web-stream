@@ -17,16 +17,14 @@ default-members = ["moonlight-web/streamer", "moonlight-web/web-server"]
 rustflags = ["-Zremap-cwd-prefix=.", "-Zlocation-detail=none"]
 
 [workspace.package]
-version = "2.2.0"
+version = "2.4.0"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 moonlight-common = { path = "./moonlight-common", features = [
     "backend_reqwest",
 ], default-features = false }
-moonlight-common-sys = { path = "./moonlight-common-sys", features = [
-    "generate-bindings",
-] }
+moonlight-common-sys = { path = "./moonlight-common-sys" }
 
 # Log
 log = "0.4.28"

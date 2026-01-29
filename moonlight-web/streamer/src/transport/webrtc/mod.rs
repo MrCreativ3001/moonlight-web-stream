@@ -16,7 +16,7 @@ use common::{
     config::{PortRange, WebRtcConfig},
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, trace, warn};
 use moonlight_common::stream::{
     bindings::{
         AudioConfig, DecodeResult, OpusMultistreamConfig, SupportedVideoFormats, VideoDecodeUnit,
@@ -53,6 +53,7 @@ use webrtc::{
 };
 
 use crate::{
+    TIMEOUT_DURATION,
     convert::{
         from_webrtc_sdp, into_webrtc_ice, into_webrtc_ice_candidate, into_webrtc_network_type,
     },
@@ -66,8 +67,6 @@ use crate::{
         },
     },
 };
-
-pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 
 mod audio;
 mod sender;
@@ -158,7 +157,7 @@ pub async fn new(
     let this_owned = Arc::new(WebRtcInner {
         peer: peer.clone(),
         event_sender,
-        general_channel,
+        general_channel: general_channel.clone(),
         stats_channel: Mutex::new(None),
         video: Mutex::new(WebRtcVideo::new(
             runtime.clone(),
@@ -172,6 +171,12 @@ pub async fn new(
         )),
         timeout_terminate_request: Mutex::new(None),
     });
+
+    // don't forget to register the general channel created by us
+    {
+        let this = this_owned.clone();
+        this.on_data_channel(general_channel).await;
+    }
 
     let this = Arc::downgrade(&this_owned);
 
@@ -257,6 +262,7 @@ fn create_channel_message_handler(
         + Sync
         + 'static,
 > {
+    debug!("setting up channel {:?}", channel);
     create_event_handler(inner, async move |inner, message: DataChannelMessage| {
         let Some(packet) = InboundPacket::deserialize(channel, &message.data) else {
             return;
@@ -386,6 +392,7 @@ impl WebRtcInner {
                 video_supported_formats,
                 video_colorspace,
                 video_color_range_full,
+                hdr,
             } => {
                 let video_supported_formats = SupportedVideoFormats::from_bits(video_supported_formats).unwrap_or_else(|| {
                     warn!("Failed to deserialize SupportedVideoFormats: {video_supported_formats}, falling back to only H264");
@@ -398,7 +405,6 @@ impl WebRtcInner {
 
                 // TODO: check peer for supported formats via sdp
 
-                // TODO: remove unwrap
                 if let Err(err) = self
                     .event_sender
                     .send(TransportEvent::StartStream {
@@ -412,6 +418,7 @@ impl WebRtcInner {
                             video_color_range_full,
                             video_colorspace: video_colorspace.into(),
                             play_audio_local,
+                            hdr,
                         },
                     })
                     .await
@@ -511,6 +518,13 @@ impl WebRtcInner {
         let inner = Arc::downgrade(&self);
 
         match label {
+            "general" => {
+                debug!("setting up general channel message handler");
+                channel.on_message(create_channel_message_handler(
+                    inner,
+                    TransportChannel(TransportChannelId::GENERAL),
+                ));
+            }
             "stats" => {
                 let mut stats = self.stats_channel.lock().await;
 
@@ -592,12 +606,10 @@ impl WebRtcInner {
             let terminate_request = this.timeout_terminate_request.lock().await;
             if let Some(terminate_request) = *terminate_request
                 && (now - terminate_request) > TIMEOUT_DURATION
+                && let Err(err) = this.event_sender.send(TransportEvent::Closed).await
             {
-                info!("Stopping because of timeout");
-                if let Err(err) = this.event_sender.send(TransportEvent::Closed).await {
-                    warn!("Failed to send that the peer should close: {err:?}");
-                };
-            }
+                warn!("Failed to send that the peer is closed: {err:?}");
+            };
         });
     }
     async fn clear_terminate_request(&self) {

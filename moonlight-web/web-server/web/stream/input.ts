@@ -47,7 +47,7 @@ export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         mouseMode: "follow",
         mouseScrollMode: "highres",
-        touchMode: "pointAndDrag",
+        touchMode: "mouseRelative",
         controllerConfig: {
             invertAB: false,
             invertXY: false,
@@ -159,6 +159,26 @@ export class StreamInput {
     }
     onKeyUp(event: KeyboardEvent) {
         this.sendKeyEvent(false, event)
+    }
+
+    onPaste(event: ClipboardEvent) {
+
+        const data = event.clipboardData
+        if (!data) {
+            return
+        }
+
+        console.debug("PASTE", data)
+
+        const text = data.getData("text/plain")
+        if (text) {
+            console.debug("PASTE TEXT", text)
+
+            // Before sending text raise all keys
+            this.raiseAllKeys()
+
+            this.sendText(text)
+        }
     }
 
     private sendKeyEvent(isDown: boolean, event: KeyboardEvent) {
@@ -741,6 +761,7 @@ export class StreamInput {
             if (state == oldGamepadState.oldState) {
                 continue
             }
+            oldGamepadState.oldState = state
 
             this.sendController(gamepadId, state)
         }

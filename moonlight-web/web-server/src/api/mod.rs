@@ -1,15 +1,17 @@
 use actix_web::{
+    HttpRequest, http::header,
     HttpResponse, delete,
     dev::HttpServiceFactory,
     get,
     middleware::from_fn,
     patch, post, services,
-    web::{self, Bytes, Data, Json, Query},
+    web::{self, Data, Json, Query},
 };
 use futures::future::try_join_all;
 use log::warn;
 use moonlight_common::PairPin;
 use tokio::spawn;
+use sha2::{Digest, Sha256};
 
 use crate::{
     api::{
@@ -276,7 +278,8 @@ async fn get_apps(
 async fn get_app_image(
     mut user: AuthenticatedUser,
     Query(query): Query<GetAppImageQuery>,
-) -> Result<Bytes, AppError> {
+    req: HttpRequest,
+) -> Result<HttpResponse, AppError> {
     let host_id = HostId(query.host_id);
     let app_id = AppId(query.app_id);
 
@@ -286,7 +289,29 @@ async fn get_app_image(
         .app_image(&mut user, app_id, query.force_refresh)
         .await?;
 
-    Ok(image)
+    let mut hasher = Sha256::new();
+    hasher.update(&image);
+    let etag = format!("\"{:x}\"", hasher.finalize());
+
+    let cache_control = "private, no-cache, must-revalidate";
+
+    if let Some(if_none_match) = req.headers().get(header::IF_NONE_MATCH) {
+        if if_none_match.to_str().ok() == Some(&etag) && query.force_refresh == false {
+            return Ok(
+                HttpResponse::NotModified()
+                    .insert_header((header::ETAG, etag))
+                    .insert_header((header::CACHE_CONTROL, cache_control))
+                    .finish()
+            );
+        }
+    }
+
+    Ok(
+        HttpResponse::Ok()
+            .insert_header((header::ETAG, etag))
+            .insert_header((header::CACHE_CONTROL, cache_control))
+            .body(image)
+    )
 }
 
 pub fn api_service() -> impl HttpServiceFactory {

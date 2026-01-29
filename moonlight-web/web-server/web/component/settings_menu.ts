@@ -27,6 +27,8 @@ export type Settings = {
     dataTransport: TransportType
     toggleFullscreenWithKeybind: boolean
     pageStyle: PageStyle
+    hdr: boolean
+    useSelectElementPolyfill: boolean
 }
 
 export type StreamCodec = "h264" | "auto" | "h265" | "av1"
@@ -81,6 +83,7 @@ export class StreamSettingsComponent implements Component {
     private forceVideoElementRenderer: InputComponent
     private canvasRenderer: InputComponent
     private canvasVsync: InputComponent
+    private hdr: InputComponent
 
     private videoSize: SelectComponent
     private videoSizeWidth: InputComponent
@@ -106,6 +109,8 @@ export class StreamSettingsComponent implements Component {
 
     // TODO: make a different category
     private pageStyle: SelectComponent
+
+    private useSelectElementPolyfill: InputComponent
 
     constructor(settings?: Settings) {
         const defaultSettings_ = defaultSettings()
@@ -240,6 +245,13 @@ export class StreamSettingsComponent implements Component {
         this.canvasVsync.addChangeListener(this.onSettingsChange.bind(this))
         this.canvasVsync.mount(this.divElement)
 
+        // HDR
+        this.hdr = new InputComponent("hdr", "checkbox", "Enable HDR", {
+            checked: settings?.hdr ?? defaultSettings_.hdr
+        })
+        this.hdr.addChangeListener(this.onSettingsChange.bind(this))
+        this.hdr.mount(this.divElement)
+
         // Audio local
         this.audioHeader.innerText = "Audio"
         this.divElement.appendChild(this.audioHeader)
@@ -345,6 +357,12 @@ export class StreamSettingsComponent implements Component {
         this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
         this.pageStyle.mount(this.divElement)
 
+        this.useSelectElementPolyfill = new InputComponent("useSelectElementPolyfill", "checkbox", "Use Custom Dropdown Implementation (Experimental)", {
+            checked: settings?.useSelectElementPolyfill ?? defaultSettings_.useSelectElementPolyfill
+        })
+        this.useSelectElementPolyfill.addChangeListener(this.onSettingsChange.bind(this))
+        this.useSelectElementPolyfill.mount(this.divElement)
+
         this.onSettingsChange()
     }
 
@@ -403,6 +421,10 @@ export class StreamSettingsComponent implements Component {
         settings.toggleFullscreenWithKeybind = this.toggleFullscreenWithKeybind.isChecked()
 
         settings.pageStyle = this.pageStyle.getValue() as any
+
+        settings.hdr = this.hdr.isChecked()
+
+        settings.useSelectElementPolyfill = this.useSelectElementPolyfill.isChecked()
 
         return settings
     }

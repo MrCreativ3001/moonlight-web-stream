@@ -1,8 +1,16 @@
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use common::{
     StreamSettings,
-    api_bindings::{StreamClientMessage, TransportChannelId},
+    api_bindings::{StreamClientMessage, StreamerStatsUpdate, TransportChannelId},
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
 use log::{trace, warn};
@@ -13,7 +21,14 @@ use moonlight_common::stream::{
     },
     video::VideoSetup,
 };
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::{
+    spawn,
+    sync::{
+        Mutex,
+        mpsc::{Receiver, Sender, channel},
+    },
+    time::sleep,
+};
 
 use crate::{
     buffer::ByteBuffer,
@@ -28,10 +43,16 @@ pub async fn new() -> Result<(WebSocketTransportSender, WebSocketTransportEvents
 
     // TODO: use the video_frame_queue_size with packet rtt info to estimate latency of pictures and request idr if too big
 
-    Ok((
-        WebSocketTransportSender { event_sender },
-        WebSocketTransportEvents { event_receiver },
-    ))
+    let sender = WebSocketTransportSender {
+        event_sender,
+        rtt: Arc::new(Mutex::new((Instant::now(), 0))),
+        needs_idr: AtomicBool::new(false),
+    };
+
+    // This will start the loop of sending / receiving
+    recv_rtt(sender.rtt.clone(), sender.event_sender.clone(), 0).await;
+
+    Ok((sender, WebSocketTransportEvents { event_receiver }))
 }
 
 pub struct WebSocketTransportEvents {
@@ -51,6 +72,90 @@ impl TransportEvents for WebSocketTransportEvents {
 
 pub struct WebSocketTransportSender {
     event_sender: Sender<TransportEvent>,
+    /// Time when it was sent, sequence_number
+    rtt: Arc<Mutex<(Instant, u16)>>,
+    needs_idr: AtomicBool,
+}
+
+async fn send_packet(
+    event_sender: &Sender<TransportEvent>,
+    packet: OutboundPacket,
+) -> Result<(), TransportError> {
+    let mut new_buffer = Vec::new();
+
+    let (id, mut range) = match packet.serialize(&mut new_buffer) {
+        Some(packet) => packet,
+        None => {
+            warn!("Failed to serialize packet: {packet:?}");
+            return Ok(());
+        }
+    };
+
+    if range.start == 0 {
+        new_buffer.resize(range.end - range.start + 1, 0);
+        new_buffer.copy_within(range.clone(), range.start + 1);
+        range.start += 1;
+    }
+    new_buffer[range.start - 1] = id.0;
+
+    if event_sender
+        .send(TransportEvent::SendIpc(
+            StreamerIpcMessage::WebSocketTransport(Bytes::from(new_buffer)),
+        ))
+        .await
+        .is_err()
+    {
+        return Err(TransportError::Closed);
+    }
+
+    Ok(())
+}
+
+async fn recv_rtt(
+    rtt_mutex: Arc<Mutex<(Instant, u16)>>,
+    event_sender: Sender<TransportEvent>,
+    recv_sequence_number: u16,
+) {
+    let (send, mut sequence_number) = {
+        let rtt = rtt_mutex.lock().await;
+        *rtt
+    };
+
+    let now = Instant::now();
+    if recv_sequence_number != sequence_number {
+        warn!(
+            "Expected rtt packet with sequence_number {sequence_number} but got {recv_sequence_number}"
+        );
+    }
+
+    // Calc rtt
+    let rtt = now - send;
+
+    // Send rtt via stats
+    if let Err(err) = send_packet(
+        &event_sender,
+        OutboundPacket::Stats(StreamerStatsUpdate::BrowserRtt {
+            rtt_ms: rtt.as_secs_f64() * 1000.0,
+        }),
+    )
+    .await
+    {
+        warn!("Failed to send rtt stats update for web socket: {err}");
+    }
+
+    // Wait a few ms
+    sleep(Duration::from_millis(200)).await;
+
+    sequence_number += 1;
+    {
+        let mut rtt = rtt_mutex.lock().await;
+        *rtt = (Instant::now(), sequence_number);
+    }
+
+    // Send new rtt packet
+    if let Err(err) = send_packet(&event_sender, OutboundPacket::Rtt { sequence_number }).await {
+        warn!("Failed to send web socket rtt packet with sequence number {sequence_number}: {err}");
+    }
 }
 
 #[async_trait]
@@ -77,12 +182,24 @@ impl TransportSender for WebSocketTransportSender {
             new_buffer.extend_from_slice(buffer.data);
         }
         // TODO: ignore h264/h265 fillerdata?
-        self.event_sender
+        if self
+            .event_sender
             .send(TransportEvent::SendIpc(
                 StreamerIpcMessage::WebSocketTransport(Bytes::from(new_buffer)),
             ))
             .await
-            .unwrap();
+            .is_err()
+        {
+            return Err(TransportError::Closed);
+        }
+
+        if self
+            .needs_idr
+            .compare_exchange(true, false, Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
+            return Ok(DecodeResult::NeedIdr);
+        }
 
         Ok(DecodeResult::Ok)
     }
@@ -103,36 +220,22 @@ impl TransportSender for WebSocketTransportSender {
 
         new_buffer.extend_from_slice(data);
 
-        self.event_sender
+        if self
+            .event_sender
             .send(TransportEvent::SendIpc(
                 StreamerIpcMessage::WebSocketTransport(Bytes::from(new_buffer)),
             ))
             .await
-            .unwrap();
+            .is_err()
+        {
+            return Err(TransportError::Closed);
+        }
 
         Ok(())
     }
 
     async fn send(&self, packet: OutboundPacket) -> Result<(), TransportError> {
-        let mut new_buffer = Vec::new();
-
-        let (id, mut range) = packet.serialize(&mut new_buffer).unwrap();
-
-        if range.start == 0 {
-            new_buffer.resize(range.end - range.start + 1, 0);
-            new_buffer.copy_within(range.clone(), range.start + 1);
-            range.start += 1;
-        }
-        new_buffer[range.start - 1] = id.0;
-
-        self.event_sender
-            .send(TransportEvent::SendIpc(
-                StreamerIpcMessage::WebSocketTransport(Bytes::from(new_buffer)),
-            ))
-            .await
-            .unwrap();
-
-        Ok(())
+        send_packet(&self.event_sender, packet).await
     }
 
     async fn on_ipc_message(&self, message: ServerIpcMessage) -> Result<(), TransportError> {
@@ -152,10 +255,26 @@ impl TransportSender for WebSocketTransportSender {
                     return Ok(());
                 };
 
-                self.event_sender
+                if let InboundPacket::RequestVideoIdr = packet {
+                    self.needs_idr.store(true, Ordering::Release);
+                }
+
+                if let InboundPacket::Rtt { sequence_number } = packet {
+                    spawn(recv_rtt(
+                        self.rtt.clone(),
+                        self.event_sender.clone(),
+                        sequence_number,
+                    ));
+                }
+
+                if self
+                    .event_sender
                     .send(TransportEvent::RecvPacket(packet))
                     .await
-                    .unwrap();
+                    .is_err()
+                {
+                    return Err(TransportError::Closed);
+                }
             }
             ServerIpcMessage::WebSocket(StreamClientMessage::StartStream {
                 bitrate,
@@ -167,13 +286,15 @@ impl TransportSender for WebSocketTransportSender {
                 video_supported_formats,
                 video_colorspace,
                 video_color_range_full,
+                hdr,
             }) => {
                 let video_supported_formats = SupportedVideoFormats::from_bits(video_supported_formats).unwrap_or_else(|| {
                     warn!("Failed to deserialize SupportedVideoFormats: {video_supported_formats}, falling back to only H264");
                     SupportedVideoFormats::H264
                 });
 
-                self.event_sender
+                if self
+                    .event_sender
                     .send(TransportEvent::StartStream {
                         settings: StreamSettings {
                             bitrate,
@@ -185,10 +306,15 @@ impl TransportSender for WebSocketTransportSender {
                             video_color_range_full,
                             video_colorspace: video_colorspace.into(),
                             play_audio_local,
+                            hdr,
                         },
                     })
                     .await
-                    .unwrap();
+                    .is_err()
+                {
+                    warn!("Failed to send start stream event");
+                    return Err(TransportError::Closed);
+                }
             }
             _ => {}
         }

@@ -2,8 +2,36 @@ import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
 import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
-import { andVideoCodecs, emptyVideoCodecs, maybeVideoCodecs, VIDEO_DECODER_CODECS, VideoCodecSupport } from "../video.js";
+import { emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
+
+export const VIDEO_DECODER_CODECS_IN_BAND: Record<keyof VideoCodecSupport, string> = {
+    // avc1 = out of band config, avc3 = in band with sps, pps, idr
+    "H264": "avc3.42E01E",
+    "H264_HIGH8_444": "avc3.640032",
+    // hvc1 = out of band config, hev1 = in band with sps, pps, idr
+    "H265": "hev1.1.6.L93.B0",
+    "H265_MAIN10": "hev1.2.4.L120.90",
+    "H265_REXT8_444": "hev1.6.6.L93.90",
+    "H265_REXT10_444": "hev1.6.10.L120.90",
+    // av1 doesn't have in band and out of band distinction
+    "AV1_MAIN8": "av01.0.04M.08",
+    "AV1_MAIN10": "av01.0.04M.10",
+    "AV1_HIGH8_444": "av01.0.08M.08",
+    "AV1_HIGH10_444": "av01.0.08M.10"
+}
+const VIDEO_DECODER_CODECS_OUT_OF_BAND: Record<keyof VideoCodecSupport, string> = {
+    "H264": "avc1.42E01E",
+    "H264_HIGH8_444": "avc1.640032",
+    "H265": "hvc1.1.6.L93.B0",
+    "H265_MAIN10": "hvc1.2.4.L120.90",
+    "H265_REXT8_444": "hvc1.6.6.L93.90",
+    "H265_REXT10_444": "hvc1.6.10.L120.90",
+    "AV1_MAIN8": "av01.0.04M.08",
+    "AV1_MAIN10": "av01.0.04M.10",
+    "AV1_HIGH8_444": "av01.0.08M.08",
+    "AV1_HIGH10_444": "av01.0.08M.10"
+}
 
 async function detectCodecs(): Promise<VideoCodecSupport> {
     if (!("isConfigSupported" in VideoDecoder)) {
@@ -14,27 +42,21 @@ async function detectCodecs(): Promise<VideoCodecSupport> {
 
     for (const codec in codecs) {
         // TODO: parallelize await?
-        const supported = await VideoDecoder.isConfigSupported({
-            codec: VIDEO_DECODER_CODECS[codec]
+        const supportedInBand = await VideoDecoder.isConfigSupported({
+            codec: VIDEO_DECODER_CODECS_IN_BAND[codec]
         })
 
-        codecs[codec] = supported.supported ? true : false
+        const supportedOutOfBand = await VideoDecoder.isConfigSupported({
+            codec: VIDEO_DECODER_CODECS_OUT_OF_BAND[codec]
+        })
+
+        codecs[codec] = supportedInBand.supported || supportedOutOfBand.supported ? true : false
     }
 
-    return andVideoCodecs(codecs, {
-        H264: true,
-        // TODO: Firefox, Safari say they can play this codec, but they can't
-        H264_HIGH8_444: false,
-        H265: true,
-        H265_MAIN10: true,
-        H265_REXT8_444: true,
-        H265_REXT10_444: true,
-        // TODO: implement av1 stream translator?
-        AV1_MAIN8: false,
-        AV1_MAIN10: false,
-        AV1_HIGH8_444: false,
-        AV1_HIGH10_444: false
-    })
+    // TODO: Firefox, Safari say they can play this codec, but they can't
+    codecs.H264_HIGH8_444 = false
+
+    return codecs
 }
 async function getIfConfigSupported(config: VideoDecoderConfig): Promise<VideoDecoderConfig | null> {
     const supported = await VideoDecoder.isConfigSupported(config)
@@ -42,17 +64,6 @@ async function getIfConfigSupported(config: VideoDecoderConfig): Promise<VideoDe
         return config
     }
     return null
-}
-
-const START_CODE_SHORT = new Uint8Array([0x00, 0x00, 0x01]); // 3-byte start code
-const START_CODE_LONG = new Uint8Array([0x00, 0x00, 0x00, 0x01]); // 4-byte start code
-function startsWith(buffer: Uint8Array, position: number, check: Uint8Array): boolean {
-    for (let i = 0; i < check.length; i++) {
-        if (buffer[position + i] != check[i]) {
-            return false
-        }
-    }
-    return true
 }
 
 export class VideoDecoderPipe implements DataVideoRenderer {
@@ -74,7 +85,11 @@ export class VideoDecoderPipe implements DataVideoRenderer {
 
     private base: FrameVideoRenderer
 
+    private fps = 0
+
     private errored = false
+    private config: VideoDecoderConfig | null = null
+    private translator: CodecStreamTranslator | null = null
     private decoder: VideoDecoder
 
     constructor(base: FrameVideoRenderer, logger?: Logger) {
@@ -95,7 +110,6 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         this.errored = true
 
         this.logger?.debug(`VideoDecoder has an error ${"toString" in error ? error.toString() : `${error}`}`, { type: "fatal" })
-        this.logger?.debug(`VideoDecoder config: ${JSON.stringify(this.translator?.getCurrentConfig())}`)
         console.error(error)
     }
 
@@ -103,56 +117,77 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         this.base.submitFrame(frame)
     }
 
-    private translator: CodecStreamTranslator | null = null
-
-    async setup(setup: VideoRendererSetup): Promise<void> {
-        const codec = VIDEO_DECODER_CODECS[setup.codec]
-        if (!codec) {
-            this.logger?.debug("Failed to get codec configuration for WebCodecs VideoDecoder", { type: "fatal" })
-            return
-        }
-
-        let translator
-
-        if (setup.codec == "H264" || setup.codec == "H264_HIGH8_444") {
-            translator = new H264StreamVideoTranslator(this.logger ?? undefined)
-        } else if (setup.codec == "H265" || setup.codec == "H265_MAIN10" || setup.codec == "H265_REXT8_444" || setup.codec == "H265_REXT10_444") {
-            translator = new H265StreamVideoTranslator(this.logger ?? undefined)
-        } else if (setup.codec == "AV1_MAIN8" || setup.codec == "AV1_MAIN10" || setup.codec == "AV1_HIGH8_444" || setup.codec == "AV1_HIGH10_444") {
-            this.errored = true
-            this.logger?.debug("Av1 stream translator is not implemented currently!", { type: "fatalDescription" })
-            return
-        } else {
-            this.errored = true
-            this.logger?.debug(`Failed to find stream translator for codec ${setup.codec}`)
-            return
-        }
-
-        let config
-        if (!config) {
-            config = await getIfConfigSupported({
+    private async trySetConfig(codec: string) {
+        if (!this.config) {
+            this.config = await getIfConfigSupported({
                 codec,
                 hardwareAcceleration: "prefer-hardware",
                 optimizeForLatency: true
             })
         }
-        if (!config) {
-            config = await getIfConfigSupported({
+
+        if (!this.config) {
+            this.config = await getIfConfigSupported({
                 codec,
                 optimizeForLatency: true
             })
         }
-        if (!config) {
-            config = { codec }
+
+        if (!this.config) {
+            this.config = await getIfConfigSupported({
+                codec,
+            })
+        }
+    }
+    async setup(setup: VideoRendererSetup): Promise<void> {
+        this.fps = setup.fps
+
+        const codec = VIDEO_DECODER_CODECS_IN_BAND[setup.codec]
+        await this.trySetConfig(codec)
+
+        if (!this.config) {
+            if (setup.codec == "H264" || setup.codec == "H264_HIGH8_444") {
+                this.translator = new H264StreamVideoTranslator(this.logger ?? undefined)
+
+                const codec = VIDEO_DECODER_CODECS_OUT_OF_BAND[setup.codec]
+                await this.trySetConfig(codec)
+            } else if (setup.codec == "H265" || setup.codec == "H265_MAIN10" || setup.codec == "H265_REXT8_444" || setup.codec == "H265_REXT10_444") {
+                this.translator = new H265StreamVideoTranslator(this.logger ?? undefined)
+
+                const codec = VIDEO_DECODER_CODECS_OUT_OF_BAND[setup.codec]
+                await this.trySetConfig(codec)
+            } else if (setup.codec == "AV1_MAIN8" || setup.codec == "AV1_MAIN10" || setup.codec == "AV1_HIGH8_444" || setup.codec == "AV1_HIGH10_444") {
+                this.errored = true
+                this.logger?.debug("Av1 stream translator is not implemented currently!", { type: "fatalDescription" })
+                return
+            } else {
+                this.errored = true
+                this.logger?.debug(`Failed to find stream translator for codec ${setup.codec}`)
+                return
+            }
         }
 
-        translator.setBaseConfig(config)
-        this.translator = translator
+        if (!this.config) {
+            this.errored = true
+            this.logger?.debug(`Failed to setup VideoDecoder for codec ${setup.codec} because of missing config`)
+            return
+        }
+        this.translator?.setBaseConfig(this.config)
+
+        this.logger?.debug(`VideoDecoder config: ${JSON.stringify(this.config)}`)
+
+        this.reset()
+
+        this.decoderSetupFinished = true
 
         if ("setup" in this.base && typeof this.base.setup == "function") {
             return await this.base.setup(...arguments)
         }
     }
+
+    private decoderSetupFinished = false
+    private requestedIdr = false
+    private needsKeyFrame = true
 
     private bufferedUnits: Array<VideoDecodeUnit> = []
     submitDecodeUnit(unit: VideoDecodeUnit): void {
@@ -160,10 +195,8 @@ export class VideoDecoderPipe implements DataVideoRenderer {
             console.debug("Cannot submit video decode unit because the stream errored")
             return
         }
-
-        if (!this.translator) {
+        if (!this.decoderSetupFinished) {
             this.bufferedUnits.push(unit)
-            console.debug("Cannot submit video decode unit because no video translator is currently set. Buffering frame until one is set!")
             return
         }
 
@@ -175,26 +208,92 @@ export class VideoDecoderPipe implements DataVideoRenderer {
             }
         }
 
-        const value = this.translator.submitDecodeUnit(unit)
-        if (value.error) {
-            this.errored = true
-            this.logger?.debug("VideoDecoder has errored!")
-            return
+
+        if (this.translator) {
+            const value = this.translator.submitDecodeUnit(unit)
+            if (value.error) {
+                this.errored = true
+                this.logger?.debug("VideoDecoder has errored!")
+                return
+            }
+
+            const { configure, chunk } = value
+
+            if (!chunk) {
+                console.debug("No chunk received!")
+                return
+            }
+
+            if (configure) {
+                console.debug("Resetting video decoder config with", configure)
+
+                this.decoder.reset()
+                this.decoder.configure(configure)
+
+                // This likely is an idr
+                this.requestedIdr = false
+            }
+
+            this.decoder.decode(chunk)
+        } else {
+            if (unit.type != "key" && this.needsKeyFrame) {
+                return
+            }
+            this.needsKeyFrame = false
+            this.requestedIdr = false
+
+            const chunk = new EncodedVideoChunk({
+                type: unit.type,
+                data: unit.data,
+                timestamp: unit.timestampMicroseconds,
+                duration: unit.durationMicroseconds
+            })
+
+            this.decoder.decode(chunk)
         }
+    }
 
-        const { configure, chunk } = value
-
-        if (!chunk) {
-            console.debug("No chunk received!")
-            return
-        }
-
-        if (configure) {
+    private reset() {
+        if (!this.translator) {
             this.decoder.reset()
-            this.decoder.configure(configure)
+            this.needsKeyFrame = true
+
+            if (this.config) {
+                this.decoder.configure(this.config)
+            } else {
+                this.logger?.debug("Failed to configure VideoDecoder because of missing config", { type: "fatal" })
+            }
+        } else if (this.config) {
+            this.translator.setBaseConfig(this.config)
+        }
+    }
+
+    pollRequestIdr(): boolean {
+        let requestIdr = false
+
+        const estimatedQueueDelayMs = this.decoder.decodeQueueSize * 1000 / this.fps
+        if (estimatedQueueDelayMs > 200 && this.decoder.decodeQueueSize > 2) {
+            // We have more than 200ms second backlog in the decoder
+            // -> This decoder is ass, request idr, flush that decoder
+
+            if (!this.requestedIdr) {
+                requestIdr = true
+                this.reset()
+            }
+            console.debug(`Requesting idr because of decode queue size(${this.decoder.decodeQueueSize}) and estimated delay of the queue: ${estimatedQueueDelayMs}`)
         }
 
-        this.decoder.decode(chunk)
+        if ("pollRequestIdr" in this.base && typeof this.base.pollRequestIdr == "function") {
+            if (this.base.pollRequestIdr(...arguments)) {
+                requestIdr = true
+            }
+        }
+
+        if (requestIdr) {
+            this.requestedIdr = true
+        }
+
+        return requestIdr
     }
 
     cleanup() {
@@ -208,6 +307,17 @@ export class VideoDecoderPipe implements DataVideoRenderer {
     getBase(): Pipe | null {
         return this.base
     }
+}
+
+const START_CODE_SHORT = new Uint8Array([0x00, 0x00, 0x01]); // 3-byte start code
+const START_CODE_LONG = new Uint8Array([0x00, 0x00, 0x00, 0x01]); // 4-byte start code
+function startsWith(buffer: Uint8Array, position: number, check: Uint8Array): boolean {
+    for (let i = 0; i < check.length; i++) {
+        if (buffer[position + i] != check[i]) {
+            return false
+        }
+    }
+    return true
 }
 
 abstract class CodecStreamTranslator {

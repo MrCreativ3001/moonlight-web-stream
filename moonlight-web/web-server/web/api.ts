@@ -188,14 +188,14 @@ class StreamedJsonResponse<Initial, Other> {
     }
 }
 
-export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit): Promise<any>
-export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit): Promise<Response>
-export async function fetchApi<Initial, Other>(api: Api, endpoint: string, method: string, init: { response: "jsonStreaming" } & ApiFetchInit): Promise<StreamedJsonResponse<Initial, Other>>
+export async function fetchApi(api: Api, endpoint: string, method: string, init?: { response?: "json" } & ApiFetchInit, timeout?: number): Promise<any>
+export async function fetchApi(api: Api, endpoint: string, method: string, init: { response: "ignore" } & ApiFetchInit, timeout?: number): Promise<Response>
+export async function fetchApi<Initial, Other>(api: Api, endpoint: string, method: string, init: { response: "jsonStreaming" } & ApiFetchInit, timeout?: number): Promise<StreamedJsonResponse<Initial, Other>>
 
-export async function fetchApi(api: Api, endpoint: string, method: string = GET, init?: { response?: "json" | "ignore" | "jsonStreaming" } & ApiFetchInit) {
+export async function fetchApi(api: Api, endpoint: string, method: string = GET, init?: { response?: "json" | "ignore" | "jsonStreaming" } & ApiFetchInit, timeout: number = API_TIMEOUT) {
     const [url, request] = buildRequest(api, endpoint, method, init)
 
-    request.signal = AbortSignal.timeout(API_TIMEOUT)
+    request.signal = AbortSignal.timeout(timeout)
 
     let response
     try {
@@ -373,7 +373,8 @@ export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise
     const response = await fetchApi(api, "/app/image", GET, {
         query,
         response: "ignore"
-    })
+    },
+    60000)
 
     return await response.blob()
 }

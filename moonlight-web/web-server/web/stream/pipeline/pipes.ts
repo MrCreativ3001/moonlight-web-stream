@@ -20,6 +20,7 @@ export function addPipePassthrough(pipe: Pipe, overwrite?: Array<string>) {
 
     passthrough("setup", false)
     passthrough("cleanup", false)
+    passthrough("pollRequestIdr", false)
     passthrough("getStreamRect", false)
     passthrough("onUserInteraction", false)
     passthrough("mount", false)

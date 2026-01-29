@@ -2,7 +2,6 @@ use std::env::var;
 use std::path::PathBuf;
 
 fn main() {
-    #[cfg(feature = "generate-bindings")]
     generate_bindings();
 
     let allow_vendored = var("MOONLIGHT_COMMON_NO_VENDOR").is_err();
@@ -16,13 +15,11 @@ fn main() {
     link(moonlight_output, allow_vendored);
 }
 
-#[cfg(feature = "generate-bindings")]
 fn generate_bindings() {
     generate_bindings_with_name("limelight.h", "limelight.rs");
     #[cfg(feature = "crypto")]
     generate_bindings_with_name("crypto.h", "crypto.rs");
 }
-#[cfg(feature = "generate-bindings")]
 fn generate_bindings_with_name(header_name: &str, rust_name: &str) {
     let bindings = bindgen::Builder::default()
         .header(header_name)

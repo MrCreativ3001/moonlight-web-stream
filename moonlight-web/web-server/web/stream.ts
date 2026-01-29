@@ -49,7 +49,9 @@ async function startApp() {
 
     // Start and Mount App
     const app = new ViewerApp(api, hostId, appId)
-    app.mount(rootElement)
+    app.mount(rootElement);
+
+    (window as any)["app"] = app
 }
 
 // Prevent starting transition
@@ -145,6 +147,7 @@ class ViewerApp implements Component {
     private addListeners(element: GlobalEventHandlers) {
         element.addEventListener("keydown", this.onKeyDown.bind(this), { passive: false })
         element.addEventListener("keyup", this.onKeyUp.bind(this), { passive: false })
+        element.addEventListener("paste", this.onPaste.bind(this))
 
         element.addEventListener("mousedown", this.onMouseButtonDown.bind(this), { passive: false })
         element.addEventListener("mouseup", this.onMouseButtonUp.bind(this), { passive: false })
@@ -235,8 +238,15 @@ class ViewerApp implements Component {
     onKeyDown(event: KeyboardEvent) {
         this.onUserInteraction()
 
-        event.preventDefault()
-        this.stream?.getInput().onKeyDown(event)
+        console.debug(event)
+        if (event.shiftKey && event.ctrlKey && event.code == "KeyV") {
+            // We are likely pasting -> don't send keys
+        } else if (event.code == "F11") {
+            // Allow manual fullscreen
+        } else {
+            event.preventDefault()
+            this.stream?.getInput().onKeyDown(event)
+        }
 
         event.stopPropagation()
     }
@@ -267,6 +277,14 @@ class ViewerApp implements Component {
                 this.isTogglingFullscreenWithKeybind = "none"
             })()
         }
+    }
+
+    onPaste(event: ClipboardEvent) {
+        this.onUserInteraction()
+
+        this.stream?.getInput().onPaste(event)
+
+        event.stopPropagation()
     }
 
     // Mouse
@@ -523,7 +541,10 @@ class ConnectionInfoModal implements Modal<void> {
     private textTy: LogMessageType | null = null
     private text = document.createElement("p")
 
+    private options = document.createElement("div")
     private debugDetailButton = document.createElement("button")
+    private closeButton = document.createElement("button")
+
     private debugDetail = "" // We store this seperate because line breaks don't work when the element is not mounted on the dom
     private debugDetailDisplay = document.createElement("div")
 
@@ -533,9 +554,16 @@ class ConnectionInfoModal implements Modal<void> {
         this.text.innerText = "Connecting"
         this.root.appendChild(this.text)
 
+        this.root.appendChild(this.options)
+        this.options.classList.add("modal-video-connect-options")
+
         this.debugDetailButton.innerText = "Show Logs"
         this.debugDetailButton.addEventListener("click", this.onDebugDetailClick.bind(this))
-        this.root.appendChild(this.debugDetailButton)
+        this.options.appendChild(this.debugDetailButton)
+
+        this.closeButton.innerText = "Close"
+        this.closeButton.addEventListener("click", this.onClose.bind(this))
+        this.options.appendChild(this.closeButton)
 
         this.debugDetailDisplay.classList.add("textlike")
         this.debugDetailDisplay.classList.add("modal-video-connect-debug")
@@ -597,6 +625,10 @@ class ConnectionInfoModal implements Modal<void> {
         }
     }
 
+    onClose() {
+        showModal(null)
+    }
+
     onFinish(abort: AbortSignal): Promise<void> {
         return new Promise((resolve, reject) => {
             this.eventTarget.addEventListener("ml-connected", () => resolve(), { once: true, signal: abort })
@@ -627,6 +659,7 @@ class ViewerSidebar implements Component, Sidebar {
     private fullscreenButton = document.createElement("button")
 
     private statsButton = document.createElement("button")
+    private exitStreamButton = document.createElement("button")
 
     private mouseMode: SelectComponent
     private touchMode: SelectComponent
@@ -695,6 +728,26 @@ class ViewerSidebar implements Component, Sidebar {
             }
         })
         this.buttonDiv.appendChild(this.statsButton)
+
+        // Close stream
+        this.exitStreamButton.innerText = "Exit"
+        this.exitStreamButton.addEventListener("click", async () => {
+            const stream = this.app.getStream()
+            if (stream) {
+                const success = await stream.stop()
+                if (!success) {
+                    console.debug("Failed to close stream correctly")
+                }
+            }
+
+            if (window.matchMedia('(display-mode: standalone)').matches) {
+                history.back()
+            } else {
+                window.close()
+            }
+
+        })
+        this.buttonDiv.appendChild(this.exitStreamButton)
 
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [

@@ -117,6 +117,7 @@ input[type="range"]:active {
 .textlike,
 textarea,
 select,
+.select-polyfill-display,
 input[type=text],
 input[type=password],
 input[type=number] {
@@ -137,6 +138,7 @@ input[type=number] {
 .textlike:hover,
 textarea:hover:enabled,
 select:hover:enabled,
+.select-polyfill-display:hover,
 input[type=text]:hover:enabled,
 input[type=password]:hover:enabled,
 input[type="number"]:hover:enabled {
@@ -147,6 +149,7 @@ input[type="number"]:hover:enabled {
 
 textarea:disabled,
 select:disabled,
+.select-polyfill-display:disabled,
 input[type=text]:disabled,
 input[type=password]:disabled,
 input[type=number]:disabled {
@@ -181,6 +184,55 @@ input[type=number] {
     margin: 0;
     padding: 0;
 }
+
+/** Select element (dropdown) polyfill */
+.select-polyfill-display::after {
+    content: "▾";
+    float: right;
+}
+
+.select-polyfill-wrapper {
+    position: relative;
+}
+
+.select-polyfill-list {
+    position: absolute;
+    background-color: rgb(48, 48, 48);
+    border: 1px solid gray;
+    margin-top: 4px;
+    left: 0;
+    z-index: 1;
+    cursor: pointer;
+}
+
+.select-polyfill-list.bottom {
+    top: 100%;
+    bottom: auto;
+}
+
+.select-polyfill-list.top {
+    bottom: 100%;
+    top: auto;
+}
+
+.select-polyfill-list p {
+    color: white;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.select-polyfill-list p:hover {
+    background-color: rgb(25, 103, 210);
+    color: white;
+}
+
+.select-polyfill-wrapper:hover:not(:has(.select-polyfill-list p:hover)) .select-polyfill-selected {
+    background-color: rgb(25, 103, 210);
+    color: white;
+}
+
 
 /** Modal */
 .modal-background {

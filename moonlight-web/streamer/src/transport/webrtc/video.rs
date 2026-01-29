@@ -224,7 +224,7 @@ impl WebRtcVideo {
     pub async fn send_decode_unit(&mut self, unit: &VideoDecodeUnit<'_>) -> DecodeResult {
         trace!("Starting frame");
 
-        let timestamp = (unit.presentation_time.as_secs_f64() * self.clock_rate as f64) as u32;
+        let timestamp = unit.rtp_timestamp;
 
         let mut full_frame = Vec::new();
         for buffer in unit.buffers {

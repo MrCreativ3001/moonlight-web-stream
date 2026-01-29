@@ -1,0 +1,26 @@
+FROM ubuntu:24.04
+
+ENV MOONLIGHT_WEB_PATH=/moonlight-web
+
+# Create / Go to app directory
+WORKDIR ${MOONLIGHT_WEB_PATH}
+
+# Copy prebuilt artifacts
+COPY moonlight-web/ ${MOONLIGHT_WEB_PATH}/
+
+# Mark executables as executable
+RUN chmod +x ${MOONLIGHT_WEB_PATH}/streamer ${MOONLIGHT_WEB_PATH}/web-server
+
+# Create a volume with the config.json and data.json
+VOLUME ${MOONLIGHT_WEB_PATH}/server
+
+# Expose the port (adjust if you changed it)
+ENV WEBRTC_PORT_RANGE=40000:40100
+EXPOSE 8080 40000-40100/udp
+
+# Create an entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Run the binary
+ENTRYPOINT ["/entrypoint.sh"]

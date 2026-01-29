@@ -6,6 +6,8 @@ const RIGHT_CLICK_MAX_MOVE = 40
 
 let rightClickEnabled = false
 
+let timer: number
+
 /// This might or might not disable all touch events and will likely simulate click / contextmenu events
 export function setTouchContextMenuEnabled(enabled: boolean) {
     if (navigator?.vendor == "Apple Computer, Inc.") {
@@ -23,6 +25,10 @@ const touchTracker: Map<number, {
 }> = new Map()
 
 function onTouchStart(event: TouchEvent) {
+    if (!rightClickEnabled) {
+        return
+    }
+
     for (const touch of event.changedTouches) {
         touchTracker.set(touch.identifier, {
             originX: touch.clientX,
@@ -32,40 +38,37 @@ function onTouchStart(event: TouchEvent) {
             oldX: touch.clientX,
             oldY: touch.clientY
         })
-    }
 
-    if (!rightClickEnabled) {
-        return
+        const eventInit = {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            force: touch.force,
+            pageX: touch.pageX,
+            pageY: touch.pageY,
+            radiusX: touch.radiusX,
+            radiusY: touch.radiusY,
+            rotationAngle: touch.rotationAngle,
+            screenX: touch.screenX,
+            screenY: touch.screenY,
+            target: touch.target,
+            // Other
+            bubbles: true,
+            cancellable: true
+        };
+
+        const contextMenuEvent = new MouseEvent("contextmenu", eventInit)
+
+        timer = setTimeout(() => {
+            touch?.target.dispatchEvent(contextMenuEvent)
+        }, RIGHT_CLICK_TIME_MS)
     }
-    event.preventDefault()
-    event.stopImmediatePropagation()
 }
 function onTouchMove(event: TouchEvent) {
     if (!rightClickEnabled) {
         return
     }
-    event.preventDefault()
-    event.stopImmediatePropagation()
 
-    for (const touch of event.changedTouches) {
-        const tracker = touchTracker.get(touch.identifier)
-        if (!tracker) {
-            continue
-        }
-
-        const deltaX = tracker.oldX - touch.clientX
-        const deltaY = tracker.oldY - touch.clientY
-
-        const element = tracker.startTarget?.closest(".scrollable") ?? window
-        element.scrollBy({
-            top: deltaY,
-            left: deltaX,
-            behavior: "instant"
-        })
-
-        tracker.oldX = touch.clientX
-        tracker.oldY = touch.clientY
-    }
+    clearTimeout(timer)
 }
 function onTouchEnd(event: TouchEvent) {
     if (!rightClickEnabled) {
@@ -73,6 +76,7 @@ function onTouchEnd(event: TouchEvent) {
         return
     }
 
+    clearTimeout(timer)
     event.stopImmediatePropagation()
 
     for (const touch of event.changedTouches) {
@@ -100,23 +104,13 @@ function onTouchEnd(event: TouchEvent) {
             cancellable: true
         };
 
-        if (touch.clientX - touchStart.originX < RIGHT_CLICK_MAX_MOVE
-            && touch.clientY - touchStart.originY < RIGHT_CLICK_MAX_MOVE) {
+        if (Math.abs(touch.clientX - touchStart.originX) < RIGHT_CLICK_MAX_MOVE
+            && Math.abs(touch.clientY - touchStart.originY) < RIGHT_CLICK_MAX_MOVE) {
             if (timeDiff > RIGHT_CLICK_TIME_MS) {
                 // dispatch fake context menu event
                 const contextMenuEvent = new MouseEvent("contextmenu", eventInit)
 
                 touch?.target.dispatchEvent(contextMenuEvent)
-            } else {
-                // dispatch click
-                const clickEvent = new MouseEvent("click", eventInit)
-
-                if ("target" in touch) {
-                    touch.target.dispatchEvent(clickEvent)
-                    if ("focus" in touch.target && typeof touch.target.focus == "function") {
-                        touch.target.focus()
-                    }
-                }
             }
         }
     }

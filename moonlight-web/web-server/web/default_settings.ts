@@ -38,7 +38,9 @@ const trueDefaultSettings: Settings =
     "dataTransport": "auto",
     "toggleFullscreenWithKeybind": false,
     // possible values: "standard", "old"
-    "pageStyle": "standard"
+    "pageStyle": "standard",
+    "hdr": false,
+    "useSelectElementPolyfill": false
 }
 
 function assignIfMissing(target: any, source: any) {

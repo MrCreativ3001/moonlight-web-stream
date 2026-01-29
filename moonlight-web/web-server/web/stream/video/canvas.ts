@@ -46,6 +46,11 @@ export abstract class BaseCanvasVideoRenderer implements VideoRenderer {
     }
 }
 
+export type CanvasVideoRendererOptions = {
+    /** When true, draw in submitFrame (low latency). When false, draw only on rAF (VSync-like, may reduce tearing). */
+    drawOnSubmit?: boolean
+}
+
 export class CanvasVideoRenderer extends BaseCanvasVideoRenderer implements FrameVideoRenderer {
 
     static async getInfo(): Promise<PipeInfo> {
@@ -62,9 +67,14 @@ export class CanvasVideoRenderer extends BaseCanvasVideoRenderer implements Fram
     private animationFrameRequest: number | null = null
 
     private currentFrame: VideoFrame | null = null
+    /** Set when we drew in submitFrame so onAnimationFrame can skip redundant draw. */
+    private drewInSubmitFrame = false
+    private drawOnSubmit: boolean
 
-    constructor() {
+    constructor(_logger?: unknown, options?: unknown) {
         super("canvas")
+        const opts = options as CanvasVideoRendererOptions | undefined
+        this.drawOnSubmit = opts?.drawOnSubmit ?? true
     }
 
     async setup(setup: VideoRendererSetup): Promise<void> {
@@ -96,6 +106,9 @@ export class CanvasVideoRenderer extends BaseCanvasVideoRenderer implements Fram
             } else {
                 throw "Failed to get 2d context from canvas"
             }
+            if (this.currentFrame) {
+                this.drawCurrentFrameIfReady()
+            }
         }
     }
 
@@ -103,20 +116,34 @@ export class CanvasVideoRenderer extends BaseCanvasVideoRenderer implements Fram
         this.currentFrame?.close()
 
         this.currentFrame = frame
+        if (this.drawOnSubmit) {
+            this.drawCurrentFrameIfReady()
+        }
+    }
+
+    /** Draw currentFrame to canvas if context and frame are ready. Only updates size when dimensions change. */
+    private drawCurrentFrameIfReady(): void {
+        const frame = this.currentFrame
+        if (!frame || !this.context) {
+            return
+        }
+        const w = frame.displayWidth
+        const h = frame.displayHeight
+        if (this.canvas.width !== w || this.canvas.height !== h) {
+            this.canvas.width = w
+            this.canvas.height = h
+        }
+        this.context.clearRect(0, 0, w, h)
+        this.context.drawImage(frame, 0, 0, w, h)
+        this.drewInSubmitFrame = true
     }
 
     private onAnimationFrame() {
-        const frame = this.currentFrame
-
-        if (frame && this.context) {
-            this.canvas.width = frame.displayWidth
-            this.canvas.height = frame.displayHeight
-
-            // Clear the canvas before drawing the new frame to prevent artifacts
-            this.context.clearRect(0, 0, this.canvas.width, this.canvas.height)
-            this.context.drawImage(frame, 0, 0, this.canvas.width, this.canvas.height)
+        if (!this.drawOnSubmit) {
+            this.drawCurrentFrameIfReady()
+        } else {
+            this.drewInSubmitFrame = false
         }
-
         this.animationFrameRequest = requestAnimationFrame(this.onAnimationFrame.bind(this))
     }
 }

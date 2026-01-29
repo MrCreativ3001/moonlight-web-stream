@@ -53,7 +53,7 @@ export interface InputPipeStatic {
 export interface OutputPipeStatic {
     readonly type: string
 
-    new(logger?: Logger): Pipe
+    new(logger?: Logger, options?: unknown): Pipe
 }
 
 export type Pipeline = {
@@ -81,9 +81,9 @@ export function getPipe(pipe: string | PipeStatic): PipeStatic | null {
     }
 }
 
-export function buildPipeline(base: OutputPipeStatic, pipeline: Pipeline, logger?: Logger): Pipe | null {
-    let previousPipeStatic = base
-    let pipe = new base(logger)
+export function buildPipeline(base: OutputPipeStatic, pipeline: Pipeline, logger?: Logger, rendererOptions?: unknown): Pipe | null {
+    let previousPipeStatic: OutputPipeStatic | PipeStatic = base
+    let pipe = new base(logger, rendererOptions)
 
     for (let index = pipeline.pipes.length - 1; index >= 0; index--) {
         const currentPipeValue = pipeline.pipes[index]

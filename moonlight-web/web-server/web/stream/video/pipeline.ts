@@ -27,6 +27,8 @@ export type VideoPipelineOptions = {
     supportedVideoCodecs: VideoCodecSupport
     canvasRenderer: boolean
     forceVideoElementRenderer: boolean
+    /** When true, canvas draws only on rAF (stable). When false, canvas draws on submit (low latency). */
+    canvasVsync: boolean
 }
 
 type PipelineResult<T> = { videoRenderer: T, supportedCodecs: VideoCodecSupport, error: false } | { videoRenderer: null, supportedCodecs: null, error: true }
@@ -166,7 +168,8 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         }
 
         // Build that pipeline
-        const videoRenderer = buildPipeline(pipeline.renderer, { pipes: pipeline.pipes }, logger)
+        const rendererOptions = { drawOnSubmit: !settings.canvasVsync }
+        const videoRenderer = buildPipeline(pipeline.renderer, { pipes: pipeline.pipes }, logger, rendererOptions)
         if (!videoRenderer) {
             logger?.debug("Failed to build video pipeline")
             return { videoRenderer: null, supportedCodecs: null, error: true }

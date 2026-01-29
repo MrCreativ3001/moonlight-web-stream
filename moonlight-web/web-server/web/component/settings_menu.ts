@@ -19,6 +19,7 @@ export type Settings = {
     videoCodec: StreamCodec,
     forceVideoElementRenderer: boolean
     canvasRenderer: boolean
+    canvasVsync: boolean
     playAudioLocal: boolean
     audioSampleQueueSize: number
     mouseScrollMode: MouseScrollMode
@@ -81,6 +82,7 @@ export class StreamSettingsComponent implements Component {
     private videoCodec: SelectComponent
     private forceVideoElementRenderer: InputComponent
     private canvasRenderer: InputComponent
+    private canvasVsync: InputComponent
     private hdr: InputComponent
 
     private videoSize: SelectComponent
@@ -235,6 +237,13 @@ export class StreamSettingsComponent implements Component {
         })
         this.canvasRenderer.addChangeListener(this.onSettingsChange.bind(this))
         this.canvasRenderer.mount(this.divElement)
+
+        // Canvas VSync (Canvas only: sync draw to display refresh to reduce tearing; off = lower latency)
+        this.canvasVsync = new InputComponent("canvasVsync", "checkbox", "Canvas VSync (reduce tearing)", {
+            checked: settings?.canvasVsync ?? defaultSettings_.canvasVsync
+        })
+        this.canvasVsync.addChangeListener(this.onSettingsChange.bind(this))
+        this.canvasVsync.mount(this.divElement)
 
         // HDR
         this.hdr = new InputComponent("hdr", "checkbox", "Enable HDR", {
@@ -392,6 +401,7 @@ export class StreamSettingsComponent implements Component {
         settings.videoCodec = this.videoCodec.getValue() as any
         settings.forceVideoElementRenderer = this.forceVideoElementRenderer.isChecked()
         settings.canvasRenderer = this.canvasRenderer.isChecked()
+        settings.canvasVsync = this.canvasVsync.isChecked()
 
         settings.playAudioLocal = this.playAudioLocal.isChecked()
         settings.audioSampleQueueSize = parseInt(this.audioSampleQueueSize.getValue())

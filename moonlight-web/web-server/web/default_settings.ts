@@ -22,6 +22,8 @@ const trueDefaultSettings: Settings =
     "videoCodec": "h264",
     "forceVideoElementRenderer": false,
     "canvasRenderer": false,
+    // Canvas only: when true, draw only on requestAnimationFrame (stable, may add ~0–17 ms). When false, draw on frame submit (low latency).
+    "canvasVsync": false,
     "playAudioLocal": false,
     "audioSampleQueueSize": 20,
     // possible values: "highres", "normal"

@@ -525,7 +525,8 @@ export class Stream implements Component {
         const videoSettings: VideoPipelineOptions = {
             supportedVideoCodecs: andVideoCodecs(codecHint, transportCodecSupport),
             canvasRenderer: this.settings.canvasRenderer,
-            forceVideoElementRenderer: this.settings.forceVideoElementRenderer
+            forceVideoElementRenderer: this.settings.forceVideoElementRenderer,
+            canvasVsync: this.settings.canvasVsync
         }
 
         let pipelineCodecSupport

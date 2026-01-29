@@ -71,8 +71,6 @@ export class CanvasVideoRenderer extends BaseCanvasVideoRenderer implements Fram
     private animationFrameRequest: number | null = null
 
     private currentFrame: VideoFrame | null = null
-    /** Set when we drew in submitFrame so onAnimationFrame can skip redundant draw. */
-    private drewInSubmitFrame = false
     private drawOnSubmit: boolean
     private hdrEnabled: boolean = false
 
@@ -81,7 +79,7 @@ export class CanvasVideoRenderer extends BaseCanvasVideoRenderer implements Fram
         const opts = options as CanvasVideoRendererOptions | undefined
         this.drawOnSubmit = opts?.drawOnSubmit ?? true
     }
-    
+
     setHdrMode(enabled: boolean): void {
         this.hdrEnabled = enabled
         if (this.context) {
@@ -164,14 +162,11 @@ export class CanvasVideoRenderer extends BaseCanvasVideoRenderer implements Fram
         }
         this.context.clearRect(0, 0, w, h)
         this.context.drawImage(frame, 0, 0, w, h)
-        this.drewInSubmitFrame = true
     }
 
     private onAnimationFrame() {
         if (!this.drawOnSubmit) {
             this.drawCurrentFrameIfReady()
-        } else {
-            this.drewInSubmitFrame = false
         }
         this.animationFrameRequest = requestAnimationFrame(this.onAnimationFrame.bind(this))
     }

@@ -6,6 +6,7 @@ import { DepacketizeAudioPipe } from "../audio/depacketize_pipe.js";
 import { AudioMediaStreamTrackGeneratorPipe } from "../audio/media_stream_track_generator_pipe.js";
 import { Logger } from "../log.js";
 import { VideoCodecSupport } from "../video.js";
+import { CanvasFrameDrawPipe } from "../video/canvas_frame.js";
 import { DepacketizeVideoPipe } from "../video/depackitize_video_pipe.js";
 import { VideoMediaStreamTrackGeneratorPipe } from "../video/media_stream_track_generator_pipe.js";
 import { VideoMediaStreamTrackProcessorPipe } from "../video/media_stream_track_processor_pipe.js";
@@ -148,6 +149,7 @@ export function pipes(): Array<PipeStatic> {
         VideoMediaStreamTrackProcessorPipe,
         VideoDecoderPipe,
         VideoTrackGeneratorPipe,
+        CanvasFrameDrawPipe,
         // Video Worker pipes
         WorkerVideoMediaStreamProcessorPipe,
         WorkerOffscreenCanvasSendPipe,

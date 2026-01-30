@@ -28,7 +28,7 @@ export interface VideoRenderer extends Component, Pipe {
     mount(parent: HTMLElement): void
     /// Don't work inside a worker
     unmount(parent: HTMLElement): void
-    
+
     /// Optional: Set HDR mode (enabled/disabled)
     setHdrMode?(enabled: boolean): void
 }
@@ -79,6 +79,28 @@ export interface FrameVideoRenderer extends Pipe {
 
     /// Submits a frame. This renderer now "owns" the frame and needs to clean it up via close.
     submitFrame(frame: VideoFrame): void
+}
+
+export type UseCanvasResult<T> =
+    { error: null, context: T } |
+    // creationFailed -> This browser doesn't support this context
+    // noCanvas -> The canvas is currently not available but it might become available in the future
+    // otherContextInUse -> Another context was already requested and is currently in use
+    { error: "creationFailed" | "noCanvas" | "otherContextInUse", context: null }
+
+export interface CanvasRenderer extends Pipe {
+    // static readonly type = "canvas"
+
+    /// Tries to create or reuse an already existing canvas context.
+    useCanvasContext(type: "webgl"): UseCanvasResult<WebGLRenderingContext>
+    useCanvasContext(type: "webgl2"): UseCanvasResult<WebGL2RenderingContext>
+    useCanvasContext(type: "2d"): UseCanvasResult<(OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D)>
+
+    /// Sets the canvas to a specific size
+    setCanvasSize(width: number, height: number): void
+
+    /// Commit Rendered data on canvas
+    commitFrame(): void
 }
 
 export type VideoDecodeUnit = {

@@ -236,6 +236,7 @@ export class Stream implements Component {
 
             this.iceServers = iceServers
 
+            this.debugLog(`window.isSecureContext: ${window.isSecureContext}`)
             this.debugLog(`Using WebRTC Ice Servers: ${createPrettyList(
                 iceServers.map(server => server.urls).reduce((list, url) => list.concat(url), [])
             )}`)

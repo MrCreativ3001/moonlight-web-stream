@@ -209,14 +209,18 @@ export class Stream implements Component {
                 showErrorPopup("Failed to find supported audio player -> audio is missing.")
             }
 
+            if (!this.videoRenderer || !this.audioPlayer) {
+                throw "Video renderer or audio player not initialized!"
+            }
+
             await Promise.all([
-                this.videoRenderer?.setup({
+                this.videoRenderer.setup({
                     codec: format,
                     fps,
                     width,
                     height,
                 }),
-                this.audioPlayer?.setup({
+                this.audioPlayer.setup({
                     sampleRate: audioSampleRate,
                     channels: audioChannelCount,
                     streams: audioStreams,

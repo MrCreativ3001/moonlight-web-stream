@@ -1,5 +1,6 @@
 import { globalObject } from "../../util.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { AudioPlayerSetup, TrackAudioPlayer } from "./index.js";
 
 export class AudioElementPlayer implements TrackAudioPlayer {
@@ -27,6 +28,8 @@ export class AudioElementPlayer implements TrackAudioPlayer {
         this.audioElement.autoplay = true
         this.audioElement.muted = true
         this.audioElement.srcObject = this.stream
+
+        addPipePassthrough(this)
     }
 
     setup(_setup: AudioPlayerSetup) {

@@ -6,6 +6,7 @@ import { DepacketizeAudioPipe } from "../audio/depacketize_pipe.js";
 import { AudioMediaStreamTrackGeneratorPipe } from "../audio/media_stream_track_generator_pipe.js";
 import { Logger } from "../log.js";
 import { VideoCodecSupport } from "../video.js";
+import { TinyH264DecoderPipe } from "../video/tinyh264_decoder_pipe.js";
 import { CanvasFrameDrawPipe } from "../video/canvas_frame.js";
 import { DepacketizeVideoPipe } from "../video/depackitize_video_pipe.js";
 import { VideoMediaStreamTrackGeneratorPipe } from "../video/media_stream_track_generator_pipe.js";
@@ -14,19 +15,6 @@ import { WorkerDataToVideoTrackPipe, WorkerVideoMediaStreamProcessorCanvasPipe, 
 import { VideoDecoderPipe } from "../video/video_decoder_pipe.js";
 import { VideoTrackGeneratorPipe } from "../video/video_track_generator.js";
 import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerOffscreenCanvasSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "./worker_io.js";
-
-// TODO: move this fn into another file
-export function globalObject(): any {
-    if (typeof self !== 'undefined') {
-        return self
-    }
-
-    if (typeof window !== 'undefined') {
-        return window
-    }
-
-    return globalThis;
-}
 
 export interface Pipe {
     readonly implementationName: string
@@ -148,6 +136,7 @@ export function pipes(): Array<PipeStatic> {
         VideoMediaStreamTrackGeneratorPipe,
         VideoMediaStreamTrackProcessorPipe,
         VideoDecoderPipe,
+        TinyH264DecoderPipe,
         VideoTrackGeneratorPipe,
         CanvasFrameDrawPipe,
         // Video Worker pipes

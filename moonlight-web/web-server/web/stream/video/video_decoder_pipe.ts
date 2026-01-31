@@ -1,6 +1,7 @@
+import { globalObject } from "../../util.js";
 import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
-import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";

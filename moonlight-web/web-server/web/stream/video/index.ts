@@ -81,6 +81,19 @@ export interface FrameVideoRenderer extends Pipe {
     submitFrame(frame: VideoFrame): void
 }
 
+export type RawVideoFrame = {
+    buffer: ArrayBuffer
+    width: number
+    height: number
+}
+
+export interface RawFrameVideoRenderer extends Pipe {
+    // static readonly type = "yuv420videoframe"
+
+    /// Submits a raw frame. This renderer doesn't "own" the buffer and should only read from it
+    submitRawFrame(frame: RawVideoFrame): void
+}
+
 export type UseCanvasResult<T> =
     { error: null, context: T } |
     // creationFailed -> This browser doesn't support this context

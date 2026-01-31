@@ -1,7 +1,8 @@
+import { globalObject } from "../../util.js";
 import { Logger } from "../log.js";
 import { BaseCanvasVideoRenderer } from "../video/canvas.js";
 import { CanvasRenderer, FrameVideoRenderer, TrackVideoRenderer, UseCanvasResult, VideoRendererSetup } from "../video/index.js";
-import { globalObject, Pipe, PipeInfo } from "./index.js";
+import { Pipe, PipeInfo } from "./index.js";
 import { addPipePassthrough, DataPipe } from "./pipes.js";
 import { WorkerPipe, WorkerReceiver } from "./worker_pipe.js";
 import { WorkerMessage } from "./worker_types.js";

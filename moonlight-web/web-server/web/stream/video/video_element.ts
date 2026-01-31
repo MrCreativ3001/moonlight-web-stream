@@ -1,4 +1,5 @@
-import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
+import { globalObject } from "../../util.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
 import { getStreamRectCorrected, TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index.js";
 

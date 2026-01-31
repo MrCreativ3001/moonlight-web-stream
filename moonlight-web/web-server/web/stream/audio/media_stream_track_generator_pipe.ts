@@ -1,4 +1,5 @@
-import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
+import { globalObject } from "../../util.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { SampleAudioPlayer, TrackAudioPlayer } from "./index.js";
 

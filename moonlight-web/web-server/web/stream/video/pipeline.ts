@@ -6,13 +6,14 @@ import { DepacketizeVideoPipe } from "./depackitize_video_pipe.js"
 import { Logger } from "../log.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
 import { andVideoCodecs, hasAnyCodec, VideoCodecSupport } from "../video.js"
-import { buildPipeline, gatherPipeInfo, globalObject, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
+import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { workerPipe } from "../pipeline/worker_pipe.js"
-import { WorkerDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io.js"
+import { WorkerDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io.js"
 import { OffscreenCanvasRenderer } from "./offscreen_canvas.js"
 import { MainCanvasRenderer } from "./canvas.js"
 import { CanvasFrameDrawPipe } from "./canvas_frame.js"
+import { globalObject } from "../../util.js"
 
 // -- Gather information about the browser
 interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic { }

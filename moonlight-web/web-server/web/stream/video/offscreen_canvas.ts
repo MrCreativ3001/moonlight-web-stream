@@ -1,4 +1,5 @@
-import { globalObject, PipeInfo } from "../pipeline/index.js";
+import { globalObject } from "../../util.js";
+import { PipeInfo } from "../pipeline/index.js";
 import { WorkerReceiver } from "../pipeline/worker_pipe.js";
 import { WorkerMessage } from "../pipeline/worker_types.js";
 import { BaseCanvasVideoRenderer } from "./canvas.js";

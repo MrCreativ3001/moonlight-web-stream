@@ -1,5 +1,6 @@
+import { globalObject } from "../../util.js"
 import { Logger } from "../log.js"
-import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js"
+import { Pipe, PipeInfo } from "../pipeline/index.js"
 import { allVideoCodecs } from "../video.js"
 import { CanvasRenderer, getStreamRectCorrected, UseCanvasResult, VideoRendererSetup } from "./index.js"
 

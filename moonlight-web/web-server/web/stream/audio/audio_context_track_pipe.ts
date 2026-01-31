@@ -1,5 +1,6 @@
+import { globalObject } from "../../util.js";
 import { Logger } from "../log.js";
-import { globalObject, PipeInfo } from "../pipeline/index.js";
+import { PipeInfo } from "../pipeline/index.js";
 import { AudioContextBasePipe } from "./audio_context_base.js";
 import { AudioPlayerSetup, TrackAudioPlayer } from "./index.js";
 

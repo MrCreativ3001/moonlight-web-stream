@@ -1,4 +1,5 @@
-import { globalObject, Pipe, PipeInfo } from "../pipeline/index.js";
+import { globalObject } from "../../util.js";
+import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { allVideoCodecs } from "../video.js";
 import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererSetup } from "./index.js";

@@ -1,6 +1,7 @@
+import { globalObject } from "../../util.js";
 import { Logger } from "../log.js";
 import { OffscreenCanvasRenderer } from "../video/offscreen_canvas.js";
-import { globalObject, Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index.js";
+import { Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index.js";
 import { addPipePassthrough } from "./pipes.js";
 import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types.js";
 

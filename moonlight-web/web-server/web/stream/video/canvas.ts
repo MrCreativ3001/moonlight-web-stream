@@ -1,6 +1,7 @@
 import { globalObject } from "../../util.js"
 import { Logger } from "../log.js"
 import { Pipe, PipeInfo } from "../pipeline/index.js"
+import { addPipePassthrough } from "../pipeline/pipes.js"
 import { allVideoCodecs } from "../video.js"
 import { CanvasRenderer, getStreamRectCorrected, UseCanvasResult, VideoRendererSetup } from "./index.js"
 
@@ -203,6 +204,8 @@ export class MainCanvasRenderer extends BaseCanvasVideoRenderer {
         logger?.debug(`Applying canvas options: ${JSON.stringify(options)}`)
 
         this.setCanvas(BaseCanvasVideoRenderer.createMainCanvas())
+
+        addPipePassthrough(this)
     }
 
     async setup(setup: VideoRendererSetup): Promise<void> {

@@ -8,7 +8,7 @@ import { DataVideoRenderer, VideoRendererSetup } from "./index.js";
 export class DepacketizeVideoPipe implements DataPipe {
 
     static readonly baseType = "videodata"
-    static readonly type = "data"
+    static readonly type = "wsdata"
 
     static async getInfo(): Promise<PipeInfo> {
         // no link

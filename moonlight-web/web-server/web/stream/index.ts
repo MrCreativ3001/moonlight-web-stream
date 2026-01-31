@@ -486,14 +486,14 @@ export class Stream implements Component {
         // Create pipelines
         const [supportedVideoCodecs] = await Promise.all([this.createVideoRenderer(), this.createAudioPlayer()])
 
-        const videoPipeline = `${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
-        this.debugLog(`Using video pipeline: ${videoPipeline}`)
+        const videoPipelineName = `${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
+        this.debugLog(`Using video pipeline: ${videoPipelineName}`)
 
-        const audioPipeline = `${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`
-        this.debugLog(`Using audio pipeline: ${audioPipeline}`)
+        const audioPipelineName = `${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`
+        this.debugLog(`Using audio pipeline: ${audioPipelineName}`)
 
-        this.stats.setVideoPipelineName(videoPipeline)
-        this.stats.setAudioPipelineName(audioPipeline)
+        this.stats.setVideoPipeline(videoPipelineName, this.videoRenderer)
+        this.stats.setAudioPipeline(audioPipelineName, this.audioPlayer)
 
         return supportedVideoCodecs
     }
@@ -620,12 +620,7 @@ export class Stream implements Component {
             audioPlayer.mount(this.divElement)
 
             audio.addReceiveListener((data) => {
-                audioPlayer.decodeAndPlay({
-                    // TODO: fill in duration and timestamp
-                    durationMicroseconds: 0,
-                    timestampMicroseconds: 0,
-                    data
-                })
+                audioPlayer.submitPacket(data)
             })
 
             this.audioPlayer = audioPlayer

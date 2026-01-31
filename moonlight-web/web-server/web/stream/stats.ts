@@ -1,7 +1,10 @@
 import { StreamerStatsUpdate, TransportChannelId } from "../api_bindings.js"
 import { BIG_BUFFER, ByteBuffer } from "./buffer.js"
 import { Logger } from "./log.js"
+import { Pipe } from "./pipeline/index.js"
 import { DataTransportChannel, Transport } from "./transport/index.js"
+
+export type StatValue = string | number
 
 export type StreamStatsData = {
     videoCodec: string | null
@@ -20,7 +23,9 @@ export type StreamStatsData = {
     maxStreamerProcessingTimeMs: number | null
     avgStreamerProcessingTimeMs: number | null
     browserRtt: number | null
-    transport: Record<string, string>
+    transport: Record<string, StatValue>
+    video: Record<string, StatValue>
+    audio: Record<string, StatValue>
 }
 
 function num(value: number | null | undefined, suffix?: string): string | null {
@@ -53,6 +58,28 @@ streamer to browser rtt (ws only): ${num(statsData.browserRtt, "ms")}
         text += `${key}: ${valuePretty}\n`
     }
 
+    for (const key in statsData.video) {
+        const value = statsData.video[key]
+        let valuePretty = value
+
+        if (typeof value == "number" && key.endsWith("Ms")) {
+            valuePretty = `${num(value, "ms")}`
+        }
+
+        text += `${key}: ${valuePretty}\n`
+    }
+
+    for (const key in statsData.audio) {
+        const value = statsData.audio[key]
+        let valuePretty = value
+
+        if (typeof value == "number" && key.endsWith("Ms")) {
+            valuePretty = `${num(value, "ms")}`
+        }
+
+        text += `${key}: ${valuePretty}\n`
+    }
+
     return text
 }
 
@@ -65,6 +92,8 @@ export class StreamStats {
     private statsChannel: DataTransportChannel | null = null
     private updateIntervalId: number | null = null
 
+    private videoPipe: Pipe | null = null
+    private audioPipe: Pipe | null = null
     private statsData: StreamStatsData = {
         videoCodec: null,
         videoWidth: null,
@@ -82,7 +111,9 @@ export class StreamStats {
         maxStreamerProcessingTimeMs: null,
         avgStreamerProcessingTimeMs: null,
         browserRtt: null,
-        transport: {}
+        transport: {},
+        video: {},
+        audio: {}
     }
 
     constructor(logger?: Logger) {
@@ -172,6 +203,13 @@ export class StreamStats {
     }
 
     private async updateLocalStats() {
+        Promise.all([
+            this.updateTransportStats(),
+            this.updateVideoStats(),
+            this.updateAudioStats(),
+        ])
+    }
+    private async updateTransportStats() {
         if (!this.transport) {
             console.debug("Cannot query stats without transport")
             return
@@ -184,6 +222,24 @@ export class StreamStats {
             this.statsData.transport[key] = value
         }
     }
+    private async updateVideoStats() {
+        const stats = {}
+
+        if (this.videoPipe && this.videoPipe.reportStats) {
+            this.videoPipe.reportStats(stats)
+        }
+
+        this.statsData.video = stats
+    }
+    private async updateAudioStats() {
+        const stats = {}
+
+        if (this.audioPipe && this.audioPipe.reportStats) {
+            this.audioPipe.reportStats(stats)
+        }
+
+        this.statsData.audio = stats
+    }
 
     setVideoInfo(codec: string, width: number, height: number, fps: number) {
         this.statsData.videoCodec = codec
@@ -191,11 +247,13 @@ export class StreamStats {
         this.statsData.videoHeight = height
         this.statsData.videoFps = fps
     }
-    setVideoPipelineName(name: string) {
+    setVideoPipeline(name: string, pipe: Pipe | null) {
         this.statsData.videoPipeline = name
+        this.videoPipe = pipe
     }
-    setAudioPipelineName(name: string) {
+    setAudioPipeline(name: string, pipe: Pipe | null) {
         this.statsData.audioPipeline = name
+        this.audioPipe = pipe
     }
     setHdrEnabled(enabled: boolean) {
         this.statsData.hdrEnabled = enabled

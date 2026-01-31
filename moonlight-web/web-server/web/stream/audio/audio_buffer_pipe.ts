@@ -1,6 +1,7 @@
 import { globalObject } from "../../util.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
+import { StatValue } from "../stats.js";
 import { AudioPcmUnit, AudioPlayerSetup, NodeAudioPlayer, PcmAudioPlayer } from "./index.js";
 
 export class AudioBufferPipe implements PcmAudioPlayer {

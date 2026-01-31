@@ -27,10 +27,16 @@ export class AudioContextTrackPipe extends AudioContextBasePipe {
     setup(setup: AudioPlayerSetup) {
         const result = super.setup(setup)
 
-        // TODO: implement the channels using constructor:
-        // https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamAudioDestinationNode/MediaStreamAudioDestinationNode#parameters
-        // https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Basic_concepts_behind_Web_Audio_API#audio_channels
-        this.destination = this.getAudioContext().createMediaStreamDestination();
+        if (typeof MediaStreamAudioDestinationNode == "function") {
+            // Check for constructor
+            this.destination = new MediaStreamAudioDestinationNode(this.getAudioContext(), {
+                channelCount: setup.channels,
+                channelCountMode: "explicit",
+                channelInterpretation: setup.channels > 2 ? "discrete" : "speakers"
+            })
+        } else {
+            this.destination = this.getAudioContext().createMediaStreamDestination();
+        }
 
         (this.getBase() as TrackAudioPlayer).setTrack(this.destination.stream.getTracks()[0])
 

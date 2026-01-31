@@ -25,6 +25,7 @@ export function addPipePassthrough(pipe: Pipe, overwrite?: Array<string>) {
     passthrough("onUserInteraction", false)
     passthrough("mount", false)
     passthrough("unmount", false)
+    passthrough("reportStats", false)
 
     if (overwrite) {
         for (const overwriteFn of overwrite) {

@@ -1,5 +1,6 @@
 import { globalObject } from "../../util.js";
 import { PipeInfo } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { WorkerReceiver } from "../pipeline/worker_pipe.js";
 import { WorkerMessage } from "../pipeline/worker_types.js";
 import { BaseCanvasVideoRenderer } from "./canvas.js";
@@ -27,6 +28,8 @@ export class OffscreenCanvasRenderer extends BaseCanvasVideoRenderer implements 
         })
 
         this.setCanvas(this.mainCanvas, true)
+
+        addPipePassthrough(this)
     }
 
     async setup(setup: VideoRendererSetup): Promise<void> {

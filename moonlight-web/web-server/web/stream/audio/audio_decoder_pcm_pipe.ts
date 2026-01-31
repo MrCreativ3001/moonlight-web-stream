@@ -10,7 +10,6 @@ export class AudioDecoderPcmPipe implements DataAudioPlayer {
 
     static async getInfo(): Promise<PipeInfo> {
         return {
-            // TODO: what does this require?
             environmentSupported: true
         }
     }

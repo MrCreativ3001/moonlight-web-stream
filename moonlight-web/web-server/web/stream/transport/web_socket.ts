@@ -1,6 +1,7 @@
 import { TransportChannelId } from "../../api_bindings.js";
 import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
+import { StatValue } from "../stats.js";
 import { allVideoCodecs, VideoCodecSupport } from "../video.js";
 import { DataTransportChannel, Transport, TransportAudioSetup, TransportChannel, TransportChannelIdKey, TransportChannelIdValue, TransportShutdown, TransportVideoSetup } from "./index.js";
 
@@ -65,8 +66,7 @@ export class WebSocketTransport implements Transport {
         // -> maybe we changed protocol
         this.logger?.debug("Web Socket transport close called, not closing Web Socket because it might still be needed")
     }
-    async getStats(): Promise<Record<string, string>> {
-        // TODO: maybe a ping (from browser ws to streamer) to get rtt
+    async getStats(): Promise<Record<string, StatValue>> {
         return {}
     }
 

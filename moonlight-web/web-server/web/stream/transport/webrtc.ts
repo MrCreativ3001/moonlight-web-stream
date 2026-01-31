@@ -1,5 +1,6 @@
 import { StreamSignalingMessage, TransportChannelId } from "../../api_bindings.js";
 import { Logger } from "../log.js";
+import { StatValue } from "../stats.js";
 import { allVideoCodecs, CAPABILITIES_CODECS, emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
 import { DataTransportChannel, Transport, TRANSPORT_CHANNEL_OPTIONS, TransportAudioSetup, TransportChannel, TransportChannelIdKey, TransportChannelIdValue, TransportVideoSetup, AudioTrackTransportChannel, VideoTrackTransportChannel, TrackTransportChannel, TransportShutdown } from "./index.js";
 
@@ -407,8 +408,8 @@ export class WebRTCTransport implements Transport {
         this.peer?.close()
     }
 
-    async getStats(): Promise<Record<string, string>> {
-        const statsData: Record<string, string> = {}
+    async getStats(): Promise<Record<string, StatValue>> {
+        const statsData: Record<string, StatValue> = {}
 
         if (!this.videoReceiver) {
             return {}

@@ -2,6 +2,7 @@
 import { Logger } from "../log.js";
 import { Pipe } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
+import { StatValue } from "../stats.js";
 import { AudioPlayerSetup, NodeAudioPlayer } from "./index.js";
 
 export abstract class AudioContextBasePipe implements NodeAudioPlayer {
@@ -11,7 +12,6 @@ export abstract class AudioContextBasePipe implements NodeAudioPlayer {
     private logger: Logger | null = null
 
     private base: Pipe | null
-    // TODO: include baseLatency and outputLatency in stats
     private audioContext: AudioContext | null = null
 
     constructor(implementationName: string, base: Pipe | null, logger?: Logger) {
@@ -56,6 +56,25 @@ export abstract class AudioContextBasePipe implements NodeAudioPlayer {
     }
 
     abstract setSource(source: AudioNode): void
+
+    async reportStats(statsObject: Record<string, StatValue>): Promise<void> {
+        // Both values are in secs -> we convert into ms
+        if (this.audioContext?.baseLatency) {
+            statsObject.audioContextBaseLatencyMs = this.audioContext.baseLatency * 100
+        } else {
+            statsObject.audioContextBaseLatencyMs = "null"
+        }
+        if (this.audioContext?.outputLatency) {
+            statsObject.audioContextOutputLatencyMs = this.audioContext.outputLatency * 100
+        } else {
+            statsObject.audioContextOutputLatencyMs = "null"
+        }
+
+        if (this.base && "reportStats" in this.base && typeof this.base.reportStats == "function") {
+            // @ts-ignore
+            return await this.base.reportStats(...arguments)
+        }
+    }
 
     getAudioContext(): AudioContext {
         if (!this.audioContext) {

@@ -8,16 +8,19 @@ import { Logger } from "../log.js";
 import { VideoCodecSupport } from "../video.js";
 import { TinyH264DecoderPipe } from "../video/tinyh264_decoder_pipe.js";
 import { CanvasFrameDrawPipe } from "../video/canvas_frame.js";
-import { DepacketizeVideoPipe } from "../video/depackitize_video_pipe.js";
+import { DepacketizeVideoPipe } from "../video/depackitize_pipe.js";
 import { VideoMediaStreamTrackGeneratorPipe } from "../video/media_stream_track_generator_pipe.js";
 import { VideoMediaStreamTrackProcessorPipe } from "../video/media_stream_track_processor_pipe.js";
 import { WorkerDataToVideoTrackPipe, WorkerVideoMediaStreamProcessorCanvasPipe, WorkerVideoMediaStreamProcessorPipe } from "../video/pipeline.js";
 import { VideoDecoderPipe } from "../video/video_decoder_pipe.js";
 import { VideoTrackGeneratorPipe } from "../video/video_track_generator.js";
 import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerOffscreenCanvasSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "./worker_io.js";
+import { StatValue } from "../stats.js";
 
 export interface Pipe {
     readonly implementationName: string
+
+    reportStats?(statsObject: Record<string, StatValue>): Promise<void>
 
     getBase(): Pipe | null
 }

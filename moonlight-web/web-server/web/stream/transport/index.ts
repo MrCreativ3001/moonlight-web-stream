@@ -1,4 +1,5 @@
 import { TransportChannelId } from "../../api_bindings.js"
+import { StatValue } from "../stats.js"
 import { VideoCodecSupport } from "../video.js"
 
 export type TransportChannelIdKey = keyof typeof TransportChannelId
@@ -75,7 +76,7 @@ export interface Transport {
     onclose: ((shutdown: TransportShutdown) => void) | null
     close(): Promise<void>
 
-    getStats(): Promise<Record<string, string>>
+    getStats(): Promise<Record<string, StatValue>>
 }
 
 export type TransportChannel = VideoTrackTransportChannel | AudioTrackTransportChannel | DataTransportChannel

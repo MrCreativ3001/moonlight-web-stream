@@ -1,4 +1,4 @@
-// Take a look at https://github.com/MrCreativ3001/libopus-js
+// See https://github.com/MrCreativ3001/libopus-js
 
 import type { MainModule } from "./libopus.js"
 
@@ -52,6 +52,9 @@ export class OpusMultistreamDecoder {
 
     private channels: number = 0
 
+    private inputBuffer: Buffer
+    private outputBuffer: Buffer
+
     constructor(module: MainModule, sampleRate: number, channels: number, streams: number, coupled_channels: number, mappings: Array<number>) {
         if (mappings.length < channels) {
             throw new OpusError(OPUS_BAD_ARG)
@@ -82,6 +85,9 @@ export class OpusMultistreamDecoder {
         if (error != OPUS_OK) {
             throw new OpusError(error)
         }
+
+        this.inputBuffer = new Buffer(this.module)
+        this.outputBuffer = new Buffer(this.module)
     }
 
     private checkPtr() {
@@ -107,29 +113,21 @@ export class OpusMultistreamDecoder {
 
         this.checkPtr()
 
-        // TODO: should the stack or heap be used?
-        let inputPtr = 0
         if (input) {
-            inputPtr = this.module._malloc(input.byteLength)
-            this.module.writeArrayToMemory(new Uint8Array(input), inputPtr)
+            this.inputBuffer.ensureSize(input.byteLength)
+            this.inputBuffer.writeBuffer(new Uint8Array(input))
         }
 
-        const outputPtr = this.module._malloc(outputSize)
+        this.outputBuffer.ensureSize(outputSize)
 
-        const result = this.module._opus_multistream_decode_float(this.ptr, inputPtr, input?.byteLength ?? 0, outputPtr, frameSize, decodeFec ? 1 : 0)
-
-        if (inputPtr != null) {
-            this.module._free(inputPtr)
-        }
+        const result = this.module._opus_multistream_decode_float(this.ptr, this.inputBuffer.getPtr(), input?.byteLength ?? 0, this.outputBuffer.getPtr(), frameSize, decodeFec ? 1 : 0)
 
         if (result < 0) {
-            this.module._free(outputPtr)
             throw new OpusError(result)
         }
 
-        const outputBuffer = new Float32Array(this.module.HEAPF32.buffer, outputPtr, this.channels * frameSize)
-        output.set(outputBuffer, 0)
-        this.module._free(outputPtr)
+        const outputBuffer = this.outputBuffer.asBufferF32(0, this.channels * frameSize)
+        output.set(outputBuffer)
 
         return result
     }
@@ -137,7 +135,87 @@ export class OpusMultistreamDecoder {
     destroy() {
         this.checkPtr()
 
+        this.inputBuffer.free()
+        this.outputBuffer.free()
+
         this.module._opus_multistream_decoder_destroy(this.ptr)
         this.ptr = 0
+    }
+}
+
+class Buffer {
+    private module: MainModule
+
+    private length: number = 0
+    private ptr: number = 0
+
+    constructor(module: MainModule, byteSize?: number) {
+        this.module = module
+
+        this.ensureSize(byteSize ?? 0)
+    }
+
+    ensureSize(length: number) {
+        if (length == 0) {
+            return
+        }
+
+        if (!this.ptr) {
+            this.ptr = this.module._malloc(length)
+            this.length = length
+        } else if (this.length < length) {
+            this.free()
+
+            this.ptr = this.module._malloc(length)
+            this.length = length
+        }
+    }
+
+    free() {
+        if (this.ptr) {
+            this.module._free(this.ptr)
+            this.ptr = 0
+            this.length = 0
+        }
+    }
+
+    writeBuffer(input: Uint8Array) {
+        if (input.byteLength == 0) {
+            return
+        }
+
+        this.checkPtr()
+        if (this.length < input.byteLength) {
+            throw "BufferOutOfBounds"
+        }
+
+        this.module.writeArrayToMemory(input, this.ptr)
+    }
+    asBufferF32(offsetF32: number, lengthF32: number): Float32Array {
+        if (lengthF32 <= 0) {
+            return new Float32Array([])
+        }
+
+        this.checkPtr()
+        if ((offsetF32 + lengthF32) * 4 < this.length || offsetF32 < 0 || lengthF32 < 0) {
+            throw "BufferOutOfBounds"
+        }
+
+        const buffer = new Float32Array(this.module.HEAPF32.buffer, this.ptr + (offsetF32 * 4), lengthF32)
+
+        return buffer
+    }
+
+    private checkPtr() {
+        if (!this.ptr) {
+            throw "NullPointer"
+        }
+    }
+
+    getPtr(): number {
+        return this.ptr
+    }
+    getLength(): number {
+        return this.length
     }
 }

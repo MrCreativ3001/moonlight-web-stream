@@ -32,6 +32,7 @@ export class AudioDecoderPcmPipe implements DataAudioPlayer {
     private setupData: AudioPlayerSetup | null = null
 
     private buffer: Float32Array = new Float32Array([])
+    private channelBuffers: Array<Float32Array> = []
 
     constructor(base: PcmAudioPlayer, logger?: Logger) {
         loadOpus().then(module => this.opusModule = module)
@@ -94,17 +95,26 @@ export class AudioDecoderPcmPipe implements DataAudioPlayer {
             return
         }
 
-        const channels = this.setupData.channels
-        // TODO: have multiple buffers / caches for that
-        const channelData: Float32Array[] = new Array(channels)
-
         // -- De-interleave interleaved PCM
 
         // Initialize channel arrays
+        const channels = this.setupData.channels
+
+        if (this.channelBuffers.length != channels) {
+            this.channelBuffers = new Array(channels)
+
+            for (let channelIndex = 0; channelIndex < channels; channelIndex++) {
+                this.channelBuffers[channelIndex] = new Float32Array(samplesDecoded)
+            }
+        }
+
         for (let channelIndex = 0; channelIndex < channels; channelIndex++) {
-            channelData[channelIndex] = new Float32Array(samplesDecoded)
+            if (this.channelBuffers[channelIndex].byteLength < samplesDecoded) {
+                this.channelBuffers[channelIndex] = new Float32Array(samplesDecoded)
+            }
+
             for (let sample = 0; sample < samplesDecoded; sample++) {
-                channelData[channelIndex][sample] = this.buffer[(sample * channels) + channelIndex]
+                this.channelBuffers[channelIndex][sample] = this.buffer[(sample * channels) + channelIndex]
             }
         }
 
@@ -112,7 +122,7 @@ export class AudioDecoderPcmPipe implements DataAudioPlayer {
         this.base.playPcm({
             durationMicroseconds: unit.durationMicroseconds,
             timestampMicroseconds: unit.timestampMicroseconds,
-            channelData
+            channelData: this.channelBuffers
         })
     }
 

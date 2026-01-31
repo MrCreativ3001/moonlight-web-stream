@@ -1,5 +1,6 @@
 import { globalObject } from "../../util.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
+import { addPipePassthrough } from "../pipeline/pipes.js";
 import { emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
 import { getStreamRectCorrected, TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index.js";
 
@@ -83,6 +84,8 @@ export class VideoElementRenderer implements TrackVideoRenderer, VideoRenderer {
                 throw `video_element renderer not supported: ${err}`
             }
         }
+
+        addPipePassthrough(this)
     }
 
     async setup(setup: VideoRendererSetup) {

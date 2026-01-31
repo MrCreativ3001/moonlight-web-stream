@@ -107,7 +107,6 @@ export class StreamSettingsComponent implements Component {
     private dataTransport: SelectComponent
     private toggleFullscreenWithKeybind: InputComponent
 
-    // TODO: make a different category
     private pageStyle: SelectComponent
 
     private useSelectElementPolyfill: InputComponent
@@ -144,7 +143,6 @@ export class StreamSettingsComponent implements Component {
             value: settings?.bitrate?.toString(),
             step: "100",
             numberSlider: {
-                // TODO: values?
                 range_min: 1000,
                 range_max: 10000,
             }

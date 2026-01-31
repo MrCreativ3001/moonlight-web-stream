@@ -63,8 +63,6 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
 
     let pipelines = PIPELINES
 
-    // TODO: use the depacketize pipe
-
     pipelineLoop: for (const pipeline of pipelines) {
         if (pipeline.input != type) {
             continue

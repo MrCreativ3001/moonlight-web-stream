@@ -40,19 +40,22 @@ async function detectCodecs(): Promise<VideoCodecSupport> {
     }
 
     const codecs = emptyVideoCodecs()
+    const promises = []
 
     for (const codec in codecs) {
-        // TODO: parallelize await?
-        const supportedInBand = await VideoDecoder.isConfigSupported({
-            codec: VIDEO_DECODER_CODECS_IN_BAND[codec]
-        })
+        promises.push((async () => {
+            const supportedInBand = await VideoDecoder.isConfigSupported({
+                codec: VIDEO_DECODER_CODECS_IN_BAND[codec]
+            })
 
-        const supportedOutOfBand = await VideoDecoder.isConfigSupported({
-            codec: VIDEO_DECODER_CODECS_OUT_OF_BAND[codec]
-        })
+            const supportedOutOfBand = await VideoDecoder.isConfigSupported({
+                codec: VIDEO_DECODER_CODECS_OUT_OF_BAND[codec]
+            })
 
-        codecs[codec] = supportedInBand.supported || supportedOutOfBand.supported ? true : false
+            codecs[codec] = supportedInBand.supported || supportedOutOfBand.supported ? true : false
+        })())
     }
+    await Promise.all(promises)
 
     // TODO: Firefox, Safari say they can play this codec, but they can't
     codecs.H264_HIGH8_444 = false

@@ -1,7 +1,7 @@
 import { globalObject } from "../../util.js";
 import { Logger } from "../log.js";
 import { OffscreenCanvasRenderer } from "../video/offscreen_canvas.js";
-import { Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index.js";
+import { getPipe, Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index.js";
 import { addPipePassthrough } from "./pipes.js";
 import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types.js";
 
@@ -59,12 +59,21 @@ export class WorkerPipe implements WorkerReceiver {
         this.implementationName = `worker_pipe [${pipelineToString(pipeline)}] -> ${base.implementationName}`
         this.logger = logger ?? null
 
-        // TODO: check that the pipeline starts with output and ends with input
+        if (getPipe(pipeline.pipes[0])?.type != "workeroutput") {
+            logger?.debug("Worker Pipeline doesn't start with a workeroutput!", { type: "fatal" })
+            throw "Worker Pipeline doesn't start with a workeroutput!"
+        }
+        if (getPipe(pipeline.pipes[pipeline.pipes.length - 1])?.baseType != "workerinput") {
+            logger?.debug("Worker Pipeline doesn't end with a workerinput!", { type: "fatal" })
+            throw "Worker Pipeline doesn't start with a workerinput!"
+        }
+
         this.base = base
         this.pipeline = pipeline
 
         const worker = createPipelineWorker()
         if (!worker) {
+            logger?.debug("Failed to create worker pipeline: Workers not supported!", { type: "fatal" })
             throw "Failed to create worker pipeline: Workers not supported!"
         }
         this.worker = worker

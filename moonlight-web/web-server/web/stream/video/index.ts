@@ -81,17 +81,34 @@ export interface FrameVideoRenderer extends Pipe {
     submitFrame(frame: VideoFrame): void
 }
 
-export type RawVideoFrame = {
-    buffer: ArrayBuffer
+export type Yuv420VideoFrame = {
+    yPlane: Uint8Array,
+    uPlane: Uint8Array,
+    vPlane: Uint8Array,
+    yStride: number
+    uvStride: number
     width: number
     height: number
 }
 
-export interface RawFrameVideoRenderer extends Pipe {
+export interface Yuv420FrameVideoRenderer extends Pipe {
     // static readonly type = "yuv420videoframe"
 
-    /// Submits a raw frame. This renderer doesn't "own" the buffer and should only read from it
-    submitRawFrame(frame: RawVideoFrame): void
+    /// submits a raw frame. this renderer doesn't "own" the buffer and should only read from it
+    submitRawFrame(frame: Yuv420VideoFrame): void
+}
+
+export type RgbaVideoFrame = {
+    buffer: Uint8ClampedArray
+    width: number
+    height: number
+}
+
+export interface RgbaFrameVideoRenderer extends Pipe {
+    // static readonly type = "rgbavideoframe"
+
+    /// submits a raw frame. this renderer doesn't "own" the buffer and should only read from it
+    submitRawFrame(frame: RgbaVideoFrame): void
 }
 
 export type UseCanvasResult<T> =

@@ -1,5 +1,5 @@
 import { LogMessageInfo } from "../log.js"
-import { VideoRendererSetup } from "../video/index.js"
+import { VideoDecodeUnit, VideoRendererSetup } from "../video/index.js"
 import { PipeInfo, Pipeline } from "./index.js"
 
 export type ToWorkerMessage =
@@ -15,6 +15,7 @@ export type WorkerMessage =
     // MediaStreamTrack is a transferable object when using the transfer parameter
     { track: MediaStreamTrack } |
     { data: ArrayBuffer } |
+    { videoData: VideoDecodeUnit } |
     // Canvas stuff
     { canvas: OffscreenCanvas }
 

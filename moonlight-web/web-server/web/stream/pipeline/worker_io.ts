@@ -1,7 +1,7 @@
 import { globalObject } from "../../util.js";
 import { Logger } from "../log.js";
 import { BaseCanvasVideoRenderer } from "../video/canvas.js";
-import { CanvasRenderer, FrameVideoRenderer, TrackVideoRenderer, UseCanvasResult, VideoRendererSetup } from "../video/index.js";
+import { CanvasRenderer, DataVideoRenderer, FrameVideoRenderer, TrackVideoRenderer, UseCanvasResult, VideoDecodeUnit, VideoRendererSetup } from "../video/index.js";
 import { Pipe, PipeInfo } from "./index.js";
 import { addPipePassthrough, DataPipe } from "./pipes.js";
 import { WorkerPipe, WorkerReceiver } from "./worker_pipe.js";
@@ -27,7 +27,7 @@ class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer
         this.logger = logger ?? null
         this.base = base
 
-        addPipePassthrough(this, ["setup", "cleanup", "submitFrame", "submitPacket", "setTrack"])
+        addPipePassthrough(this, ["setup", "cleanup", "submitFrame", "submitPacket", "setTrack", "submitDecodeUnit"])
     }
 
     onWorkerMessage(message: WorkerMessage): void {
@@ -41,6 +41,8 @@ class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer
             this.submitPacket(message.data)
         } else if ("track" in message) {
             this.setTrack(message.track)
+        } else if ("videoData" in message) {
+            this.submitDecodeUnit(message.videoData)
         }
     }
 
@@ -54,6 +56,7 @@ class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer
     submitFrame(_frame: VideoFrame): void { }
     submitPacket(_buffer: ArrayBuffer): void { }
     setTrack(_track: MediaStreamTrack): void { }
+    submitDecodeUnit(_unit: VideoDecodeUnit): void { }
 }
 export class WorkerVideoFrameReceivePipe extends WorkerReceiverPipe {
     static readonly baseType = "videoframe"
@@ -61,11 +64,14 @@ export class WorkerVideoFrameReceivePipe extends WorkerReceiverPipe {
 export class WorkerDataReceivePipe extends WorkerReceiverPipe {
     static readonly baseType = "data"
 }
+export class WorkerVideoDataReceivePipe extends WorkerReceiverPipe {
+    static readonly baseType = "videodata"
+}
 export class WorkerVideoTrackReceivePipe extends WorkerReceiverPipe {
     static readonly baseType = "videotrack"
 }
 
-class WorkerSenderPipe implements DataPipe, FrameVideoRenderer, TrackVideoRenderer {
+class WorkerSenderPipe implements DataPipe, FrameVideoRenderer, TrackVideoRenderer, DataVideoRenderer {
     static async getInfo(): Promise<PipeInfo> {
         return {
             environmentSupported: true
@@ -105,6 +111,9 @@ class WorkerSenderPipe implements DataPipe, FrameVideoRenderer, TrackVideoRender
     setTrack(track: MediaStreamTrack): void {
         this.getBase().onWorkerMessage({ track }, [track])
     }
+    submitDecodeUnit(unit: VideoDecodeUnit): void {
+        this.getBase().onWorkerMessage({ videoData: unit })
+    }
 }
 
 export class WorkerVideoFrameSendPipe extends WorkerSenderPipe {
@@ -112,6 +121,9 @@ export class WorkerVideoFrameSendPipe extends WorkerSenderPipe {
 }
 export class WorkerDataSendPipe extends WorkerSenderPipe {
     static readonly type = "data"
+}
+export class WorkerVideoDataSendPipe extends WorkerSenderPipe {
+    static readonly type = "videodata"
 }
 export class WorkerVideoTrackSendPipe extends WorkerSenderPipe {
     static readonly type = "videotrack"

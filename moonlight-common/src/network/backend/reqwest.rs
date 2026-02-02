@@ -94,8 +94,7 @@ impl RequestClient for Client {
         )?;
 
         Ok(timeout_builder()
-            .tls_built_in_root_certs(false)
-            .add_root_certificate(server_cert)
+            .tls_certs_only([server_cert])
             .identity(identity)
             .danger_accept_invalid_hostnames(true)
             .build()?)

@@ -23,7 +23,6 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
         }
     }
 
-    // TODO: this needs to be yuv420 frame
     static readonly baseType: string = "yuv420videoframe"
     static readonly type: string = "videodata"
 
@@ -38,7 +37,7 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
     private errored = false
 
     constructor(base: Yuv420FrameVideoRenderer) {
-        this.implementationName = `openh264_decoder -> ${base.implementationName}`
+        this.implementationName = `openh264_decode -> ${base.implementationName}`
         this.base = base
 
         const createOpenH264Module = async () => {
@@ -66,10 +65,17 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
         }
     }
 
+    private lastTimestamp = 0
+    private lastDuration = 0
+
     submitDecodeUnit(unit: VideoDecodeUnit): void {
         if (this.errored) {
             return
         }
+
+        // TODO: add this into the decoder api
+        this.lastTimestamp = unit.timestampMicroseconds
+        this.lastDuration = unit.timestampMicroseconds
 
         try {
             this.decoder?.decode(new Uint8Array(unit.data))
@@ -93,6 +99,8 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
             uvStride: stride[1],
             width,
             height,
+            timestampMicroseconds: this.lastTimestamp,
+            durationMicroseconds: this.lastDuration,
         })
     }
 

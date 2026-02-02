@@ -10,12 +10,12 @@ import { DataPipe } from "../pipeline/pipes.js"
 import { workerPipe } from "../pipeline/worker_pipe.js"
 import { WorkerVideoDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io.js"
 import { OffscreenCanvasRenderer } from "./offscreen_canvas.js"
-import { MainCanvasRenderer } from "./canvas.js"
+import { BaseCanvasVideoRenderer, MainCanvasRenderer } from "./canvas.js"
 import { CanvasFrameDrawPipe, CanvasRgbaFrameDrawPipe } from "./canvas_frame.js"
 import { globalObject } from "../../util.js"
 import { OpenH264DecoderPipe } from "./openh264_decoder_pipe.js"
-import { Yuv420ToRgbaFramePipe } from "./yuv420_rgb_frame.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
+import { Yuv420ToRgbaFramePipe } from "./video_frame.js"
 
 // -- Gather information about the browser
 interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic { }
@@ -48,23 +48,6 @@ export const WorkerVideoMediaStreamProcessorCanvasPipe = workerPipe("WorkerVideo
 export const WorkerDataToVideoTrackPipe = workerPipe("WorkerVideoFrameToTrackPipe", { pipes: ["WorkerVideoDataReceivePipe", "VideoDecoderPipe", "VideoTrackGeneratorPipe", "WorkerVideoTrackSendPipe"] })
 export const WorkerDataToCanvasRenderOpenH264Pipe = workerPipe("WorkerDataToCanvasRenderPipe", { pipes: ["WorkerVideoDataReceivePipe", "OpenH264DecoderPipe", "Yuv420ToRgbaFramePipe", "CanvasRgbaFrameDrawPipe", "WorkerOffscreenCanvasSendPipe"] })
 
-const FORCE_CANVAS_PIPELINES: Array<Pipeline> = [
-    // -- track
-    // Convert track -> video frame -> canvas, Chromium
-    { input: "videotrack", pipes: [VideoMediaStreamTrackProcessorPipe, CanvasFrameDrawPipe], renderer: MainCanvasRenderer },
-    // Convert track -> video frame (in worker) -> canvas (in worker), Safari
-    { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorCanvasPipe], renderer: OffscreenCanvasRenderer },
-    // Convert track -> video frame (in worker) -> canvas, Safari
-    { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorPipe, WorkerVideoFrameReceivePipe, CanvasFrameDrawPipe], renderer: MainCanvasRenderer },
-    // -- data
-    // Convert data -> video frame -> canvas, Default (Secure Context), Firefox
-    { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe, CanvasFrameDrawPipe], renderer: MainCanvasRenderer },
-    // Convert data -> decode and draw video frame (in worker) -> canvas, Only with OpenH264
-    { input: "data", pipes: [DepacketizeVideoPipe, WorkerVideoDataSendPipe, WorkerDataToCanvasRenderOpenH264Pipe], renderer: OffscreenCanvasRenderer },
-    // Convert data -> video frame -> canvas, Only with OpenH264
-    { input: "data", pipes: [DepacketizeVideoPipe, OpenH264DecoderPipe, Yuv420ToRgbaFramePipe, CanvasRgbaFrameDrawPipe], renderer: MainCanvasRenderer },
-]
-
 const PIPELINES: Array<Pipeline> = [
     // -- track
     // Convert track -> video element, Default (should be supported everywhere)
@@ -72,21 +55,25 @@ const PIPELINES: Array<Pipeline> = [
     // Convert track -> video frame -> canvas, Chromium
     { input: "videotrack", pipes: [VideoMediaStreamTrackProcessorPipe, CanvasFrameDrawPipe], renderer: MainCanvasRenderer },
     // Convert track -> video frame (in worker) -> canvas (in worker), Safari
-    { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorCanvasPipe, CanvasFrameDrawPipe], renderer: OffscreenCanvasRenderer },
+    { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorCanvasPipe], renderer: OffscreenCanvasRenderer },
     // Convert track -> video frame (in worker) -> canvas, Safari
     { input: "videotrack", pipes: [WorkerVideoTrackSendPipe, WorkerVideoMediaStreamProcessorPipe, WorkerVideoFrameReceivePipe], renderer: MainCanvasRenderer },
     // -- data
+    // - VideoDecoder
     // Convert data -> video frame (in worker) -> track (in worker, VideoTrackGenerator) -> video element, Safari
     { input: "data", pipes: [DepacketizeVideoPipe, WorkerVideoDataSendPipe, WorkerDataToVideoTrackPipe, WorkerVideoTrackReceivePipe], renderer: VideoElementRenderer },
     // Convert data -> video frame -> track (MediaStreamTrackGenerator) -> video element, Chromium
     { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe, VideoMediaStreamTrackGeneratorPipe], renderer: VideoElementRenderer },
     // Convert data -> video frame -> canvas, Default (Secure Context), Firefox
     { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe, CanvasFrameDrawPipe], renderer: MainCanvasRenderer },
-    // Convert data -> decode and draw video frame (in worker) -> canvas, Only with OpenH264
+    // - OpenH264 Decoder
+    // Convert data -> decode and draw video frame (in worker) -> canvas
     { input: "data", pipes: [DepacketizeVideoPipe, WorkerVideoDataSendPipe, WorkerDataToCanvasRenderOpenH264Pipe], renderer: OffscreenCanvasRenderer },
-    // Convert data -> video frame -> canvas, Only with OpenH264
+    // Convert data -> video frame -> canvas
     { input: "data", pipes: [DepacketizeVideoPipe, OpenH264DecoderPipe, Yuv420ToRgbaFramePipe, CanvasRgbaFrameDrawPipe], renderer: MainCanvasRenderer },
 ]
+
+const FORCE_CANVAS_PIPELINES: Array<Pipeline> = PIPELINES.filter(pipeline => pipeline.renderer instanceof BaseCanvasVideoRenderer)
 
 export async function buildVideoPipeline(type: "videotrack", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackVideoRenderer & VideoRenderer>>
 export async function buildVideoPipeline(type: "data", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<DataPipe & VideoRenderer>>

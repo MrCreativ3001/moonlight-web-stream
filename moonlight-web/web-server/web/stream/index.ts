@@ -117,7 +117,6 @@ export class Stream implements Component {
 
         // Configure web socket
         const wsApiHost = api.host_url.replace(/^http(s)?:/, "ws$1:")
-        // TODO: firstly try out WebTransport
         this.ws = new WebSocket(`${wsApiHost}/host/stream`)
         this.ws.addEventListener("error", this.onError.bind(this))
         this.ws.addEventListener("open", this.onWsOpen.bind(this))

@@ -20,7 +20,7 @@ export class Yuv420ToRgbaFramePipe implements Yuv420FrameVideoRenderer {
 
     constructor(base: RgbaFrameVideoRenderer) {
         this.base = base
-        this.implementationName = `yuv420_to_rgb_frame -> ${this.base.implementationName}`
+        this.implementationName = `yuv420_to_rgba_frame -> ${this.base.implementationName}`
 
         addPipePassthrough(this)
     }
@@ -61,6 +61,8 @@ export class Yuv420ToRgbaFramePipe implements Yuv420FrameVideoRenderer {
             buffer: this.buffer.subarray(0, bufferSize),
             width: frame.width,
             height: frame.height,
+            timestampMicroseconds: frame.timestampMicroseconds,
+            durationMicroseconds: frame.durationMicroseconds,
         })
     }
 

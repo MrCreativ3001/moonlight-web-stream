@@ -6,7 +6,9 @@ import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, PcmAudioPlayer } from "./index.js";
 
-export class AudioDecoderPcmPipe implements DataAudioPlayer {
+// TODO: use AudioWorklets? https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_AudioWorklet
+
+export class OpusAudioDecoderPipe implements DataAudioPlayer {
 
     static async getInfo(): Promise<PipeInfo> {
         return {
@@ -38,7 +40,7 @@ export class AudioDecoderPcmPipe implements DataAudioPlayer {
 
         this.logger = logger ?? null
 
-        this.implementationName = `audio_decode_pcm -> ${base.implementationName}`
+        this.implementationName = `opus_decode -> ${base.implementationName}`
         this.base = base
 
         addPipePassthrough(this)

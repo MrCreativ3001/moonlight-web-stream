@@ -89,6 +89,8 @@ export type Yuv420VideoFrame = {
     uvStride: number
     width: number
     height: number
+    timestampMicroseconds: number
+    durationMicroseconds: number
 }
 
 export interface Yuv420FrameVideoRenderer extends Pipe {
@@ -102,6 +104,8 @@ export type RgbaVideoFrame = {
     buffer: Uint8ClampedArray
     width: number
     height: number
+    timestampMicroseconds: number
+    durationMicroseconds: number
 }
 
 export interface RgbaFrameVideoRenderer extends Pipe {

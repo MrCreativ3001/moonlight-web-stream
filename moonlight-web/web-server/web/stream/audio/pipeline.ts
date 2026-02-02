@@ -4,7 +4,7 @@ import { AudioElementPlayer } from "./audio_element.js"
 import { AudioMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
 import { Logger } from "../log.js"
 import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
-import { AudioDecoderPcmPipe } from "./audio_decoder_pcm_pipe.js"
+import { OpusAudioDecoderPipe } from "./opus_decoder_pipe.js"
 import { AudioBufferPipe as AudioPcmBufferPipe } from "./audio_buffer_pipe.js"
 import { ContextDestinationNodeAudioPlayer } from "./audio_context_destination.js"
 import { AudioContextTrackPipe } from "./audio_context_track_pipe.js"
@@ -31,9 +31,9 @@ const PIPELINES: Array<Pipeline> = [
     // Convert data -> audio_sample -> track (MediaStreamTrackGenerator) -> audio_element, Chromium
     { input: "data", pipes: [DepacketizeAudioPipe, AudioDecoderPipe, AudioMediaStreamTrackGeneratorPipe], player: AudioElementPlayer },
     // Convert data -> audio_sample -> audio_sample_pcm -> audio_context_element -> audio_element, Safari / Firefox
-    { input: "data", pipes: [DepacketizeAudioPipe, AudioDecoderPcmPipe, AudioPcmBufferPipe, AudioContextTrackPipe], player: AudioElementPlayer },
+    { input: "data", pipes: [DepacketizeAudioPipe, OpusAudioDecoderPipe, AudioPcmBufferPipe, AudioContextTrackPipe], player: AudioElementPlayer },
     // Convert data -> audio_sample -> audio_sample_pcm -> audio_context_element -> audio_element, Safari / Firefox
-    { input: "data", pipes: [DepacketizeAudioPipe, AudioDecoderPcmPipe, AudioPcmBufferPipe], player: ContextDestinationNodeAudioPlayer },
+    { input: "data", pipes: [DepacketizeAudioPipe, OpusAudioDecoderPipe, AudioPcmBufferPipe], player: ContextDestinationNodeAudioPlayer },
 ]
 
 export function buildAudioPipeline(type: "audiotrack", settings: AudioPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackAudioPlayer & AudioPlayer>>

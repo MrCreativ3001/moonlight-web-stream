@@ -11,7 +11,7 @@ import { workerPipe } from "../pipeline/worker_pipe.js"
 import { WorkerVideoDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io.js"
 import { OffscreenCanvasRenderer } from "./offscreen_canvas.js"
 import { BaseCanvasVideoRenderer, MainCanvasRenderer } from "./canvas.js"
-import { CanvasFrameDrawPipe, CanvasRgbaFrameDrawPipe } from "./canvas_frame.js"
+import { CanvasFrameDrawPipe, CanvasRgbaFrameDrawPipe, CanvasYuv420FrameDrawPipe as CanvasYuv420FrameDrawPipe } from "./canvas_frame.js"
 import { globalObject } from "../../util.js"
 import { OpenH264DecoderPipe } from "./openh264_decoder_pipe.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
@@ -46,7 +46,7 @@ type Pipeline = { input: string, pipes: Array<PipeStatic>, renderer: VideoRender
 export const WorkerVideoMediaStreamProcessorPipe = workerPipe("WorkerVideoMediaStreamProcessorPipe", { pipes: ["WorkerVideoTrackReceivePipe", "VideoMediaStreamTrackProcessorPipe", "WorkerVideoFrameSendPipe"] })
 export const WorkerVideoMediaStreamProcessorCanvasPipe = workerPipe("WorkerVideoMediaStreamProcessorCanvasPipe", { pipes: ["WorkerVideoTrackReceivePipe", "VideoMediaStreamTrackProcessorPipe", "CanvasFrameDrawPipe", "WorkerOffscreenCanvasSendPipe"] })
 export const WorkerDataToVideoTrackPipe = workerPipe("WorkerVideoFrameToTrackPipe", { pipes: ["WorkerVideoDataReceivePipe", "VideoDecoderPipe", "VideoTrackGeneratorPipe", "WorkerVideoTrackSendPipe"] })
-export const WorkerDataToCanvasRenderOpenH264Pipe = workerPipe("WorkerDataToCanvasRenderPipe", { pipes: ["WorkerVideoDataReceivePipe", "OpenH264DecoderPipe", "Yuv420ToRgbaFramePipe", "CanvasRgbaFrameDrawPipe", "WorkerOffscreenCanvasSendPipe"] })
+export const WorkerDataToCanvasGlRenderOpenH264Pipe = workerPipe("WorkerDataToCanvasGlRenderOpenH264Pipe", { pipes: ["WorkerVideoDataReceivePipe", "OpenH264DecoderPipe", "CanvasYuv420FrameDrawPipe", "WorkerOffscreenCanvasSendPipe"] })
 
 const PIPELINES: Array<Pipeline> = [
     // -- track
@@ -67,9 +67,11 @@ const PIPELINES: Array<Pipeline> = [
     // Convert data -> video frame -> canvas, Default (Secure Context), Firefox
     { input: "data", pipes: [DepacketizeVideoPipe, VideoDecoderPipe, CanvasFrameDrawPipe], renderer: MainCanvasRenderer },
     // - OpenH264 Decoder
-    // Convert data -> decode and draw video frame (in worker) -> canvas
-    { input: "data", pipes: [DepacketizeVideoPipe, WorkerVideoDataSendPipe, WorkerDataToCanvasRenderOpenH264Pipe], renderer: OffscreenCanvasRenderer },
-    // Convert data -> video frame -> canvas
+    // Convert data -> decode -> draw using webgl (in worker) -> canvas
+    { input: "data", pipes: [DepacketizeVideoPipe, WorkerVideoDataSendPipe, WorkerDataToCanvasGlRenderOpenH264Pipe], renderer: OffscreenCanvasRenderer },
+    // Convert data -> decode -> draw using webgl -> canvas
+    { input: "data", pipes: [DepacketizeVideoPipe, OpenH264DecoderPipe, CanvasYuv420FrameDrawPipe], renderer: MainCanvasRenderer },
+    // Convert data -> decode -> draw using image -> canvas
     { input: "data", pipes: [DepacketizeVideoPipe, OpenH264DecoderPipe, Yuv420ToRgbaFramePipe, CanvasRgbaFrameDrawPipe], renderer: MainCanvasRenderer },
 ]
 

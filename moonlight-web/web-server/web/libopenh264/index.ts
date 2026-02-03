@@ -103,7 +103,16 @@ export class OpenH264Decoder {
     }
 }
 
-export function copyIntoYuv(buffers: Uint8Array[], stride: [number, number], width: number, height: number): Uint8Array {
+export function yuvBufferSize(width: number, height: number): number {
+    const ySize = width * height
+    const uvWidth = width >> 1
+    const uvHeight = height >> 1
+    const uvSize = uvWidth * uvHeight
+
+    return ySize + uvSize * 2
+}
+
+export function copyIntoYuv(buffers: Uint8Array[], stride: [number, number], width: number, height: number, outBuffer: Uint8Array) {
     const [yPlane, uPlane, vPlane] = buffers
     const [yStride, uvStride] = stride
 
@@ -111,8 +120,11 @@ export function copyIntoYuv(buffers: Uint8Array[], stride: [number, number], wid
     const uvWidth = width >> 1
     const uvHeight = height >> 1
     const uvSize = uvWidth * uvHeight
+    const bufferSize = ySize + uvSize * 2
 
-    const out = new Uint8Array(ySize + uvSize * 2)
+    if (outBuffer.length < bufferSize) {
+        throw "Yuv output buffer too small!"
+    }
 
     let offset = 0
 
@@ -120,7 +132,7 @@ export function copyIntoYuv(buffers: Uint8Array[], stride: [number, number], wid
     for (let y = 0; y < height; y++) {
         const srcStart = y * yStride
         const srcEnd = srcStart + width
-        out.set(yPlane.subarray(srcStart, srcEnd), offset)
+        outBuffer.set(yPlane.subarray(srcStart, srcEnd), offset)
         offset += width
     }
 
@@ -128,7 +140,7 @@ export function copyIntoYuv(buffers: Uint8Array[], stride: [number, number], wid
     for (let y = 0; y < uvHeight; y++) {
         const srcStart = y * uvStride
         const srcEnd = srcStart + uvWidth
-        out.set(uPlane.subarray(srcStart, srcEnd), offset)
+        outBuffer.set(uPlane.subarray(srcStart, srcEnd), offset)
         offset += uvWidth
     }
 
@@ -136,9 +148,9 @@ export function copyIntoYuv(buffers: Uint8Array[], stride: [number, number], wid
     for (let y = 0; y < uvHeight; y++) {
         const srcStart = y * uvStride
         const srcEnd = srcStart + uvWidth
-        out.set(vPlane.subarray(srcStart, srcEnd), offset)
+        outBuffer.set(vPlane.subarray(srcStart, srcEnd), offset)
         offset += uvWidth
     }
 
-    return out
+    return outBuffer
 }

@@ -75,7 +75,6 @@ export class AudioDecoderPipe implements DataAudioPlayer {
             numberOfChannels: setup.channels,
             sampleRate: setup.sampleRate
         })
-
     }
 
     private isFirstPacket = true

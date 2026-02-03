@@ -94,7 +94,7 @@ export class BaseCanvasVideoRenderer implements CanvasRenderer {
             }
         }
 
-        if (type == "webgl" && (this.context instanceof WebGLRenderingContext || this.context instanceof WebGL2RenderingContext)) {
+        if (type == "webgl" && (this.context instanceof WebGLRenderingContext)) {
             return {
                 error: null,
                 context: this.context

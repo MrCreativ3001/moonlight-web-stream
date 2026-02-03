@@ -79,7 +79,7 @@ async function onMessage(message: ToWorkerMessage) {
         }
         postMessage(response)
     } else if ("createPipeline" in message) {
-        logger.debug(`Trying to build pipeline in worker, Pipes: ${JSON.stringify(message.createPipeline.pipes)}`, { type: "fatal" })
+        logger.debug(`Trying to build pipeline in worker, Pipes: ${JSON.stringify(message.createPipeline.pipes)}`)
 
         const pipeline = message.createPipeline
 

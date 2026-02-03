@@ -264,7 +264,7 @@ export class Stream implements Component {
             let shutdownReason = await this.tryWebRTCTransport()
 
             if (shutdownReason == "failednoconnect") {
-                this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.")
+                this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.", { type: "ifErrorDescription" })
                 await this.tryWebSocketTransport()
             }
         } else if (this.settings.dataTransport == "webrtc") {
@@ -461,7 +461,7 @@ export class Stream implements Component {
 
         const videoCodecSupport = await this.createPipelines()
         if (!videoCodecSupport) {
-            this.debugLog("Failed to start stream because no video pipeline with support for the specified codec was found!", { type: "fatal" })
+            this.debugLog("Failed to start stream because no video pipeline with support for the specified codec was found!", { type: "fatalDescription" })
             return
         }
 

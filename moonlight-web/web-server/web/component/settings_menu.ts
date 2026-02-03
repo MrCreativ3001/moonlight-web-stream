@@ -331,7 +331,7 @@ export class StreamSettingsComponent implements Component {
         this.dataTransport = new SelectComponent("transport", [
             { value: "auto", name: "Auto" },
             { value: "webrtc", name: "WebRTC" },
-            { value: "websocket", name: "Web Socket (Experimental)" },
+            { value: "websocket", name: "Web Socket" },
         ], {
             displayName: "Data Transport",
             preSelectedOption: settings?.dataTransport ?? defaultSettings_.dataTransport
@@ -355,7 +355,7 @@ export class StreamSettingsComponent implements Component {
         this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
         this.pageStyle.mount(this.divElement)
 
-        this.useSelectElementPolyfill = new InputComponent("useSelectElementPolyfill", "checkbox", "Use Custom Dropdown Implementation (Experimental)", {
+        this.useSelectElementPolyfill = new InputComponent("useSelectElementPolyfill", "checkbox", "Use Custom Dropdown Implementation", {
             checked: settings?.useSelectElementPolyfill ?? defaultSettings_.useSelectElementPolyfill
         })
         this.useSelectElementPolyfill.addChangeListener(this.onSettingsChange.bind(this))

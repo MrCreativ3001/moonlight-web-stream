@@ -197,6 +197,10 @@ async fn main() {
     // Wait for termination
     connection.terminate.notified().await;
 
+    // Wait for everything to shutdown (e.g. Moonlight Client, IPC messages)
+    sleep(Duration::from_secs(10)).await;
+
+    info!("Terminating Self");
     // Exit streamer
     exit(0);
 }
@@ -320,6 +324,8 @@ impl StreamConnection {
 
                             let this = this.clone();
                             spawn(async move {
+                                this.clear_terminate_request().await;
+
                                 if let Err(err) = this.start_stream(settings).await {
                                     error!("Failed to start stream, stopping: {err}");
 
@@ -578,43 +584,47 @@ impl StreamConnection {
     }
 
     async fn on_ipc_message(self: &Arc<StreamConnection>, message: ServerIpcMessage) {
-        if let ServerIpcMessage::WebSocket(StreamClientMessage::SetTransport(transport_type)) =
-            &message
-        {
-            self.clear_terminate_request().await;
+        match &message {
+            ServerIpcMessage::WebSocket(StreamClientMessage::SetTransport(transport_type)) => {
+                self.clear_terminate_request().await;
 
-            match transport_type {
-                TransportType::WebRTC => {
-                    info!("Trying WebRTC transport");
+                match transport_type {
+                    TransportType::WebRTC => {
+                        info!("Trying WebRTC transport");
 
-                    let (sender, events) = match webrtc::new(
-                        &self.config.webrtc,
-                        self.video_frame_queue_size,
-                        self.audio_sample_queue_size,
-                    )
-                    .await
-                    {
-                        Ok(value) => value,
-                        Err(err) => {
-                            error!("Failed to start webrtc transport: {err}");
-                            return;
-                        }
-                    };
-                    self.set_transport(Box::new(sender), Box::new(events)).await;
-                }
-                TransportType::WebSocket => {
-                    info!("Trying Web Socket transport");
+                        let (sender, events) = match webrtc::new(
+                            &self.config.webrtc,
+                            self.video_frame_queue_size,
+                            self.audio_sample_queue_size,
+                        )
+                        .await
+                        {
+                            Ok(value) => value,
+                            Err(err) => {
+                                error!("Failed to start webrtc transport: {err}");
+                                return;
+                            }
+                        };
+                        self.set_transport(Box::new(sender), Box::new(events)).await;
+                    }
+                    TransportType::WebSocket => {
+                        info!("Trying Web Socket transport");
 
-                    let (sender, events) = match web_socket::new().await {
-                        Ok(value) => value,
-                        Err(err) => {
-                            error!("Failed to start web socket transport: {err}");
-                            return;
-                        }
-                    };
-                    self.set_transport(Box::new(sender), Box::new(events)).await;
+                        let (sender, events) = match web_socket::new().await {
+                            Ok(value) => value,
+                            Err(err) => {
+                                error!("Failed to start web socket transport: {err}");
+                                return;
+                            }
+                        };
+                        self.set_transport(Box::new(sender), Box::new(events)).await;
+                    }
                 }
             }
+            ServerIpcMessage::Stop => {
+                self.stop().await;
+            }
+            _ => {}
         }
 
         let mut sender = self.transport_sender.lock().await;
@@ -777,6 +787,8 @@ impl StreamConnection {
 
     // -- Termination
     async fn request_terminate(self: &Arc<Self>) {
+        debug!("Marking for termination");
+
         let this = self.clone();
 
         let mut terminate_request = self.timeout_terminate_request.lock().await;
@@ -799,6 +811,8 @@ impl StreamConnection {
         });
     }
     async fn clear_terminate_request(&self) {
+        debug!("Clearing termination timeout");
+
         let mut request = self.timeout_terminate_request.lock().await;
 
         *request = None;
@@ -836,11 +850,7 @@ impl StreamConnection {
         let mut ipc_sender = self.ipc_sender.clone();
         ipc_sender.send(StreamerIpcMessage::Stop).await;
 
-        // Wait for ipc message before stop
-        sleep(Duration::from_millis(200)).await;
-
-        // TODO: should we terminate or wait for a new retry?
-        info!("Terminating Self");
+        debug!("Notifying termination");
         self.terminate.notify_waiters();
     }
 }

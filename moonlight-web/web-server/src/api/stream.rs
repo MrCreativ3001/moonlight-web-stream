@@ -1,4 +1,4 @@
-use std::process::Stdio;
+use std::{process::Stdio, time::Duration};
 
 use actix_web::{
     Error, HttpRequest, HttpResponse, get, post, rt as actix_rt,
@@ -14,7 +14,7 @@ use common::{
     serialize_json,
 };
 use log::{debug, error, info, warn};
-use tokio::{process::Command, spawn};
+use tokio::{process::Command, spawn, time::sleep};
 
 use crate::app::{
     App, AppError,
@@ -255,40 +255,54 @@ pub async fn start_host(
         .await;
 
         // Redirect ipc message into ws
-        spawn(async move {
-            while let Some(message) = ipc_receiver.recv().await {
-                match message {
-                    StreamerIpcMessage::WebSocket(message) => {
-                        if let Err(Closed) = send_ws_message(&mut session, message).await {
-                            warn!(
-                                "[Ipc]: Tried to send a ws message (text) but the socket is already closed"
-                            );
+        spawn({
+            let mut ipc_sender = ipc_sender.clone();
+            async move {
+                let mut warned_closed = false;
+                while let Some(message) = ipc_receiver.recv().await {
+                    match message {
+                        StreamerIpcMessage::WebSocket(message) => {
+                            if let Err(Closed) = send_ws_message(&mut session, message).await
+                                && !warned_closed
+                            {
+                                warn!(
+                                    "[Ipc]: Tried to send a ws message (text) but the socket is already closed"
+                                );
+                                ipc_sender.send(ServerIpcMessage::Stop).await;
+                                warned_closed = true;
+                            }
                         }
-                    }
-                    StreamerIpcMessage::WebSocketTransport(data) => {
-                        if let Err(Closed) = session.binary(data).await {
-                            warn!(
-                                "[Ipc]: Tried to send a ws message (binary) but the socket is already closed"
-                            );
+                        StreamerIpcMessage::WebSocketTransport(data) => {
+                            if let Err(Closed) = session.binary(data).await
+                                && !warned_closed
+                            {
+                                warn!(
+                                    "[Ipc]: Tried to send a ws message (binary) but the socket is already closed"
+                                );
+                                ipc_sender.send(ServerIpcMessage::Stop).await;
+                                warned_closed = true;
+                            }
+                        }
+                        StreamerIpcMessage::Stop => {
+                            debug!("[Ipc]: ipc receiver stopped by streamer");
                             break;
                         }
                     }
-                    StreamerIpcMessage::Stop => {
-                        debug!("[Ipc]: ipc receiver stopped by streamer");
-                        break;
-                    }
                 }
-            }
-            info!("[Ipc]: ipc receiver is closed");
+                info!("[Ipc]: ipc receiver is closed");
 
-            // close the websocket when the streamer crashed / disconnected / whatever
-            if let Err(err) = session.close(None).await {
-                warn!("failed to close streamer web socket: {err}");
-            }
+                // Wait for the child to shutdown
+                sleep(Duration::from_secs(10)).await;
 
-            // kill the streamer
-            if let Err(err) = child.kill().await {
-                warn!("failed to kill streamer child: {err}");
+                // close the websocket when the streamer crashed / disconnected / whatever
+                if let Err(err) = session.close(None).await {
+                    warn!("failed to close streamer web socket: {err}");
+                }
+
+                // kill the streamer
+                if let Err(err) = child.kill().await {
+                    warn!("failed to kill streamer child: {err}");
+                }
             }
         });
 

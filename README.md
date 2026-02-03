@@ -16,6 +16,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
   - [Configuring https](#configuring-https)
   - [Proxying via Apache 2](#proxying-via-apache-2)
   - [Authentication with a Reverse Proxy](#authentication-using-a-reverse-proxy)
+  - [Using Web Socket Transport](#using-websocket-transport)
 - [Config](#config)
 - [Migrating to v2](#migrating-to-v2)
 - [Contributors](#contributors)
@@ -53,14 +54,25 @@ You can install it [manually](#install-manually) or with [docker](docker/README.
 
 ### Streaming over the Internet
 
-1. Forward the web server port on your router (default is 8080, http is 80, https is 443). You can see this in the config as the [`bind_address`](#bind-address)
+1. Forward the web server port on your router (default is `8080`; HTTP is `80`, HTTPS is `443`).  
+   You can configure this using the [`bind_address`](#bind-address) option.
 
-When in a local network the WebRTC Peers will negotatiate without any problems.
-When you want to play to over the Internet the STUN servers included by default will try to negotiate the peers directly.
-This works for most of the networks, but if your network is very restrictive it might not work.
-If this is the case try to configure one or both of these options:
-1. The most reliable and recommended way is to use a [turn server](#configure-a-turn-server)
-2. [Forward the ports directly](#port-forward) (this might not work if the firewall blocks udp)
+When running on a **local network**, WebRTC peers usually negotiate connections without any issues.
+
+When streaming **over the Internet**, the built-in STUN servers will attempt to establish a direct peer-to-peer WebRTC connection. This works for most home networks, but may fail in more restrictive environments (for example, corporate firewalls or strict NAT configurations).
+
+If a direct WebRTC connection cannot be established, you have a few options:
+
+1. **Use a TURN server (recommended)**  
+   Configure a [TURN server](#configure-a-turn-server) to reliably relay WebRTC traffic when direct peer-to-peer connections are blocked.
+
+2. **Forward ports directly**  
+   You can [forward the required ports](#port-forward) on your router.  
+   Note that this may still fail if the firewall blocks UDP traffic.
+
+3. **Use WebSocket transport as a fallback**  
+   WebSockets use standard HTTP/HTTPS ports and are often allowed even in very restrictive networks, making them a good fallback option when WebRTC negotiation fails. See [Using WebSocket Transport](#using-websocket-transport).
+
 
 #### Configure a turn server
 1. Host and configure a turn server like [coturn](https://github.com/coturn/coturn) or use other services to host one for you.
@@ -222,6 +234,24 @@ By default the [auto create missing user](#forwarded-header-auto-create-missing-
     }
 }
 ```
+
+### Using WebSocket Transport
+
+In some networks (for example, corporate or highly restricted environments), establishing a WebRTC connection can be difficult or may not work at all.
+To support these cases, you can stream data over **WebSockets** using the same HTTP or HTTPS port that your server already exposes.
+
+There are a few important things to be aware of when using WebSockets for streaming:
+
+- The browser’s `VideoDecoder` API is only available when your site is served over **HTTPS** (a secure context).
+
+- If your application is **not** running in a secure context but you still want to stream using WebSockets, you’ll need to use a software-based decoder:
+  - Build a custom version of [openh264](https://github.com/MrCreativ3001/openh264-js) for the browser.
+  - This custom build allows video frames to be decoded directly in the browser without relying on the `VideoDecoder` API.
+  - After building, copy the generated `decoder.js` file to:
+    ```
+    static/libopenh264/decoder.js
+    ```
+  - The decoder will be detected and used automatically.
 
 ## Config
 The config file is under `server/config.json` relative to the executable.

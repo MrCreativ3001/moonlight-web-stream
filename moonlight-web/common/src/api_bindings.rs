@@ -425,6 +425,7 @@ pub struct StreamCapabilities {
 #[ts(rename_all = "camelCase")]
 pub enum LogMessageType {
     Fatal,
+    IfErrorDescription,
     FatalDescription,
     Recover,
     InformError,

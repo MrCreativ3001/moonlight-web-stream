@@ -77,6 +77,8 @@ openssl = "0.10.73"
 openssl-src = "300.5.4+3.5.4"
 openssl-sys = "0.9.111"
 pem = "3.0.5"
+rustls = { version = "0.23.36", default-features = false }
+rustls-openssl = "0.3.0"
 
 # Serialization
 serde = { version = "1.0.219", features = ["derive"] }

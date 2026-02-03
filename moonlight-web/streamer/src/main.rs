@@ -145,6 +145,10 @@ async fn main() {
     )
     .expect("failed to init logger");
 
+    rustls_openssl::default_provider()
+        .install_default()
+        .expect("Failed to setup crypto provider");
+
     // Send stage
     ipc_sender
         .send(StreamerIpcMessage::WebSocket(

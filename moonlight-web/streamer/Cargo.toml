@@ -28,5 +28,8 @@ num-traits = { workspace = true }
 log = { workspace = true }
 simplelog = { workspace = true }
 
+rustls = { workspace = true, features = ["tls12", "std"] }
+rustls-openssl = "0.3.0"
+
 [lints]
 workspace = true

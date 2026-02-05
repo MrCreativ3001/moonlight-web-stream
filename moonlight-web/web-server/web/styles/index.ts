@@ -2,8 +2,7 @@ import { defaultSettings, getLocalStreamSettings } from "../component/settings_m
 
 export type PageStyle = "standard" | "old" | "moonlight"
 
-let currentStyle: null | PageStyle = null
-
+let currentStyle: PageStyle | null = null
 let styleLink = document.getElementById("style") as HTMLLinkElement
 
 export function setStyle(style: PageStyle) {
@@ -13,14 +12,13 @@ export function setStyle(style: PageStyle) {
 
     currentStyle = style
 
-    const file = `styles/${style}.css`
-    if (styleLink.href !== file) {
-        styleLink.href = file
+    const file = `${style}.css`
+    if (!styleLink.href.endsWith(file)) {
+        styleLink.href = `styles/${file}`
     }
 }
 
 export function getStyle(): PageStyle {
-    // Style is set at the bottom of this page so it cannot be null
     return currentStyle as PageStyle
 }
 

@@ -524,7 +524,7 @@ input[type=number] {
     background-color: var(--ml-topbar-bg);
 }
 
-.top-line > h1 {
+.top-line>h1 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 500;
@@ -682,7 +682,7 @@ input[type=number] {
     border-radius: 8px;
 }
 
-.host-element > div {
+.host-element>div {
     position: relative;
     display: flex;
     flex-direction: column;
@@ -855,12 +855,16 @@ canvas.video-stream {
 
 /* Admin */
 .user-button {
+    background-color: transparent;
     background-image: url("../resources/new/user.svg");
     background-position: center;
     background-repeat: no-repeat;
-    background-size: 60px;
-    width: 70px;
-    height: 70px;
+    background-size: var(--ml-topbar-icon-size);
+    width: var(--ml-topbar-icon-button);
+    height: var(--ml-topbar-icon-button);
+    border: none;
+    padding: 0;
+    margin: 0;
 }
 
 .user-panel {

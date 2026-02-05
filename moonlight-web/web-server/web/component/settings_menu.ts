@@ -347,7 +347,7 @@ export class StreamSettingsComponent implements Component {
 
         this.pageStyle = new SelectComponent("pageStyle", [
             { value: "standard", name: "Standard" },
-            { value: "old", name: "Old" }
+            { value: "moonlight", name: "Moonlight" },
         ], {
             displayName: "Style",
             preSelectedOption: settings?.pageStyle ?? defaultSettings_.pageStyle

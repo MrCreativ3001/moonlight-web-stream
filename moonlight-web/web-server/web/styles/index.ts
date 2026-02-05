@@ -1,6 +1,6 @@
 import { defaultSettings, getLocalStreamSettings } from "../component/settings_menu.js"
 
-export type PageStyle = "standard" | "old"
+export type PageStyle = "standard" | "old" | "moonlight"
 
 let currentStyle: null | PageStyle = null
 
@@ -14,10 +14,11 @@ export function setStyle(style: PageStyle) {
     currentStyle = style
 
     const file = `styles/${style}.css`
-    if (styleLink.href != file) {
+    if (styleLink.href !== file) {
         styleLink.href = file
     }
 }
+
 export function getStyle(): PageStyle {
     // Style is set at the bottom of this page so it cannot be null
     return currentStyle as PageStyle

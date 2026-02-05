@@ -1,25 +1,30 @@
 import { defaultSettings, getLocalStreamSettings } from "../component/settings_menu.js"
 
-export type PageStyle = "standard" | "old"
+export type PageStyle = "standard" | "old" | "moonlight"
 
-let currentStyle: null | PageStyle = null
+let currentStyle: PageStyle | null = null
+const styleLink = document.getElementById("style") as HTMLLinkElement
 
-let styleLink = document.getElementById("style") as HTMLLinkElement
+function toAbsolute(path: string) {
+    return new URL(path, document.baseURI).href
+}
 
 export function setStyle(style: PageStyle) {
     if (!currentStyle) {
         document.head.appendChild(styleLink)
     }
 
-    currentStyle = style
+    const path = `styles/${style}.css`
+    const absolute = toAbsolute(path)
 
-    const file = `styles/${style}.css`
-    if (styleLink.href != file) {
-        styleLink.href = file
+    if (styleLink.href !== absolute) {
+        styleLink.href = absolute
     }
+
+    currentStyle = style
 }
+
 export function getStyle(): PageStyle {
-    // Style is set at the bottom of this page so it cannot be null
     return currentStyle as PageStyle
 }
 

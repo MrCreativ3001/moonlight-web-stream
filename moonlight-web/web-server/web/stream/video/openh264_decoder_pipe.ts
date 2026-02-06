@@ -1,4 +1,5 @@
 import { OpenH264Decoder } from "../../libopenh264/index.js";
+import { Logger } from "../log.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { emptyVideoCodecs } from "../video.js";
@@ -28,6 +29,8 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
 
     readonly implementationName: string
 
+    private logger: Logger
+
     private isReady = false
     private onReady: Promise<void>
 
@@ -36,7 +39,9 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
 
     private errored = false
 
-    constructor(base: Yuv420FrameVideoRenderer) {
+    constructor(base: Yuv420FrameVideoRenderer, logger: Logger) {
+        this.logger = logger;
+
         this.implementationName = `openh264_decode -> ${base.implementationName}`
         this.base = base
 
@@ -79,8 +84,9 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
 
         try {
             this.decoder?.decode(new Uint8Array(unit.data))
-        } catch (e) {
+        } catch (e: any) {
             console.error(e)
+            this.logger.debug(`Error whilst decoding frame using h264: ${"toString" in e && typeof e.toString == "function" ? e.toString() : e}`, { type: "fatalDescription" })
             this.errored = true
         }
     }

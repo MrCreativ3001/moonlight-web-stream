@@ -29,7 +29,7 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
 
     readonly implementationName: string
 
-    private logger: Logger
+    private logger: Logger | null = null
 
     private isReady = false
     private onReady: Promise<void>
@@ -39,8 +39,8 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
 
     private errored = false
 
-    constructor(base: Yuv420FrameVideoRenderer, logger: Logger) {
-        this.logger = logger;
+    constructor(base: Yuv420FrameVideoRenderer, logger?: Logger) {
+        this.logger = logger ?? null
 
         this.implementationName = `openh264_decode -> ${base.implementationName}`
         this.base = base
@@ -86,7 +86,7 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
             this.decoder?.decode(new Uint8Array(unit.data))
         } catch (e: any) {
             console.error(e)
-            this.logger.debug(`Error whilst decoding frame using h264: ${"toString" in e && typeof e.toString == "function" ? e.toString() : e}`, { type: "fatalDescription" })
+            this.logger?.debug(`Error whilst decoding frame using h264: ${"toString" in e && typeof e.toString == "function" ? e.toString() : e}`, { type: "fatalDescription" })
             this.errored = true
         }
     }

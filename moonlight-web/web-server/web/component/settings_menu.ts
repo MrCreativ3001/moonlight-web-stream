@@ -60,6 +60,12 @@ export function getLocalStreamSettings(): Settings | null {
     } catch (e) {
         localStorage.removeItem("mlSettings")
     }
+
+    // Migration
+    if (settings?.pageStyle == "old") {
+        settings.pageStyle = "moonlight"
+    }
+
     return settings
 }
 export function setLocalStreamSettings(settings?: Settings) {
@@ -331,7 +337,7 @@ export class StreamSettingsComponent implements Component {
         this.dataTransport = new SelectComponent("transport", [
             { value: "auto", name: "Auto" },
             { value: "webrtc", name: "WebRTC" },
-            { value: "websocket", name: "Web Socket" },
+            { value: "websocket", name: "Web Socket (Experimental)" },
         ], {
             displayName: "Data Transport",
             preSelectedOption: settings?.dataTransport ?? defaultSettings_.dataTransport

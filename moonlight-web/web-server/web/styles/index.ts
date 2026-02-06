@@ -1,5 +1,6 @@
 import { defaultSettings, getLocalStreamSettings } from "../component/settings_menu.js"
 
+// old doesn't exist anymore and is always replaced with moonlight when loading the settings
 export type PageStyle = "standard" | "old" | "moonlight"
 
 let currentStyle: PageStyle | null = null

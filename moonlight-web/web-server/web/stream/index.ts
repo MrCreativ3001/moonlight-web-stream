@@ -263,9 +263,7 @@ export class Stream implements Component {
         if (this.settings.dataTransport == "auto") {
             let shutdownReason = await this.tryWebRTCTransport()
 
-            const isSecureContext = "isSecureContext" in window && window.isSecureContext
-
-            if (shutdownReason == "failednoconnect" && isSecureContext) {
+            if (shutdownReason == "failednoconnect") {
                 this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.", { type: "ifErrorDescription" })
                 await this.tryWebSocketTransport()
             }

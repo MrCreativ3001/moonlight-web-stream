@@ -74,6 +74,12 @@ export interface TrackVideoRenderer extends Pipe {
     setTrack(track: MediaStreamTrack): void
 }
 
+export interface UrlVideoRenderer extends Pipe {
+    // static readonly type = "videourl"
+
+    setUrl(src: string): void
+}
+
 export interface FrameVideoRenderer extends Pipe {
     // static readonly type = "videoframe"
 

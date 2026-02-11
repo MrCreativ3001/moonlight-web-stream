@@ -17,6 +17,7 @@ import { VideoTrackGeneratorPipe } from "../video/video_track_generator.js";
 import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerOffscreenCanvasSendPipe, WorkerVideoDataReceivePipe, WorkerVideoDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "./worker_io.js";
 import { StatValue } from "../stats.js";
 import { Yuv420ToRgbaFramePipe } from "../video/video_frame.js";
+import { MediaSourceDecoder } from "../video/media_source_decoder.js";
 
 export interface Pipe {
     readonly implementationName: string
@@ -144,6 +145,7 @@ export function pipes(): Array<PipeStatic> {
         VideoDecoderPipe,
         OpenH264DecoderPipe,
         Yuv420ToRgbaFramePipe,
+        MediaSourceDecoder,
         VideoTrackGeneratorPipe,
         CanvasFrameDrawPipe,
         CanvasYuv420FrameDrawPipe,

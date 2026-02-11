@@ -1,4 +1,4 @@
-import { VideoElementRenderer } from "./video_element.js"
+import { UrlVideoElementRenderer, VideoElementRenderer } from "./video_element.js"
 import { VideoMediaStreamTrackProcessorPipe } from "./media_stream_track_processor_pipe.js"
 import { TrackVideoRenderer, VideoRenderer } from "./index.js"
 import { VideoDecoderPipe } from "./video_decoder_pipe.js"
@@ -16,12 +16,14 @@ import { globalObject } from "../../util.js"
 import { OpenH264DecoderPipe } from "./openh264_decoder_pipe.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
 import { Yuv420ToRgbaFramePipe } from "./video_frame.js"
+import { MediaSourceDecoder } from "./media_source_decoder.js"
 
 // -- Gather information about the browser
 interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic { }
 
 const VIDEO_RENDERERS: Array<VideoRendererStatic> = [
     VideoElementRenderer,
+    UrlVideoElementRenderer,
     MainCanvasRenderer,
     OffscreenCanvasRenderer,
 ]
@@ -73,6 +75,9 @@ const PIPELINES: Array<Pipeline> = [
     { input: "data", pipes: [DepacketizeVideoPipe, OpenH264DecoderPipe, CanvasYuv420FrameDrawPipe], renderer: MainCanvasRenderer },
     // Convert data -> decode -> draw using image -> canvas
     { input: "data", pipes: [DepacketizeVideoPipe, OpenH264DecoderPipe, Yuv420ToRgbaFramePipe, CanvasRgbaFrameDrawPipe], renderer: MainCanvasRenderer },
+    // - MediaSourceDecoder
+    // Convert data -> MediaSourceDecoder -> video element, Default (should be supported everywhere)
+    { input: "data", pipes: [DepacketizeVideoPipe, MediaSourceDecoder], renderer: UrlVideoElementRenderer },
 ]
 
 const FORCE_CANVAS_PIPELINES: Array<Pipeline> = PIPELINES.filter(pipeline => pipeline.renderer.name.includes("Canvas"))

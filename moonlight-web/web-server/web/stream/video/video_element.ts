@@ -2,7 +2,7 @@ import { globalObject } from "../../util.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
-import { getStreamRectCorrected, TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index.js";
+import { getStreamRectCorrected, TrackVideoRenderer, UrlVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index.js";
 
 const VIDEO_DECODER_CODECS: Record<keyof VideoCodecSupport, string> = {
     "H264": "avc1.42E01E",
@@ -141,6 +141,97 @@ export class VideoElementRenderer implements TrackVideoRenderer, VideoRenderer {
 
     setHdrMode(enabled: boolean): void {
         this.hdrEnabled = enabled
+        // Request HDR display mode if supported
+        if (enabled && "requestHDR" in this.videoElement) {
+            try {
+                (this.videoElement as any).requestHDR()
+            } catch (err) {
+                console.warn("Failed to request HDR mode:", err)
+            }
+        }
+        // Set color space attributes for HDR
+        if (enabled) {
+            this.videoElement.setAttribute("color-gamut", "rec2020")
+            this.videoElement.setAttribute("transfer-function", "pq")
+        } else {
+            this.videoElement.removeAttribute("color-gamut")
+            this.videoElement.removeAttribute("transfer-function")
+        }
+    }
+}
+
+export class UrlVideoElementRenderer implements UrlVideoRenderer, VideoRenderer {
+    static readonly type = "videourl"
+
+    static async getInfo(): Promise<PipeInfo> {
+        const supported = "HTMLVideoElement" in globalObject() && "src" in HTMLVideoElement.prototype
+
+        return {
+            environmentSupported: supported,
+            supportedVideoCodecs: supported ? detectCodecs() : emptyVideoCodecs()
+        }
+    }
+
+    readonly implementationName: string = "video_element"
+
+    private videoElement = document.createElement("video")
+
+    private size: [number, number] | null = null
+
+    constructor() {
+        this.videoElement.classList.add("video-stream")
+        this.videoElement.preload = "none"
+        this.videoElement.controls = false
+        this.videoElement.autoplay = true
+        this.videoElement.disablePictureInPicture = true
+        this.videoElement.playsInline = true
+        this.videoElement.muted = true
+
+        addPipePassthrough(this)
+    }
+
+    async setup(setup: VideoRendererSetup) {
+        this.size = [setup.width, setup.height]
+    }
+    cleanup(): void { }
+
+    setUrl(src: string): void {
+        this.videoElement.src = src
+    }
+
+    pollRequestIdr(): boolean {
+        return false
+    }
+
+    mount(parent: HTMLElement): void {
+        parent.appendChild(this.videoElement)
+    }
+    unmount(parent: HTMLElement): void {
+        parent.removeChild(this.videoElement)
+    }
+
+    onUserInteraction(): void {
+        if (this.videoElement.paused) {
+            this.videoElement.play().then(() => {
+                // Playing
+            }).catch(error => {
+                console.error(`Failed to play videoElement: ${error.message || error}`);
+            })
+        }
+    }
+    getStreamRect(): DOMRect {
+        if (!this.size) {
+            return new DOMRect()
+        }
+
+        return getStreamRectCorrected(this.videoElement.getBoundingClientRect(), this.size)
+    }
+
+    getBase(): Pipe | null {
+        return null
+    }
+
+    setHdrMode(enabled: boolean): void {
         // Request HDR display mode if supported
         if (enabled && "requestHDR" in this.videoElement) {
             try {

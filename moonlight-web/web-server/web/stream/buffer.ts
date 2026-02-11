@@ -17,8 +17,10 @@ export class ByteBuffer {
 
         if (value instanceof Uint8Array) {
             this.buffer = value
+            this.limit = value.length
         } else {
             this.buffer = new Uint8Array(value ?? 0)
+            this.limit = value ?? 0
         }
     }
 
@@ -28,42 +30,139 @@ export class ByteBuffer {
             throw "failed to read over the limit"
         }
     }
+    private useDataView(length: number, reading: boolean, index?: number): DataView {
+        let position = this.position
+        if (index != null) {
+            position = index
+        }
 
-    putU8Array(data: Array<number> | Uint8Array) {
-        this.buffer.set(data, this.position)
-        this.bytesUsed(data.length, false)
+        const maxPosition = position + length
+        if (maxPosition > this.buffer.length) {
+            throw "failed to write over the capacity"
+        }
+
+        if (maxPosition > this.limit) {
+            this.limit = maxPosition
+        }
+
+        if (index == null) {
+            this.bytesUsed(length, reading)
+        }
+        return new DataView(this.buffer.buffer, position, length)
     }
 
-    putU8(data: number) {
-        const view = new DataView(this.buffer.buffer)
-        view.setUint8(this.position, data)
-        this.bytesUsed(1, false)
+    putU8Array(data: Uint8Array, index?: number) {
+        let position = this.position
+        if (index) {
+            position = index
+        }
+
+        const maxPosition = position + data.length
+        if (maxPosition > this.buffer.length) {
+            throw "failed to write over the capacity"
+        }
+
+        if (maxPosition > this.limit) {
+            this.limit = maxPosition
+        }
+
+        this.buffer.set(data, position)
+
+        if (index == null) {
+            this.bytesUsed(data.length, false)
+        }
+    }
+    putU16Array(data: Uint16Array, index?: number) {
+        let position = index ?? this.position
+
+        const maxPosition = position + data.length * 2
+        if (maxPosition > this.buffer.length) {
+            throw "failed to write over the capacity"
+        }
+
+        for (let i = 0; i < data.length; i++) {
+            const view = new DataView(this.buffer.buffer, position + i * 2, 2)
+            view.setUint16(0, data[i], this.littleEndian)
+        }
+
+        if (maxPosition > this.limit) {
+            this.limit = maxPosition
+        }
+
+        if (index == null) {
+            this.bytesUsed(data.length * 2, false)
+        }
+    }
+
+    putU32Array(data: Uint32Array, index?: number) {
+        let position = index ?? this.position
+
+        const maxPosition = position + data.length * 4
+        if (maxPosition > this.buffer.length) {
+            throw "failed to write over the capacity"
+        }
+
+        for (let i = 0; i < data.length; i++) {
+            const view = new DataView(this.buffer.buffer, position + i * 4, 4)
+            view.setUint32(0, data[i], this.littleEndian)
+        }
+
+        if (maxPosition > this.limit) {
+            this.limit = maxPosition
+        }
+
+        if (index == null) {
+            this.bytesUsed(data.length * 4, false)
+        }
+    }
+
+
+    putU8(data: number, index?: number) {
+        const view = this.useDataView(1, false, index)
+        view.setUint8(0, data)
     }
     putBool(data: boolean) {
         this.putU8(data ? 1 : 0)
     }
 
-    putI8(data: number) {
-        const view = new DataView(this.buffer.buffer)
-        view.setInt8(this.position, data)
-        this.bytesUsed(1, false)
+    putI8(data: number, index?: number) {
+        const view = this.useDataView(1, false, index)
+        view.setInt8(0, data)
     }
 
-    putU16(data: number) {
-        const view = new DataView(this.buffer.buffer)
-        view.setUint16(this.position, data, this.littleEndian)
-        this.bytesUsed(2, false)
+    putU16(data: number, index?: number) {
+        const view = this.useDataView(2, false, index)
+        view.setUint16(0, data, this.littleEndian)
     }
-    putI16(data: number) {
-        const view = new DataView(this.buffer.buffer)
-        view.setInt16(this.position, data, this.littleEndian)
-        this.bytesUsed(2, false)
+    putI16(data: number, index?: number) {
+        const view = this.useDataView(2, false, index)
+        view.setInt16(0, data, this.littleEndian)
     }
 
-    putU32(data: number) {
-        const view = new DataView(this.buffer.buffer)
-        view.setUint32(this.position, data, this.littleEndian)
-        this.bytesUsed(4, false)
+    putU32(data: number, index?: number) {
+        const view = this.useDataView(4, false, index)
+        view.setUint32(0, data, this.littleEndian)
+    }
+    putI32(data: number, index?: number) {
+        const view = this.useDataView(4, false, index)
+        view.setInt32(0, data)
+    }
+
+    putU64(data: number, index?: number) {
+        const hi = Math.floor(data / 0x100000000)   // upper 32 bits
+        const lo = data >>> 0                       // lower 32 bits
+
+        const view = this.useDataView(8, false, index)
+
+        if (this.littleEndian) {
+            view.setUint32(0, lo, true)
+            view.setUint32(4, hi, true)
+        } else {
+            view.setUint32(0, hi, false)
+            view.setUint32(4, lo, false)
+        }
+
+        this.bytesUsed(8, false)
     }
 
     putUtf8Raw(text: string) {

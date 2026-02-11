@@ -144,7 +144,14 @@ impl JsonStorage {
         let json = match serde_json::from_str::<Json>(&text) {
             Ok(value) => value,
             Err(err) => {
-                return Err(anyhow!("Failed to deserialize data as json: {err:?}"));
+                let error = serde_json::from_str::<V2>(&text)
+                    .err()
+                    .map(|x| x.to_string())
+                    .unwrap_or("none".to_string());
+
+                return Err(anyhow!(
+                    "Failed to deserialize data as json: {err}, Version specific error: {error}"
+                ));
             }
         };
 

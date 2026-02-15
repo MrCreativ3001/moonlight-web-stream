@@ -65,7 +65,7 @@ roxmltree = { version = "0.20.0" }
 form_urlencoded = { version = "1.2.1" }
 
 # WebRTC
-webrtc = "0.14.0"
+webrtc = "0.17.1"
 
 # Actix
 actix-web = { version = "4.11.0" }

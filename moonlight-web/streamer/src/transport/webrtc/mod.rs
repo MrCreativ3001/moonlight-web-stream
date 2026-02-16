@@ -448,14 +448,15 @@ impl WebRtcInner {
                 };
 
                 let remote_ty = description.sdp_type;
-                if let Err(err) = self.peer.set_remote_description(description).await {
-                    error!("[Signaling]: failed to set remote description: {err:?}");
-                    return;
-                }
 
-                // Send an answer (local description) if we got an offer
                 if remote_ty == RTCSdpType::Offer {
-                    self.send_answer().await;
+                    // Send an offer if we got an offer because we want to make the offer
+                    // This makes negotiation more stable and consistant
+                    self.send_offer().await;
+                } else {
+                    if let Err(err) = self.peer.set_remote_description(description).await {
+                        error!("[Signaling]: failed to set remote description: {err:?}");
+                    }
                 }
             }
             StreamClientMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(description)) => {

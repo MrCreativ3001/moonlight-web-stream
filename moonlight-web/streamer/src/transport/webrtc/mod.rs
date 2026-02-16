@@ -299,6 +299,7 @@ impl WebRtcInner {
     }
 
     // -- Handle Signaling
+    #[allow(unused)]
     async fn send_answer(&self) -> bool {
         let local_description = match self.peer.create_answer(None).await {
             Err(err) => {

@@ -1,11 +1,10 @@
 use std::{
-    os::raw::{c_char, c_int, c_uchar, c_ushort},
+    os::raw::{c_int, c_uchar, c_ushort},
     sync::Mutex,
 };
 
 use moonlight_common_sys::limelight::_CONNECTION_LISTENER_CALLBACKS;
 use num::FromPrimitive;
-use printf_compat::{format, output};
 
 use crate::stream::bindings::{ConnectionStatus, Stage};
 
@@ -155,14 +154,10 @@ unsafe extern "C" fn connection_status_update(status: c_int) {
     });
 }
 
-unsafe extern "C" fn log_message(message: *const c_char, args: ...) {
-    global_listener(|listener| unsafe {
-        let mut text = String::new();
-        format(message, args, output::fmt_write(&mut text));
-
-        listener.log_message(&text);
-    });
-}
+// NOTE: The log_message callback requires C variadic arguments (c_variadic feature),
+// which is still unstable in Rust. Setting logMessage to None in raw_callbacks() until
+// c_variadic is stabilized. The ConnectionListener::log_message trait method still exists
+// for forward compatibility.
 
 unsafe extern "C" fn set_hdr_mode(hdr_enabled: bool) {
     global_listener(|listener| {
@@ -235,7 +230,7 @@ pub(crate) unsafe fn raw_callbacks() -> _CONNECTION_LISTENER_CALLBACKS {
         stageFailed: Some(stage_failed),
         connectionStarted: Some(connection_started),
         connectionTerminated: Some(connection_terminated),
-        logMessage: Some(log_message),
+        logMessage: None, // requires c_variadic (unstable)
         rumble: Some(controller_rumble),
         connectionStatusUpdate: Some(connection_status_update),
         setHdrMode: Some(set_hdr_mode),

@@ -29,7 +29,6 @@ moonlight-common-sys = { path = "./moonlight-common-sys" }
 # Log
 log = "0.4.28"
 simplelog = "0.12.2"
-printf-compat = { version = "0.3.0" }
 
 # Cli
 clap = { version = "4.5.53" }

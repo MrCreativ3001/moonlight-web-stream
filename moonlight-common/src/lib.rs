@@ -1,6 +1,3 @@
-// Sadly moonlight log message requires variadic args
-#![feature(c_variadic)]
-
 use std::{
     ffi::NulError,
     fmt::{Debug, Display},

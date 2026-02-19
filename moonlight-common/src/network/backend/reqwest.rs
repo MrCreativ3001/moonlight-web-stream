@@ -2,7 +2,7 @@ use bytes::Bytes;
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
 use thiserror::Error;
-use tracing::{Level, event, instrument};
+use tracing::instrument;
 use url::{ParseError, Url};
 
 use crate::network::{

@@ -1,6 +1,11 @@
 use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
-use std::{fs::OpenOptions, io::ErrorKind, path::PathBuf, str::FromStr};
+use std::{
+    fs::OpenOptions,
+    io::{self, ErrorKind, IsTerminal},
+    path::PathBuf,
+    str::FromStr,
+};
 use tokio::fs::{self};
 use tracing::level_filters::LevelFilter;
 use tracing_actix_web::TracingLogger;
@@ -115,7 +120,10 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
                 .expect("failed to add mio tracing directive"),
         );
 
-    let stdout_layer = fmt::layer().with_target(false);
+    #[cfg(windows)]
+    enable_ansi_windows();
+
+    let stdout_layer = fmt::layer().with_ansi(io::stdout().is_terminal());
 
     let (file_layer, guard) = if let Some(log_file) = &config.log.file_path {
         let file = OpenOptions::new()
@@ -140,6 +148,23 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
         .init();
 
     guard
+}
+
+#[cfg(windows)]
+fn enable_ansi_windows() {
+    use std::io;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::Console::{
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetConsoleMode, SetConsoleMode,
+    };
+
+    unsafe {
+        let handle = io::stdout().as_raw_handle();
+        let mut mode = 0;
+        if GetConsoleMode(handle as _, &mut mode) != 0 {
+            SetConsoleMode(handle as _, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        }
+    }
 }
 
 async fn start(config: Config) -> Result<(), anyhow::Error> {

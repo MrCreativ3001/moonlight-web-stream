@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Debug, Formatter},
+    fmt::{Debug, Display, Formatter},
     ops::{Deref, DerefMut},
     time::Duration,
 };
@@ -50,6 +50,12 @@ impl From<api_bindings::UserRole> for Role {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(pub u32);
+
+impl Display for UserId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Clone)]
 pub struct User {

@@ -1,15 +1,23 @@
 use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
-use std::{io::ErrorKind, path::PathBuf, str::FromStr};
-use tokio::fs::{self, File};
+use std::{fs::OpenOptions, io::ErrorKind, path::PathBuf, str::FromStr};
+use tokio::fs::{self};
+use tracing::level_filters::LevelFilter;
+use tracing_actix_web::TracingLogger;
+use tracing_appender::non_blocking;
+use tracing_subscriber::{
+    EnvFilter, Registry,
+    fmt::{self},
+    layer::SubscriberExt,
+    util::SubscriberInitExt,
+};
 
 use actix_web::{
     App as ActixApp, HttpServer,
-    middleware::{self, Logger},
+    middleware::{self},
     web::{Data, scope},
 };
-use log::{Level, error, info};
-use simplelog::{ColorChoice, CombinedLogger, SharedLogger, TermLogger, TerminalMode, WriteLogger};
+use log::{error, info};
 
 use crate::{
     api::api_service,
@@ -73,38 +81,65 @@ async fn main() {
         }
     }
 
-    // TODO: log config: anonymize ips when enabled in file
-    // TODO: https://www.reddit.com/r/csharp/comments/166xgcl/comment/jynybpe/
-
-    let log_config = simplelog::ConfigBuilder::new()
-        .add_filter_ignore_str("actix_http::h1")
-        .build();
-
-    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![TermLogger::new(
-        config.log.level_filter,
-        log_config.clone(),
-        TerminalMode::Mixed,
-        ColorChoice::Auto,
-    )];
-
-    if let Some(file_path) = &config.log.file_path {
-        let file = File::create(file_path)
-            .await
-            .expect("failed to open log file");
-
-        loggers.push(WriteLogger::new(
-            config.log.level_filter,
-            log_config,
-            file.try_into_std()
-                .expect("failed to cast tokio file into std file"),
-        ));
-    }
-
-    CombinedLogger::init(loggers).expect("failed to init combined logger");
+    let guard = init_log(&config);
 
     if let Err(err) = start(config).await {
         error!("{err:?}");
     }
+
+    drop(guard);
+}
+
+fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
+    let config_level_filter = match config.log.level_filter {
+        log::LevelFilter::Off => LevelFilter::OFF,
+        log::LevelFilter::Error => LevelFilter::ERROR,
+        log::LevelFilter::Info => LevelFilter::INFO,
+        log::LevelFilter::Warn => LevelFilter::WARN,
+        log::LevelFilter::Debug => LevelFilter::DEBUG,
+        log::LevelFilter::Trace => LevelFilter::TRACE,
+    };
+
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(config_level_filter.into())
+        .from_env_lossy()
+        // Add default directives
+        .add_directive(
+            "actix_http::h1=off"
+                .parse()
+                .expect("failed to add actix-web tracing directive"),
+        )
+        .add_directive(
+            "mio::poll=off"
+                .parse()
+                .expect("failed to add mio tracing directive"),
+        );
+
+    let stdout_layer = fmt::layer().with_target(false);
+
+    let (file_layer, guard) = if let Some(log_file) = &config.log.file_path {
+        let file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(log_file)
+            .expect("failed to open log file");
+
+        let (writer, guard) = non_blocking(file);
+
+        let fmt_layer = fmt::layer().with_writer(writer).with_ansi(false);
+
+        (Some(fmt_layer), Some(guard))
+    } else {
+        (None, None)
+    };
+
+    Registry::default()
+        .with(env_filter)
+        .with(file_layer)
+        .with(stdout_layer)
+        .init();
+
+    guard
 }
 
 async fn start(config: Config) -> Result<(), anyhow::Error> {
@@ -117,14 +152,9 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
         let app = app.clone();
 
         move || {
-            ActixApp::new().service(
+            ActixApp::new().wrap(TracingLogger::default()).service(
                 scope(&url_path_prefix)
                     .app_data(app.clone())
-                    .wrap(
-                        Logger::new("%r took %D ms")
-                            .log_target("http_server")
-                            .log_level(Level::Debug),
-                    )
                     .wrap(
                         // TODO: maybe only re cache when required?
                         middleware::DefaultHeaders::new()

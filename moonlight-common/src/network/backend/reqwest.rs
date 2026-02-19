@@ -1,8 +1,8 @@
 use bytes::Bytes;
-use log::debug;
 use pem::Pem;
 use reqwest::{Certificate, Client, ClientBuilder, Identity};
 use thiserror::Error;
+use tracing::{Level, event, instrument};
 use url::{ParseError, Url};
 
 use crate::network::{
@@ -58,8 +58,6 @@ fn build_url(
     let authority = format!("{protocol}://{hostport}/{path}");
     let url = Url::parse_with_params(&authority, query_params)?;
 
-    debug!("Request: {url}");
-
     Ok(url)
 }
 
@@ -100,6 +98,7 @@ impl RequestClient for Client {
             .build()?)
     }
 
+    #[instrument(skip(self), ret)]
     async fn send_http_request_text_response(
         &mut self,
         hostport: &str,
@@ -107,9 +106,13 @@ impl RequestClient for Client {
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Text, Self::Error> {
         let url = build_url(false, hostport, path, query_params)?;
-        Ok(self.get(url).send().await?.text().await?)
+
+        let text = self.get(url).send().await?.text().await?;
+
+        Ok(text)
     }
 
+    #[instrument(skip(self), ret)]
     async fn send_https_request_text_response(
         &mut self,
         hostport: &str,
@@ -117,9 +120,13 @@ impl RequestClient for Client {
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Text, Self::Error> {
         let url = build_url(true, hostport, path, query_params)?;
-        Ok(self.get(url).send().await?.text().await?)
+
+        let text = self.get(url).send().await?.text().await?;
+
+        Ok(text)
     }
 
+    #[instrument(skip(self), ret)]
     async fn send_https_request_data_response(
         &mut self,
         hostport: &str,
@@ -127,6 +134,9 @@ impl RequestClient for Client {
         query_params: &QueryParamsRef<'_>,
     ) -> Result<Self::Bytes, Self::Error> {
         let url = build_url(true, hostport, path, query_params)?;
-        Ok(self.get(url).send().await?.bytes().await?)
+
+        let bytes = self.get(url).send().await?.bytes().await?;
+
+        Ok(bytes)
     }
 }

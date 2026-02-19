@@ -11,6 +11,7 @@ num-derive = { workspace = true }
 num-traits = { workspace = true }
 
 log = { workspace = true, optional = true }
+tracing = { workspace = true }
 
 thiserror = { workspace = true }
 

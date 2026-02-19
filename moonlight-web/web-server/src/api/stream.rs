@@ -1,4 +1,8 @@
-use std::{process::Stdio, time::Duration};
+use std::{
+    process::Stdio,
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
 
 use actix_web::{
     Error, HttpRequest, HttpResponse, get, post, rt as actix_rt,
@@ -15,6 +19,7 @@ use common::{
 };
 use log::{debug, error, info, warn};
 use tokio::{process::Command, spawn, time::sleep};
+use tracing::{Level, instrument, span};
 
 use crate::app::{
     App, AppError,
@@ -23,6 +28,7 @@ use crate::app::{
 };
 
 #[get("/host/stream")]
+#[instrument(name = "start_host", skip(web_app, user, payload), fields(user_id = %user.id()))]
 pub async fn start_host(
     web_app: Data<App>,
     mut user: AuthenticatedUser,
@@ -246,12 +252,14 @@ pub async fn start_host(
         };
 
         // Create ipc
+        static CHILD_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let id = CHILD_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let span = span!(Level::INFO, "ipc", child_id = id);
+
         let (mut ipc_sender, mut ipc_receiver) = create_child_ipc::<
             ServerIpcMessage,
             StreamerIpcMessage,
-        >(
-            "Streamer", stdin, stdout, child.stderr.take()
-        )
+        >(span, stdin, stdout, child.stderr.take())
         .await;
 
         // Redirect ipc message into ws

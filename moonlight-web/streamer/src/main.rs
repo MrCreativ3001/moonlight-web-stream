@@ -2,7 +2,7 @@
 #![feature(async_fn_traits)]
 
 use std::{
-    panic,
+    io, panic,
     process::exit,
     sync::{
         Arc, Weak,
@@ -22,7 +22,7 @@ use common::{
         create_process_ipc,
     },
 };
-use log::{LevelFilter, debug, error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use moonlight_common::{
     MoonlightError,
     high::{HostError, MoonlightHost, StreamConfigError},
@@ -38,7 +38,6 @@ use moonlight_common::{
         video::VideoSetup,
     },
 };
-use simplelog::{ColorChoice, TermLogger, TerminalMode};
 use tokio::{
     io::{stdin, stdout},
     runtime::Handle,
@@ -47,8 +46,10 @@ use tokio::{
     task::spawn_blocking,
     time::sleep,
 };
+use tracing::{Level, level_filters::LevelFilter, span};
 
 use common::api_bindings::{StreamCapabilities, StreamServerMessage};
+use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     audio::StreamAudioDecoder,
@@ -79,8 +80,9 @@ async fn main() {
     }));
 
     // At this point we're authenticated
+    let span = span!(Level::TRACE, "ipc");
     let (mut ipc_sender, mut ipc_receiver) =
-        create_process_ipc::<ServerIpcMessage, StreamerIpcMessage>(stdin(), stdout()).await;
+        create_process_ipc::<ServerIpcMessage, StreamerIpcMessage>(span, stdin(), stdout()).await;
 
     // Send stage
     ipc_sender
@@ -134,16 +136,33 @@ async fn main() {
         }
     };
 
-    TermLogger::init(
-        config.log_level,
-        simplelog::ConfigBuilder::new()
-            .add_filter_ignore_str("webrtc_sctp")
-            .set_time_level(LevelFilter::Off)
-            .build(),
-        TerminalMode::Stderr,
-        ColorChoice::Never,
-    )
-    .expect("failed to init logger");
+    // -- Init logger
+    let config_level_filter = match config.log_level {
+        log::LevelFilter::Off => LevelFilter::OFF,
+        log::LevelFilter::Error => LevelFilter::ERROR,
+        log::LevelFilter::Info => LevelFilter::INFO,
+        log::LevelFilter::Warn => LevelFilter::WARN,
+        log::LevelFilter::Debug => LevelFilter::DEBUG,
+        log::LevelFilter::Trace => LevelFilter::TRACE,
+    };
+
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(config_level_filter.into())
+        .from_env_lossy()
+        .add_directive(
+            "webrtc_sctp=off"
+                .parse()
+                .expect("failed to parse webrtc directive"),
+        );
+
+    let stderr_output = fmt::layer().with_writer(io::stderr).with_ansi(false);
+
+    Registry::default()
+        .with(env_filter)
+        .with(stderr_output)
+        .init();
+
+    // -- Init rustls
 
     rustls_openssl::default_provider()
         .install_default()

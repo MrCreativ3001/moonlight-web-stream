@@ -29,6 +29,10 @@ moonlight-common-sys = { path = "./moonlight-common-sys" }
 # Log
 log = "0.4.28"
 simplelog = "0.12.2"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.22"
+tracing-appender = "0.2.4"
+tracing-actix-web = "0.7.21"
 printf-compat = { version = "0.3.0" }
 
 # Cli

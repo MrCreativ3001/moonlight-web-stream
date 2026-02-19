@@ -12,12 +12,12 @@ use common::{
     api_bindings::{LogMessageType, StreamServerMessage},
     ipc::StreamerIpcMessage,
 };
-use log::{debug, error, info, trace, warn};
 use moonlight_common::stream::{
     bindings::{DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoFormat},
     video::VideoSetup,
 };
 use tokio::runtime::Handle;
+use tracing::{debug, error, info, instrument, trace, warn};
 use webrtc::{
     api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC, MediaEngine},
     peer_connection::RTCPeerConnection,
@@ -221,9 +221,8 @@ impl WebRtcVideo {
         true
     }
 
+    #[instrument(skip(self, unit), fields(timestamp = %unit.rtp_timestamp))]
     pub async fn send_decode_unit(&mut self, unit: &VideoDecodeUnit<'_>) -> DecodeResult {
-        trace!("Starting frame");
-
         let timestamp = unit.rtp_timestamp;
 
         let mut full_frame = Vec::new();
@@ -243,12 +242,19 @@ impl WebRtcVideo {
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
                     trace!(
-                        "H264, Start Code: {:?}, NAL: {:?}, Bytes: {:02X?}",
-                        nal.start_code, nal.header, &nal.full,
+                        target: "video::header",
+                        nal_start_code = ?nal.start_code,
+                        nal_header = ?nal.header,
+                        "h264 header"
+                    );
+                    trace!(
+                        target: "video::nalu",
+                        nal_data = ?&nal.full,
+                        "h264 nalu"
                     );
 
                     if nal.header.nal_unit_type == h264::NalUnitType::FillerData {
-                        trace!("Ignoring nal because it's filler data: {:?}", nal.header);
+                        trace!(target: "video","Ignoring nal because it's filler data: {:?}", nal.header);
                         continue;
                     }
 
@@ -279,8 +285,15 @@ impl WebRtcVideo {
 
                 while let Ok(Some(nal)) = nal_reader.next_nal() {
                     trace!(
-                        "H265, Start Code: {:?}, NAL: {:?}, Bytes: {:02X?}",
-                        nal.start_code, nal.header, &nal.full
+                        target: "video::header",
+                        nal_start_code = ?nal.start_code,
+                        nal_header = ?nal.header,
+                        "h265 header"
+                    );
+                    trace!(
+                        target: "video::nalu",
+                        nal_data = ?&nal.full,
+                        "h265 nalu"
                     );
 
                     let data = trim_bytes_to_range(
@@ -326,8 +339,6 @@ impl WebRtcVideo {
                 warn!("Failed to send decode unit because of missing codec!");
             }
         }
-
-        trace!("Ending frame frame");
 
         if self
             .needs_idr

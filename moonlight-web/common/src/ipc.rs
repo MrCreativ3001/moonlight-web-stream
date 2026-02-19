@@ -1,10 +1,7 @@
-use std::{
-    marker::PhantomData,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::marker::PhantomData;
 
 use bytes::Bytes;
-use log::{LevelFilter, info, trace, warn};
+use log::LevelFilter;
 use pem::Pem;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{
@@ -15,6 +12,7 @@ use tokio::{
     spawn,
     sync::mpsc::{Receiver, Sender, channel},
 };
+use tracing::{Span, info, trace, warn};
 
 use crate::{
     api_bindings::{StreamClientMessage, StreamServerMessage},
@@ -59,10 +57,8 @@ pub enum StreamerIpcMessage {
 // Stdout: message passing
 // Stderr: logging
 
-static CHILD_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
 pub async fn create_child_ipc<Message, ChildMessage>(
-    log_target: &str,
+    span: Span,
     stdin: ChildStdin,
     stdout: ChildStdout,
     stderr: Option<ChildStderr>,
@@ -71,45 +67,46 @@ where
     Message: Send + Serialize + 'static,
     ChildMessage: DeserializeOwned,
 {
-    let id = CHILD_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let log_target = format!("{log_target} {id}");
-
     if let Some(stderr) = stderr {
-        let log_target = log_target.clone();
+        // This is the log output of the streamer
+        let span = span.clone();
 
         spawn(async move {
             let buf_reader = BufReader::new(stderr);
             let mut lines = buf_reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                info!("{log_target}: {line}");
+                info!(parent: &span, "{line}");
             }
         });
     }
 
     let (sender, receiver) = channel::<Message>(10);
 
-    let sender_log_format = format!("{log_target}: ");
-    spawn(async move {
-        ipc_sender(stdin, receiver, &sender_log_format).await;
+    spawn({
+        let span = span.clone();
+
+        async move {
+            ipc_sender(span.clone(), stdin, receiver).await;
+        }
     });
 
-    let log_target = format!("{log_target}: ");
     (
         IpcSender {
             sender,
-            log_target: log_target.clone(),
+            span: span.clone(),
         },
         IpcReceiver {
             errored: false,
             read: create_lines(stdout),
             phantom: Default::default(),
-            log_target,
+            span,
         },
     )
 }
 
 pub async fn create_process_ipc<ParentMessage, Message>(
+    span: Span,
     stdin: Stdin,
     stdout: Stdout,
 ) -> (IpcSender<Message>, IpcReceiver<ParentMessage>)
@@ -119,20 +116,24 @@ where
 {
     let (sender, receiver) = channel::<Message>(10);
 
-    spawn(async move {
-        ipc_sender(stdout, receiver, "").await;
+    spawn({
+        let span = span.clone();
+
+        async move {
+            ipc_sender(span.clone(), stdout, receiver).await;
+        }
     });
 
     (
         IpcSender {
             sender,
-            log_target: "".to_string(),
+            span: span.clone(),
         },
         IpcReceiver {
             errored: false,
             read: create_lines(stdin),
             phantom: Default::default(),
-            log_target: "".to_string(),
+            span,
         },
     )
 }
@@ -143,9 +144,9 @@ fn create_lines(
 }
 
 async fn ipc_sender<Message>(
+    span: Span,
     mut write: impl AsyncWriteExt + Unpin,
     mut receiver: Receiver<Message>,
-    log_target: &str,
 ) where
     Message: Serialize,
 {
@@ -153,22 +154,22 @@ async fn ipc_sender<Message>(
         let mut json = match serde_json::to_string(&value) {
             Ok(value) => value,
             Err(err) => {
-                warn!("[Ipc]: failed to encode message: {err:?}");
+                warn!(parent: &span,"[Ipc]: failed to encode message: {err:?}");
                 continue;
             }
         };
 
-        trace!("{log_target}[Ipc] sending {json}");
+        trace!(parent: &span, "[Ipc] sending {json}");
 
         json.push('\n');
 
         if let Err(err) = write.write_all(json.as_bytes()).await {
-            warn!("{log_target}[Ipc]: failed to write message length: {err:?}");
+            warn!(parent: &span, "failed to write message length: {err:?}");
             return;
         };
 
         if let Err(err) = write.flush().await {
-            warn!("{log_target}[Ipc]: failed to flush: {err:?}");
+            warn!(parent: &span, "failed to flush: {err:?}");
             return;
         }
     }
@@ -177,14 +178,14 @@ async fn ipc_sender<Message>(
 #[derive(Debug)]
 pub struct IpcSender<Message> {
     sender: Sender<Message>,
-    log_target: String,
+    span: Span,
 }
 
 impl<Message> Clone for IpcSender<Message> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
-            log_target: self.log_target.clone(),
+            span: self.span.clone(),
         }
     }
 }
@@ -195,12 +196,12 @@ where
 {
     pub async fn send(&mut self, message: Message) {
         if self.sender.send(message).await.is_err() {
-            warn!("{}[Ipc] failed to send message", self.log_target);
+            warn!(parent: &self.span, "failed to send message");
         }
     }
     pub fn blocking_send(&mut self, message: Message) {
         if self.sender.blocking_send(message).is_err() {
-            warn!("{}[Ipc] failed to send message", self.log_target);
+            warn!(parent: &self.span, "failed to send message");
         }
     }
 }
@@ -209,7 +210,7 @@ pub struct IpcReceiver<Message> {
     errored: bool,
     read: Lines<Box<dyn AsyncBufRead + Send + Unpin>>,
     phantom: PhantomData<Message>,
-    log_target: String,
+    span: Span,
 }
 
 impl<Message> IpcReceiver<Message>
@@ -227,21 +228,18 @@ where
             Err(err) => {
                 self.errored = true;
 
-                warn!("{}[Ipc]: failed to read next line {err:?}", self.log_target);
+                warn!(parent: &self.span, "failed to read next line {err:?}");
 
                 return None;
             }
         };
 
-        trace!("{}[Ipc] received {line}", self.log_target);
+        trace!(parent: &self.span, "received {line}");
 
         match serde_json::from_str::<Message>(&line) {
             Ok(value) => Some(value),
             Err(err) => {
-                warn!(
-                    "{}[Ipc]: failed to deserialize message: {err:?}",
-                    self.log_target
-                );
+                warn!(parent: &self.span, "failed to deserialize message: {err:?}");
 
                 None
             }

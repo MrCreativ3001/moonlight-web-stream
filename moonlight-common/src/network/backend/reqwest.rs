@@ -126,7 +126,7 @@ impl RequestClient for Client {
         Ok(text)
     }
 
-    #[instrument(skip(self), ret)]
+    #[instrument(skip(self))]
     async fn send_https_request_data_response(
         &mut self,
         hostport: &str,

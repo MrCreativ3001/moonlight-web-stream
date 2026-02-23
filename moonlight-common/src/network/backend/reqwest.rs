@@ -98,7 +98,7 @@ impl RequestClient for Client {
             .build()?)
     }
 
-    #[instrument(skip(self), ret)]
+    #[instrument(skip(self), ret, level = "debug")]
     async fn send_http_request_text_response(
         &mut self,
         hostport: &str,
@@ -112,7 +112,7 @@ impl RequestClient for Client {
         Ok(text)
     }
 
-    #[instrument(skip(self), ret)]
+    #[instrument(skip(self), ret, level = "debug")]
     async fn send_https_request_text_response(
         &mut self,
         hostport: &str,
@@ -126,7 +126,7 @@ impl RequestClient for Client {
         Ok(text)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     async fn send_https_request_data_response(
         &mut self,
         hostport: &str,

@@ -1,4 +1,3 @@
-#![feature(if_let_guard)]
 #![feature(async_fn_traits)]
 
 use std::{

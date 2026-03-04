@@ -536,6 +536,7 @@ There are 2 ways to build Moonlight Web:
   When you want to build it on your system take a look at how to compile the web server and streamer binary:
   - [moonlight web server](#crate-moonlight-web-server)
   - [moonlight web streamer](#crate-moonlight-web-streamer)
+  - [moonlight common rust](https://github.com/MrCreativ3001/moonlight-common-rust/tree/master/examples#client-common-c)
 
 - Compile using [Cargo Cross](https://github.com/cross-rs/cross)
 

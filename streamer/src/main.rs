@@ -54,7 +54,6 @@ use tracing::{Level, level_filters::LevelFilter, span};
 
 use common::api_bindings::{StreamCapabilities, StreamServerMessage};
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
-use venator::Venator;
 
 use crate::{
     audio::StreamAudioDecoder,
@@ -162,10 +161,7 @@ async fn main() {
 
     let stderr_output = fmt::layer().with_writer(io::stderr).with_ansi(false);
 
-    let venator = config.dev_venator.then(Venator::default);
-
     Registry::default()
-        .with(venator)
         .with(env_filter)
         .with(stderr_output)
         .init();
@@ -712,7 +708,8 @@ impl StreamConnection {
             encryption_flags: EncryptionFlags::ALL,
             streaming_remotely: StreamingConfig::Auto,
             sops: true,
-            supported_video_formats: SupportedVideoFormats::all(),
+            // TODO: where to get the video formats from???
+            supported_video_formats: SupportedVideoFormats::H264,
             color_space: settings.video_colorspace,
             color_range: if settings.video_color_range_full {
                 ColorRange::Full
@@ -782,14 +779,19 @@ impl StreamConnection {
             }
         };
 
-        let stream = self.moonlight.start_connection(
-            stream_config,
-            settings.clone(),
-            connection_listener,
-            connection_listener_c,
-            video_decoder,
-            audio_decoder,
-        )?;
+        let settings_clone = settings.clone();
+        let moonlight_instance = self.moonlight.clone();
+        let stream = spawn_blocking(move || {
+            moonlight_instance.start_connection(
+                stream_config,
+                settings_clone,
+                connection_listener,
+                connection_listener_c,
+                video_decoder,
+                audio_decoder,
+            )
+        })
+        .await??;
 
         let host_features = stream.host_features().unwrap_or_else(|err| {
             warn!("[Stream]: failed to get host features: {err:?}");

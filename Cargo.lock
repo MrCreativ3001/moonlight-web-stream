@@ -1846,6 +1846,7 @@ dependencies = [
 [[package]]
 name = "moonlight-common"
 version = "0.1.0"
+source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=f5d30ba7d4b3c97327121e12525ed8b89bc1f49e#f5d30ba7d4b3c97327121e12525ed8b89bc1f49e"
 dependencies = [
  "bitflags 2.9.1",
  "bytes",
@@ -1874,6 +1875,7 @@ dependencies = [
 [[package]]
 name = "moonlight-common-sys"
 version = "0.1.0"
+source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=f5d30ba7d4b3c97327121e12525ed8b89bc1f49e#f5d30ba7d4b3c97327121e12525ed8b89bc1f49e"
 dependencies = [
  "bindgen",
  "cmake",
@@ -2854,7 +2856,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "venator",
  "webrtc",
 ]
 

@@ -46,9 +46,6 @@ pub enum AppError {
     HostPaired,
     #[error("the host must be paired for this action")]
     HostNotPaired,
-    // TODO: use the moonlight client error for this?
-    #[error("the host was offline, but the action requires that the host is online")]
-    HostOffline,
     // -- Unauthorized
     #[error("the credentials don't exists")]
     CredentialsWrong,
@@ -94,7 +91,6 @@ impl ResponseError for AppError {
             Self::HostNotFound => StatusCode::NOT_FOUND,
             Self::HostNotPaired => StatusCode::FORBIDDEN,
             Self::HostPaired => StatusCode::NOT_MODIFIED,
-            Self::HostOffline => StatusCode::GATEWAY_TIMEOUT,
             Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::UserAlreadyExists => StatusCode::CONFLICT,
             Self::CredentialsWrong => StatusCode::UNAUTHORIZED,

@@ -16,7 +16,7 @@ use tracing_subscriber::{
     layer::SubscriberExt,
     util::SubscriberInitExt,
 };
-use venator::{Venator, VenatorBuilder};
+use venator::Venator;
 
 use actix_web::{
     App as ActixApp, HttpServer,

@@ -49,12 +49,12 @@ pub enum PairStatus {
     Paired,
 }
 
-impl From<moonlight_common::PairStatus> for PairStatus {
-    fn from(value: moonlight_common::PairStatus) -> Self {
-        use moonlight_common::PairStatus as MlPairStatus;
-        match value {
-            MlPairStatus::NotPaired => Self::NotPaired,
-            MlPairStatus::Paired => Self::Paired,
+impl PairStatus {
+    pub fn from_paired(value: bool) -> PairStatus {
+        if value {
+            PairStatus::Paired
+        } else {
+            PairStatus::NotPaired
         }
     }
 }

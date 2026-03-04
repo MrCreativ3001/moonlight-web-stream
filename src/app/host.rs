@@ -168,9 +168,6 @@ impl Host {
 
         Ok(f(self, &host).await)
     }
-    fn build_hostport(host: &str, port: u16) -> String {
-        format!("{host}:{port}")
-    }
 
     async fn storage_host(&self, app: &AppInner) -> Result<StorageHost, AppError> {
         if let Some(host) = self.cache_storage.as_ref() {
@@ -259,7 +256,7 @@ impl Host {
                 host_id: self.id.0,
                 name: info.host_name,
                 owner,
-                paired: info.pair_status.into(),
+                paired: PairStatus::from_paired(info.paired),
                 server_state: Some(HostState::from(info.state)),
             }),
             Ok(None) => {
@@ -299,7 +296,7 @@ impl Host {
                 host_id: self.id.0,
                 owner,
                 name: info.host_name,
-                paired: info.pair_status.into(),
+                paired: PairStatus::from_paired(info.paired),
                 server_state: Some(HostState::from(info.state)),
                 address: storage.address,
                 http_port: storage.http_port,
@@ -355,7 +352,7 @@ impl Host {
         let app = self.app.access()?;
 
         match self.host_info(&app, user).await? {
-            Some(info) => Ok(info.pair_status.into()),
+            Some(info) => Ok(PairStatus::from_paired(info.paired)),
             None => Ok(PairStatus::NotPaired),
         }
     }
@@ -375,7 +372,7 @@ impl Host {
             .await?
             .ok_or(AppError::HostNotFound)?;
 
-        if matches!(info.pair_status.into(), PairStatus::Paired) {
+        if !info.paired {
             return Err(AppError::HostPaired);
         }
 

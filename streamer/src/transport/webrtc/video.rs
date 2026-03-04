@@ -13,7 +13,7 @@ use common::{
     ipc::StreamerIpcMessage,
 };
 use moonlight_common::stream::video::{
-    DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoFormat, VideoSetup,
+    DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoFormat, VideoSetup,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, trace, warn};
@@ -224,12 +224,10 @@ impl WebRtcVideo {
 
         let mut full_frame = Vec::new();
         for buffer in unit.buffers {
-            full_frame.extend_from_slice(buffer);
+            full_frame.extend_from_slice(buffer.data);
         }
 
-        // TODO: implement frame type
-        // let important = matches!(unit.frame_type, FrameType::Idr);
-        let important = false;
+        let important = matches!(unit.frame_type, FrameType::Idr);
 
         match &mut self.codec {
             // -- H264

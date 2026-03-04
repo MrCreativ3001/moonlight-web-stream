@@ -16,8 +16,7 @@ use common::{
 use log::{trace, warn};
 use moonlight_common::stream::{
     audio::{AudioConfig, OpusMultistreamConfig},
-    c::bindings::FrameType,
-    video::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoSetup},
+    video::{DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoSetup},
 };
 use tokio::{
     spawn,
@@ -170,16 +169,15 @@ impl TransportSender for WebSocketTransportSender {
 
         let mut byte_buffer = ByteBuffer::new(new_buffer.as_mut_slice());
         byte_buffer.put_u8(TransportChannelId::HOST_VIDEO);
-        // TODO: FIXME NOW
-        // byte_buffer.put_u8(match unit.frame_type {
-        //     FrameType::Idr => 1,
-        //     FrameType::PFrame => 0,
-        // });
+        byte_buffer.put_u8(match unit.frame_type {
+            FrameType::Idr => 1,
+            FrameType::PFrame => 0,
+        });
         byte_buffer.put_u8(0);
         byte_buffer.put_u32(unit.timestamp.as_micros() as u32);
 
         for buffer in unit.buffers {
-            new_buffer.extend_from_slice(buffer);
+            new_buffer.extend_from_slice(buffer.data);
         }
         // TODO: ignore h264/h265 fillerdata?
         if self

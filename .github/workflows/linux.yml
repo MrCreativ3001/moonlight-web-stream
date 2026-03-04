@@ -39,15 +39,12 @@ jobs:
     - name: Build
       run: |
        cargo build --release
-       pushd moonlight-web/web-server
        npm install
        npm run build
        mv dist static
-       popd
 
        mv target/release/streamer streamer
        mv target/release/web-server web-server
-       mv moonlight-web/web-server/static static
 
 
     - name: Upload build artifact

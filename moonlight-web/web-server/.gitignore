@@ -1,7 +1,0 @@
-node_modules
-dist
-bindings
-web/api_bindings.ts
-
-# Server
-server

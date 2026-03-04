@@ -240,6 +240,8 @@ By default the [auto create missing user](#forwarded-header-auto-create-missing-
 In some networks (for example, corporate or highly restricted environments), establishing a WebRTC connection can be difficult or may not work at all.
 To support these cases, you can stream data over **WebSockets** using the same HTTP or HTTPS port that your server already exposes.
 
+You can force the Web Sockets by setting the `Data Transport` option to `Web Sockets`.
+
 There are a few important things to be aware of when using WebSockets for streaming:
 
 - The browser’s `VideoDecoder` API is only available when your site is served over **HTTPS** (a secure context).
@@ -524,15 +526,14 @@ Other changes:
 ## Building
 Make sure you've cloned this repo with all it's submodules
 ```sh
-git clone --recursive https://github.com/MrCreativ3001/moonlight-web-stream.git
+git clone https://github.com/MrCreativ3001/moonlight-web-stream.git
 ```
 A [Rust](https://www.rust-lang.org/tools/install) [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) installation is required.
 
 There are 2 ways to build Moonlight Web:
 - Build it on your system
 
-  When you want to build it on your system take a look at how to compile the crates:
-  - [moonlight common sys](#crate-moonlight-common-sys)
+  When you want to build it on your system take a look at how to compile the web server and streamer binary:
   - [moonlight web server](#crate-moonlight-web-server)
   - [moonlight web streamer](#crate-moonlight-web-streamer)
 
@@ -545,31 +546,21 @@ There are 2 ways to build Moonlight Web:
   ```
   Note: windows only has the gnu target `x86_64-pc-windows-gnu`
 
-### Crate: Moonlight Common Sys
-[moonlight-common-sys](./moonlight-common-sys/) are rust bindings to the cpp [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library.
-
-Required for building:
-- A [CMake installation](https://cmake.org/download/) which will automatically compile the [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library
-- [openssl-sys](https://docs.rs/openssl-sys/0.9.109/openssl_sys/): For information on building openssl sys go to the [openssl docs](https://docs.rs/openssl/latest/openssl/)
-- A [bindgen installation](https://rust-lang.github.io/rust-bindgen/requirements.html) for generating the bindings to the [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c) library
-
 ### Crate: Moonlight Web Server
-This is the web server for Moonlight Web found at `moonlight-web/web-server/`.
+This is the web server for Moonlight Web found at `src/`.
 It'll spawn a multiple [streamers](#crate-moonlight-web-server) as a subprocess for handling each stream.
-
-Required for building:
-- [moonlight-common-sys](#moonlight-common-sys)
 
 Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
 ```sh
 npm install
 npm run build
 ```
-The build output will be in `moonlight-web/web-server/dist`. The dist folder needs to be called `static` and in the same directory as the web server executable.
+The build output will be in `dist/`.
+
+If you're compiling in:
+- debug mode -> the folder needs to be called `dist/`
+- release mode -> the folder needs to be called `static/`
 
 ### Crate: Moonlight Web Streamer
-This is the streamer subprocess of the [web server](#crate-moonlight-web-server) and found at `moonlight-web/streamer/`.
+This is the streamer subprocess of the [web server](#crate-moonlight-web-server) and found at `streamer/`.
 It'll communicate via stdin and stdout with the web server to negotiate the WebRTC peers and then continue to communicate via the peer.
-
-Required for building:
-- [moonlight-common-sys](#moonlight-common-sys)

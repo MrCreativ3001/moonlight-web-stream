@@ -2,15 +2,8 @@ cargo-features = ["profile-rustflags"]
 
 [workspace]
 resolver = "3"
-members = [
-    "moonlight-client-simple",
-    "moonlight-common",
-    "moonlight-common-sys",
-    "moonlight-web/common",
-    "moonlight-web/streamer",
-    "moonlight-web/web-server",
-]
-default-members = ["moonlight-web/streamer", "moonlight-web/web-server"]
+members = ["common", "streamer", "./"]
+default-members = ["streamer", "./"]
 
 [profile.release]
 # strip release information
@@ -21,10 +14,14 @@ version = "2.4.0"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
-moonlight-common = { path = "./moonlight-common", features = [
-    "backend_reqwest",
+moonlight-common = { path = "../moonlight-common-rust", features = [
+    "tokio",
+    "tokio-hyper",
+    "openssl",
+    "stream-c",
+    "serde",
 ], default-features = false }
-moonlight-common-sys = { path = "./moonlight-common-sys" }
+common = { path = "./common" }
 
 # Log
 log = "0.4.28"
@@ -47,7 +44,7 @@ async-trait = "0.1.89"
 tokio = { version = "1.47.1" }
 async-stream = "0.3.6"
 futures = "0.3.31"
-bytes = "1.10.1"
+bytes = "1.11.1"
 
 # -- Http / Https
 # Reqwest Backend
@@ -62,7 +59,8 @@ curl = { version = "0.4.49", features = [
     "static-ssl",
 ], default-features = false }
 # other
-uuid = { version = "1.17.0" }
+# TODO: make moonlight common rust use the latest version
+uuid = { version = "0.8.2" }
 hex = { version = "0.4.3" }
 url = { version = "2.5.4" }
 roxmltree = { version = "0.20.0" }
@@ -77,7 +75,7 @@ actix-files = "0.6.6"
 actix-ws = "0.3.0"
 
 # OpenSSL / Crypto
-openssl = "0.10.73"
+openssl = "0.10.67"
 openssl-src = "300.5.4+3.5.4"
 openssl-sys = "0.9.111"
 pem = "3.0.5"
@@ -104,3 +102,50 @@ cmake = { version = "0.1.54" }
 [workspace.lints.clippy]
 too_many_arguments = "allow"
 unwrap_used = "warn"
+
+[package]
+name = "web-server"
+version.workspace = true
+edition = "2024"
+license = { workspace = true }
+default-run = "web-server"
+
+[dependencies]
+moonlight-common = { workspace = true }
+common = { workspace = true }
+
+tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
+
+clap = { workspace = true, features = ["derive", "env"] }
+
+actix-web = { workspace = true, features = ["openssl"] }
+openssl = { workspace = true }
+actix-files = { workspace = true }
+actix-ws = { workspace = true }
+
+rustls-openssl.workspace = true
+
+log = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-appender = { workspace = true }
+tracing-actix-web = { workspace = true }
+
+anyhow = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+pem = { workspace = true }
+
+async-stream = { workspace = true }
+futures = { workspace = true }
+uuid.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+hex.workspace = true
+sha2 = "0.10.9"
+
+windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
+
+[lints]
+workspace = true

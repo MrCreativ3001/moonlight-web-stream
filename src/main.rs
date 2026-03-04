@@ -16,6 +16,7 @@ use tracing_subscriber::{
     layer::SubscriberExt,
     util::SubscriberInitExt,
 };
+use venator::{Venator, VenatorBuilder};
 
 use actix_web::{
     App as ActixApp, HttpServer,
@@ -91,10 +92,6 @@ async fn main() {
 
     let guard = init_log(&config);
 
-    rustls_openssl::default_provider()
-        .install_default()
-        .expect("Failed to setup crypto provider");
-
     if let Err(err) = start(config).await {
         error!("{err:?}");
     }
@@ -153,7 +150,10 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
         (None, None)
     };
 
+    let venator = config.log.dev_venator.then(Venator::default);
+
     Registry::default()
+        .with(venator)
         .with(env_filter.clone())
         .with(file_layer)
         .with(stdout_layer)

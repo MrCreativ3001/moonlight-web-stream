@@ -54,6 +54,7 @@ use tracing::{Level, level_filters::LevelFilter, span};
 
 use common::api_bindings::{StreamCapabilities, StreamServerMessage};
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use venator::Venator;
 
 use crate::{
     audio::StreamAudioDecoder,
@@ -161,16 +162,13 @@ async fn main() {
 
     let stderr_output = fmt::layer().with_writer(io::stderr).with_ansi(false);
 
+    let venator = config.dev_venator.then(Venator::default);
+
     Registry::default()
+        .with(venator)
         .with(env_filter)
         .with(stderr_output)
         .init();
-
-    // -- Init rustls
-
-    rustls_openssl::default_provider()
-        .install_default()
-        .expect("Failed to setup crypto provider");
 
     // Send stage
     ipc_sender

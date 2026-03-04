@@ -23,6 +23,7 @@ use crate::{
 pub struct StreamerConfig {
     pub webrtc: WebRtcConfig,
     pub log_level: LevelFilter,
+    pub dev_venator: bool,
 }
 
 #[allow(clippy::large_enum_variant)]

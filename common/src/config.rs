@@ -51,6 +51,8 @@ impl Default for Config {
 pub struct LogConfig {
     pub level_filter: LevelFilter,
     pub file_path: Option<String>,
+    #[serde(default = "default_dev_venator")]
+    pub dev_venator: bool,
 }
 
 impl Default for LogConfig {
@@ -58,12 +60,17 @@ impl Default for LogConfig {
         Self {
             level_filter: default_level_filter(),
             file_path: None,
+            dev_venator: default_dev_venator(),
         }
     }
 }
 
 fn default_level_filter() -> LevelFilter {
     LevelFilter::Info
+}
+
+fn default_dev_venator() -> bool {
+    false
 }
 
 // -- Data Storage

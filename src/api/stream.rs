@@ -320,6 +320,7 @@ pub async fn start_host(
                 config: StreamerConfig {
                     webrtc: web_app.config().webrtc.clone(),
                     log_level: web_app.config().log.level_filter,
+                    dev_venator: web_app.config().log.dev_venator,
                 },
                 host_address: address,
                 host_http_port: http_port,

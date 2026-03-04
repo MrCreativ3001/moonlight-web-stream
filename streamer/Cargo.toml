@@ -28,9 +28,7 @@ num-traits = { workspace = true }
 log = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-
-rustls = { workspace = true, features = ["tls12", "std"] }
-rustls-openssl = "0.3.0"
+venator.workspace = true
 
 [lints]
 workspace = true

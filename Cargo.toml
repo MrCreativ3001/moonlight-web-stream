@@ -65,8 +65,9 @@ actix-ws = "0.3.0"
 
 # OpenSSL / Crypto
 openssl = "0.10.67"
-openssl-src = "300.5.4+3.5.4"
-openssl-sys = "0.9.111"
+# version required for cross-rs, higher version don't compile for some reason
+openssl-src = "=300.5.3+3.5.4"
+openssl-sys = "=0.9.109"
 pem = "3.0.5"
 rustls = "0.23.36"
 
@@ -101,6 +102,10 @@ default-run = "web-server"
 [dependencies]
 moonlight-common = { workspace = true }
 common = { workspace = true }
+
+# TODO: remove when cross-rs compiles, fix openssl versions
+openssl-src.workspace = true
+openssl-sys.workspace = true
 
 tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
 

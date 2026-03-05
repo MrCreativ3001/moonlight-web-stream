@@ -414,11 +414,19 @@ impl InboundPacket {
                 }
             }
             TransportChannel(channel_id)
-                if let Some((gamepad_id, _)) = Self::CONTROLLER_CHANNELS
+                if Self::CONTROLLER_CHANNELS
+                    .iter()
+                    .any(|cmp_channel_id| *cmp_channel_id == channel_id) =>
+            {
+                let Some((gamepad_id, _)) = Self::CONTROLLER_CHANNELS
                     .iter()
                     .enumerate()
-                    .find(|(_, cmp_channel_id)| **cmp_channel_id == channel_id) =>
-            {
+                    .find(|(_, cmp_channel_id)| **cmp_channel_id == channel_id)
+                else {
+                    warn!("[InboundPacket]: unknown transport channel: {channel_id}");
+                    return None;
+                };
+
                 if buffer.remaining() < 1 {
                     warn!(
                         "[InboudPacket]: failed to read controller state message {channel_id}, gamepad: {gamepad_id}"

@@ -1,11 +1,58 @@
-ARG CROSS_BASE_IMAGE
-FROM $CROSS_BASE_IMAGE AS base
+# ---- Cross Script with update ubuntu version for SIMD compatible Mingw64, See: https://github.com/cross-rs/cross/blob/main/docker/Dockerfile.x86_64-pc-windows-gnu ----
+# TODO: when cross updates their scripts to a newer version, remove this
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
 
-# https://github.com/cross-rs/cross/issues/1686
-# Need to upgrade gcc to a version that does have a bug (because aws-lc-sys's custom build script errors with this:
-#  ### COMPILER BUG DETECTED ###
-#  Your compiler (cc) is not supported due to a memcmp related bug reported in https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189. We strongly recommend against using this compiler.
-RUN apt-get -y install gcc-10 && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 60
+COPY common.sh lib.sh /
+RUN /common.sh
+
+COPY cmake.sh /
+RUN /cmake.sh
+
+RUN dpkg --add-architecture i386 && apt-get update && \
+    apt-get install --assume-yes --no-install-recommends libz-mingw-w64-dev
+
+COPY wine.sh /
+# We currently don't need wine
+#RUN /wine.sh
+
+RUN apt-get update && apt-get install --assume-yes --no-install-recommends g++-mingw-w64-x86-64 gfortran-mingw-w64-x86-64
+
+# run-detectors are responsible for calling the correct interpreter for exe
+# files. For some reason it does not work inside a docker container (it works
+# fine in the host). So we replace the usual paths of run-detectors to run wine
+# directly. This only affects the guest, we are not messing up with the host.
+#
+# See /usr/share/doc/binfmt-support/detectors
+RUN mkdir -p /usr/lib/binfmt-support/ && \
+    rm -f /usr/lib/binfmt-support/run-detectors /usr/bin/run-detectors && \
+    ln -s /usr/bin/wine /usr/lib/binfmt-support/run-detectors && \
+    ln -s /usr/bin/wine /usr/bin/run-detectors
+
+COPY windows-entry.sh /
+ENTRYPOINT ["/windows-entry.sh"]
+
+COPY toolchain.cmake /opt/toolchain.cmake
+
+# for why we always link with pthread support, see:
+# https://github.com/cross-rs/cross/pull/1123#issuecomment-1312287148
+ENV CROSS_TOOLCHAIN_PREFIX=x86_64-w64-mingw32-
+ENV CROSS_TOOLCHAIN_SUFFIX=-posix
+ENV CROSS_SYSROOT=/usr/x86_64-w64-mingw32
+ENV CROSS_TARGET_RUNNER="env -u CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER wine"
+ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="$CROSS_TOOLCHAIN_PREFIX"gcc"$CROSS_TOOLCHAIN_SUFFIX" \
+    CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER="$CROSS_TARGET_RUNNER" \
+    AR_x86_64_pc_windows_gnu="$CROSS_TOOLCHAIN_PREFIX"ar \
+    CC_x86_64_pc_windows_gnu="$CROSS_TOOLCHAIN_PREFIX"gcc"$CROSS_TOOLCHAIN_SUFFIX" \
+    CXX_x86_64_pc_windows_gnu="$CROSS_TOOLCHAIN_PREFIX"g++"$CROSS_TOOLCHAIN_SUFFIX" \
+    CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_gnu=/opt/toolchain.cmake \
+    BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnu="--sysroot=$CROSS_SYSROOT -idirafter/usr/include" \
+    CROSS_CMAKE_SYSTEM_NAME=Windows \
+    CROSS_CMAKE_SYSTEM_PROCESSOR=AMD64 \
+    CROSS_CMAKE_CRT=gnu \
+    CROSS_CMAKE_OBJECT_FLAGS="-ffunction-sections -fdata-sections -m64"
+
+# ---- Custom Script ----
 
 # -- Overwrite the openssl finder so we just don't do anything (it'll just error out even though we have the lib)
 RUN echo "" > $(cmake --system-information | grep CMAKE_ROOT | cut -d'"' -f2)/Modules/FindOpenSSL.cmake
@@ -13,8 +60,6 @@ RUN echo "" > $(cmake --system-information | grep CMAKE_ROOT | cut -d'"' -f2)/Mo
 # -- This will set flags required for windows
 RUN echo 'set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID")' >> /opt/toolchain.cmake && \
     echo 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID")' >> /opt/toolchain.cmake
-
-FROM base AS win
 
 # -- Overwrite system MinGW-w64 headers with latest version
 WORKDIR /tmp
@@ -30,11 +75,5 @@ RUN wget -O mingw-w64-headers.zip https://github.com/mirror/mingw-w64/archive/re
 RUN cp -r mingw-w64-master/mingw-w64-headers/include/* $CROSS_SYSROOT/include/ && \
     rm -rf /tmp/*
 
-# -- Some moonlight common c files require windows headers but they have them capitalized so we just symlink them to fix that
-RUN ln -s $CROSS_SYSROOT/include/ws2tcpip.h $CROSS_SYSROOT/include/Ws2tcpip.h && \
-    ln -s $CROSS_SYSROOT/include/mswsock.h $CROSS_SYSROOT/include/Mswsock.h && \
-    ln -s $CROSS_SYSROOT/include/versionhelpers.h $CROSS_SYSROOT/include/VersionHelpers.h && \
-    ln -s $CROSS_SYSROOT/include/windows.h $CROSS_SYSROOT/include/Windows.h && \
-    ln -s $CROSS_SYSROOT/include/winsock2.h $CROSS_SYSROOT/include/Winsock2.h && \
-    # For some reason the stdbool.h is not in the include path
-    ln -s /usr/lib/gcc/x86_64-w64-mingw32/$($CROSS_TOOLCHAIN_PREFIX"gcc"$CROSS_TOOLCHAIN_SUFFIX -dumpversion)/include/stdbool.h $CROSS_SYSROOT/include/stdbool.h
+# For some reason the stdbool.h is not in the include path
+RUN ln -s /usr/lib/gcc/x86_64-w64-mingw32/$($CROSS_TOOLCHAIN_PREFIX"gcc"$CROSS_TOOLCHAIN_SUFFIX -dumpversion)/include/stdbool.h $CROSS_SYSROOT/include/stdbool.h

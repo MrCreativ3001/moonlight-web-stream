@@ -571,16 +571,17 @@ impl WebRtcInner {
                     TransportChannel(TransportChannelId::CONTROLLERS),
                 ));
             }
-            _ if let Some(number) = label.strip_prefix("controller")
-                && let Ok(id) = number.parse::<usize>()
-                && id < InboundPacket::CONTROLLER_CHANNELS.len() =>
-            {
-                channel.on_message(create_channel_message_handler(
-                    inner,
-                    TransportChannel(InboundPacket::CONTROLLER_CHANNELS[id]),
-                ));
+            _ => {
+                if let Some(number) = label.strip_prefix("controller")
+                    && let Ok(id) = number.parse::<usize>()
+                    && id < InboundPacket::CONTROLLER_CHANNELS.len()
+                {
+                    channel.on_message(create_channel_message_handler(
+                        inner,
+                        TransportChannel(InboundPacket::CONTROLLER_CHANNELS[id]),
+                    ));
+                }
             }
-            _ => {}
         };
     }
 

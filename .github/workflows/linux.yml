@@ -34,7 +34,7 @@ jobs:
     - run: sudo apt-get install clang -y
 
     - name: Run tests
-      run: cargo test --workspace --locked --exclude moonlight-client-simple
+      run: cargo test --workspace --locked
 
     - name: Build
       run: |

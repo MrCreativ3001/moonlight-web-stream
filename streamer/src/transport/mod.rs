@@ -413,11 +413,7 @@ impl InboundPacket {
                     None
                 }
             }
-            TransportChannel(channel_id)
-                if Self::CONTROLLER_CHANNELS
-                    .iter()
-                    .any(|cmp_channel_id| *cmp_channel_id == channel_id) =>
-            {
+            TransportChannel(channel_id) if Self::CONTROLLER_CHANNELS.contains(&channel_id) => {
                 let Some((gamepad_id, _)) = Self::CONTROLLER_CHANNELS
                     .iter()
                     .enumerate()

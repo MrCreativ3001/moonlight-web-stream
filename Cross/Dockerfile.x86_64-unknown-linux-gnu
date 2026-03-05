@@ -1,0 +1,60 @@
+# ---- Cross Script with update ubuntu, See: https://github.com/cross-rs/cross/blob/main/docker/Dockerfile.x86_64-unknown-linux-gnu ----
+FROM ubuntu:24.04 AS cross-base
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY common.sh lib.sh /
+RUN chmod +x /common.sh && /common.sh
+
+COPY cmake.sh /
+RUN chmod +x /cmake.sh && /cmake.sh
+
+FROM cross-base AS build
+
+RUN apt-get update && apt-get install --assume-yes --no-install-recommends \
+    g++-x86-64-linux-gnu \
+    gfortran-x86-64-linux-gnu \
+    libc6-dev-amd64-cross
+
+COPY deny-debian-packages.sh /
+RUN chmod +x /deny-debian-packages.sh && TARGET_ARCH=amd64 /deny-debian-packages.sh \
+    binutils \
+    binutils-x86-64-linux-gnu
+
+COPY qemu.sh /
+# We don't need qemu and it doesn't work currently
+#RUN chmod +x /qemu.sh && /qemu.sh x86_64 softmmu
+
+COPY dropbear.sh /
+RUN chmod +x /dropbear.sh && /dropbear.sh
+
+COPY linux-image.sh /
+# This also errors so just comment it out
+#RUN chmod +x /linux-image.sh && /linux-image.sh x86_64
+
+# This also errors so just comment it out
+#COPY linux-runner base-runner.sh /
+COPY toolchain.cmake /opt/toolchain.cmake
+
+ENV CROSS_TOOLCHAIN_PREFIX=x86_64-linux-gnu-
+ENV CROSS_SYSROOT=/usr/x86_64-linux-gnu
+ENV CROSS_TARGET_RUNNER="/linux-runner x86_64"
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$CROSS_TOOLCHAIN_PREFIX"gcc \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$CROSS_TARGET_RUNNER" \
+    AR_x86_64_unknown_linux_gnu="$CROSS_TOOLCHAIN_PREFIX"ar \
+    CC_x86_64_unknown_linux_gnu="$CROSS_TOOLCHAIN_PREFIX"gcc \
+    CXX_x86_64_unknown_linux_gnu="$CROSS_TOOLCHAIN_PREFIX"g++ \
+    CMAKE_TOOLCHAIN_FILE_x86_64_unknown_linux_gnu=/opt/toolchain.cmake \
+    BINDGEN_EXTRA_CLANG_ARGS_x86_64_unknown_linux_gnu="--sysroot=$CROSS_SYSROOT -idirafter/usr/include" \
+    QEMU_LD_PREFIX="$CROSS_SYSROOT" \
+    RUST_TEST_THREADS=1 \
+    PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig/:${PKG_CONFIG_PATH}" \
+    PKG_CONFIG_ALLOW_CROSS=1 \
+    CROSS_CMAKE_SYSTEM_NAME=Linux \
+    CROSS_CMAKE_SYSTEM_PROCESSOR=x86_64 \
+    CROSS_CMAKE_CRT=gnu \
+    CROSS_CMAKE_OBJECT_FLAGS="-ffunction-sections -fdata-sections -fPIC -m64"
+
+#RUN sed -e "s#@DEFAULT_QEMU_LD_PREFIX@#$QEMU_LD_PREFIX#g" -i /linux-runner
+
+# -- Overwrite the openssl finder so we just don't do anything (it'll just error out even though we have the lib when defined)
+RUN echo "" > $(cmake --system-information | grep CMAKE_ROOT | cut -d'"' -f2)/Modules/FindOpenSSL.cmake

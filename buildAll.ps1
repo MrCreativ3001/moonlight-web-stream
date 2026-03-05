@@ -8,7 +8,7 @@ New-Item -ItemType Directory "./finalOutput" -Force
 $outputDir = Resolve-Path "./finalOutput"
 
 $moonlightRoot = Resolve-Path "."
-$moonlightFrontend = Join-Path -Path $moonlightRoot -ChildPath "/moonlight-web/web-server"
+$moonlightFrontend = Join-Path -Path $moonlightRoot -ChildPath "."
 
 if(!$moonlightRoot -or !$moonlightFrontend) {
     echo "No root directory found!"

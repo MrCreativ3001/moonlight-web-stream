@@ -149,11 +149,11 @@ You can configure https directly with the Moonlight Web Server.
 
 1. You'll need a private key and a certificate.
 
-You can generate a self signed certificate with this python script [moonlight-web/web-server/generate_certificate.py](moonlight-web/web-server/generate_certificate.py):
+You can generate a self signed certificate with this python script [generate_certificate.py](generate_certificate.py):
 
 ```sh
 pip install pyOpenSSL
-python ./moonlight-web/web-server/generate_certificate.py
+python ./generate_certificate.py
 ```
 
 2. Copy the files `server/key.pem` and `server/cert.pem` into your `server` directory.

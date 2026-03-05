@@ -13,7 +13,7 @@ RUN dpkg --add-architecture i386 && apt-get update && \
     apt-get install --assume-yes --no-install-recommends libz-mingw-w64-dev
 
 COPY wine.sh /
-# We currently don't need wine
+# We currently don't need wine and it gives us an error
 #RUN /wine.sh
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends g++-mingw-w64-x86-64 gfortran-mingw-w64-x86-64
@@ -56,24 +56,6 @@ ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="$CROSS_TOOLCHAIN_PREFIX"gcc"$CROS
 
 # -- Overwrite the openssl finder so we just don't do anything (it'll just error out even though we have the lib)
 RUN echo "" > $(cmake --system-information | grep CMAKE_ROOT | cut -d'"' -f2)/Modules/FindOpenSSL.cmake
-
-# -- This will set flags required for windows
-RUN echo 'set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID")' >> /opt/toolchain.cmake && \
-    echo 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_WIN32_WINNT=0x0600 -DHAS_PQOS_FLOWID -DHAS_QOS_FLOWID")' >> /opt/toolchain.cmake
-
-# -- Overwrite system MinGW-w64 headers with latest version
-WORKDIR /tmp
-
-# Install wget/unzip if not already present
-RUN apt-get update && apt-get install -y wget unzip
-
-# Download latest headers from GitHub
-RUN wget -O mingw-w64-headers.zip https://github.com/mirror/mingw-w64/archive/refs/heads/master.zip && \
-    unzip mingw-w64-headers.zip
-
-# Copy headers into system MinGW-w64 include folder, overwriting old files
-RUN cp -r mingw-w64-master/mingw-w64-headers/include/* $CROSS_SYSROOT/include/ && \
-    rm -rf /tmp/*
 
 # For some reason the stdbool.h is not in the include path
 RUN ln -s /usr/lib/gcc/x86_64-w64-mingw32/$($CROSS_TOOLCHAIN_PREFIX"gcc"$CROSS_TOOLCHAIN_SUFFIX -dumpversion)/include/stdbool.h $CROSS_SYSROOT/include/stdbool.h

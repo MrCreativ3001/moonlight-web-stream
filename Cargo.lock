@@ -759,7 +759,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "common"
-version = "2.4.0"
+version = "2.6.0"
 dependencies = [
  "bytes",
  "log",
@@ -2541,7 +2541,7 @@ dependencies = [
  "rend",
  "rkyv_derive",
  "tinyvec",
- "uuid 1.21.0",
+ "uuid 1.22.0",
 ]
 
 [[package]]
@@ -2881,7 +2881,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "streamer"
-version = "2.4.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3180,7 +3180,7 @@ dependencies = [
  "mutually_exclusive_features",
  "pin-project",
  "tracing",
- "uuid 1.21.0",
+ "uuid 1.22.0",
 ]
 
 [[package]]
@@ -3259,7 +3259,7 @@ checksum = "4994acea2522cd2b3b85c1d9529a55991e3ad5e25cdcd3de9d505972c4379424"
 dependencies = [
  "thiserror 2.0.18",
  "ts-rs-macros",
- "uuid 1.21.0",
+ "uuid 1.22.0",
 ]
 
 [[package]]
@@ -3376,9 +3376,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.21.0"
+version = "1.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b672338555252d43fd2240c714dc444b8c6fb0a5c5335e65a07bba7742735ddb"
+checksum = "a68d3c8f01c0cfa54a75291d83601161799e4a89a39e0929f4b0354d88757a37"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
@@ -3546,7 +3546,7 @@ dependencies = [
 
 [[package]]
 name = "web-server"
-version = "2.4.0"
+version = "2.6.0"
 dependencies = [
  "actix-files",
  "actix-web",
@@ -3654,7 +3654,7 @@ dependencies = [
  "tokio",
  "turn",
  "url",
- "uuid 1.21.0",
+ "uuid 1.22.0",
  "waitgroup",
  "webrtc-mdns",
  "webrtc-util",

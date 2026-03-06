@@ -372,7 +372,7 @@ impl Host {
             .await?
             .ok_or(AppError::HostNotFound)?;
 
-        if !info.paired {
+        if info.paired {
             return Err(AppError::HostPaired);
         }
 

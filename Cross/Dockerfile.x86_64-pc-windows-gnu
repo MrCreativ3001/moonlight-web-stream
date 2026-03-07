@@ -58,7 +58,8 @@ ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="$CROSS_TOOLCHAIN_PREFIX"gcc"$CROS
 # ------ CUSTOM BUILD COMMANDS ------
 
 # -- Overwrite the openssl finder so we just don't do anything (it'll just error out even though we have the lib)
-RUN echo "" > $(cmake --system-information | grep CMAKE_ROOT | cut -d'"' -f2)/Modules/FindOpenSSL.cmake
+RUN CMAKE_ROOT=$(cmake --help | grep "CMAKE_ROOT" | awk '{print $3}') && \
+    echo "" > $CMAKE_ROOT/Modules/FindOpenSSL.cmake
 
 # For some reason the stdbool.h is not in the include path
 RUN ln -s /usr/lib/gcc/x86_64-w64-mingw32/$($CROSS_TOOLCHAIN_PREFIX"gcc"$CROSS_TOOLCHAIN_SUFFIX -dumpversion)/include/stdbool.h $CROSS_SYSROOT/include/stdbool.h

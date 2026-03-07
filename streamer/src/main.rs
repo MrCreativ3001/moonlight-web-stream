@@ -21,7 +21,6 @@ use common::{
         create_process_ipc,
     },
 };
-use log::{debug, error, info, trace, warn};
 use moonlight_common::{
     MoonlightError,
     crypto::openssl::OpenSSLCryptoBackend,
@@ -51,12 +50,14 @@ use tokio::{
     time::sleep,
 };
 use tracing::{Level, level_filters::LevelFilter, span};
+use tracing::{debug, error, info, trace, warn};
 
 use common::api_bindings::{StreamCapabilities, StreamServerMessage};
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     audio::StreamAudioDecoder,
+    dynamic_ice_servers::load_dynamic_ice_servers,
     transport::{
         InboundPacket, OutboundPacket, TransportError, TransportEvent, TransportEvents,
         TransportSender, web_socket,
@@ -72,6 +73,7 @@ pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
 mod audio;
 mod buffer;
 mod convert;
+mod dynamic_ice_servers;
 mod transport;
 mod video;
 
@@ -99,7 +101,7 @@ async fn main() {
         .await;
 
     let (
-        config,
+        mut config,
         host_address,
         host_http_port,
         client_unique_id,
@@ -191,7 +193,16 @@ async fn main() {
     // -- Configure moonlight
     let moonlight = MoonlightInstance::global().expect("failed to find moonlight");
 
+    // Load dynamic ice servers and append them to the current ice servers
+    let dynamic_ice_servers = load_dynamic_ice_servers(&config.webrtc).await;
+    config
+        .webrtc
+        .ice_servers
+        .extend_from_slice(&dynamic_ice_servers);
+
     // -- Create and Configure Peer
+    let ice_servers = config.webrtc.ice_servers.clone();
+
     let connection = StreamConnection::new(
         moonlight,
         StreamInfo { host, app_id },
@@ -207,7 +218,7 @@ async fn main() {
     // Send Info for streamer
     ipc_sender
         .send(StreamerIpcMessage::WebSocket(StreamServerMessage::Setup {
-            ice_servers: connection.config.webrtc.ice_servers.clone(),
+            ice_servers,
         }))
         .await;
 

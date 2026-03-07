@@ -75,6 +75,9 @@ pub struct CliConfig {
     /// Overwrites `webrtc.nat_1to1.ice_candidate_type` to `host` and uses the ip address as the `webrtc.nat_1to1.ips`.
     #[arg(long, env = "WEBRTC_NAT_1TO1_HOST")]
     pub webrtc_nat_1to1_host: Option<IpAddr>,
+    /// Overwrites `webrtc.ice_server_script`.
+    #[arg(long, env = "WEBRTC_ICE_SERVER_SCRIPT")]
+    pub webrtc_ice_server_script: Option<String>,
     /// Overwrites `webrtc.network_types`. Example: "udp4,udp6"
     #[arg(long, env = "WEBRTC_NETWORK_TYPES", value_delimiter = ',')]
     pub webrtc_network_types: Option<Vec<WebRtcNetworkType>>,
@@ -127,6 +130,9 @@ impl CliConfig {
                 ips: vec![webrtc_nat_1to1_host.to_string()],
                 ice_candidate_type: WebRtcNat1To1IceCandidateType::Host,
             });
+        }
+        if let Some(webrtc_ice_server_script) = self.webrtc_ice_server_script {
+            config.webrtc.ice_server_script = Some(webrtc_ice_server_script);
         }
         if let Some(webrtc_network_types) = self.webrtc_network_types {
             config.webrtc.network_types = webrtc_network_types;

@@ -104,6 +104,8 @@ pub struct WebRtcConfig {
     #[serde(default = "default_ice_servers")]
     pub ice_servers: Vec<RtcIceServer>,
     #[serde(default)]
+    pub ice_server_script: Option<String>,
+    #[serde(default)]
     pub port_range: Option<PortRange>,
     #[serde(default)]
     pub nat_1to1: Option<WebRtcNat1To1Mapping>,
@@ -117,6 +119,7 @@ impl Default for WebRtcConfig {
     fn default() -> Self {
         Self {
             ice_servers: default_ice_servers(),
+            ice_server_script: None,
             port_range: None,
             nat_1to1: None,
             network_types: default_network_types(),

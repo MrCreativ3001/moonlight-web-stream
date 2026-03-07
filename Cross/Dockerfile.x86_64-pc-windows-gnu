@@ -1,6 +1,9 @@
 FROM ubuntu:24.04 AS cross-base
 ENV DEBIAN_FRONTEND=noninteractive
 
+RUN apt-get update && apt-get install --assume-yes --no-install-recommends \
+    ca-certificates curl
+
 COPY common.sh lib.sh /
 RUN chmod +x /common.sh
 

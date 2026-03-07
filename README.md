@@ -437,8 +437,8 @@ Example for this script:
 #!/bin/bash
 
 :: Assign arguments to variables
-username=$1
-credential=$2
+username="user"
+credential="cred"
 
 # Output the json into stdout
 echo "[

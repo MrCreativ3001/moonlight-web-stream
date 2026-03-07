@@ -419,6 +419,59 @@ will currespond to the ice server
 On first startup you can disable all default ice servers with the cli argument `--disable-default-webrtc-ice-servers` or the environment variable `DISABLE_DEFAULT_WEBRTC_ICE_SERVERS`.
 After the `config.json` has been generated all ice server in it will be used, even if those are the defaults.
 
+### WebRTC Ice Server Script
+The given script will be executed on every stream start to dynamically generate ice servers.
+
+```json
+{
+    "webrtc": {
+        "ice_server_script": "./server/ice_server_script.sh"
+    }
+}
+```
+
+The script must return a json list that follows the same structure as the [WebRTC Ice Servers](#webrtc-ice-servers) config option.
+
+Example for this script:
+```sh
+#!/bin/bash
+
+:: Assign arguments to variables
+username=$1
+credential=$2
+
+# Output the json into stdout
+echo "[
+    {
+        \"urls\": [
+            \"turn:example.com\"
+        ],
+        \"username\": \"$username\",
+        \"credential\": \"$credential\"
+    }
+]"
+```
+
+On Windows:
+```bat
+@echo off
+
+:: Assign arguments to variables
+set "username=user"
+set "credential=cred"
+
+:: Output the JSON with dynamic values
+echo [
+echo     {
+echo         "urls": [
+echo             "turn:example.com"
+echo         ],
+echo         "username": "%username%",
+echo         "credential": "%credential%"
+echo     }
+echo ]
+```
+
 ### WebRTC Nat 1 to 1 ips
 This will advertise the ip as an ice candidate on the web server.
 It's recommended to set this but stun servers should figure out the public ip.
@@ -462,59 +515,6 @@ This will set the network types allowed by webrtc.
         ]
     }
 }
-```
-
-### WebRTC Ice Server Script
-The given script will be executed on every stream start to dynamically generate ice servers.
-
-```json
-{
-    "webrtc": {
-        "ice_server_script": "./server/ice_server_script.sh"
-    }
-}
-```
-
-The script must return a json list that follows the same structure as the [WebRTC Ice Servers](#webrtc-ice-servers) config option.
-
-Example for this script:
-```
-#!/bin/bash
-
-:: Assign arguments to variables
-username=$1
-credential=$2
-
-# Output the json into stdout
-echo "[
-    {
-        \"urls\": [
-            \"turn:example.com\"
-        ],
-        \"username\": \"$username\",
-        \"credential\": \"$credential\"
-    }
-]"
-```
-
-On Windows:
-```
-@echo off
-
-:: Assign arguments to variables
-set "username=user"
-set "credential=cred"
-
-:: Output the JSON with dynamic values
-echo [
-echo     {
-echo         "urls": [
-echo             "turn:example.com"
-echo         ],
-echo         "username": "%username%",
-echo         "credential": "%credential%"
-echo     }
-echo ]
 ```
 
 ### Url Path Prefix

@@ -43,6 +43,7 @@ jobs:
        npm run build
        mv dist static
 
+       rm -rf streamer web-server
        mv target/release/streamer streamer
        mv target/release/web-server web-server
 

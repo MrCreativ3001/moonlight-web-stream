@@ -432,7 +432,7 @@ The given script will be executed on every stream start to dynamically generate 
 
 The script must return a json list that follows the same structure as the [WebRTC Ice Servers](#webrtc-ice-servers) config option.
 
-Example for this script:
+Linux example using a bash script:
 ```sh
 #!/bin/bash
 
@@ -452,7 +452,7 @@ echo "[
 ]"
 ```
 
-On Windows:
+Windows example using a batch script:
 ```bat
 @echo off
 
@@ -593,8 +593,8 @@ There are 2 ways to build Moonlight Web:
 
 - Compile using [Cargo Cross](https://github.com/cross-rs/cross)
 
-  After you've got a successful installation of cross just run the command in the project root directory
-  This will compile the [web server](#crate-moonlight-web-server) and the [streamer](#crate-moonlight-web-streamer)
+  After you've got a successful installation of cross just run the command in the project root directory.
+  This will compile the [web server](#crate-moonlight-web-server) and the [streamer](#crate-moonlight-web-streamer).
   ```sh
   cross build --release --target YOUR_TARGET
   ```

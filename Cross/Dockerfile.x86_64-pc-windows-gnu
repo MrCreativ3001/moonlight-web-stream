@@ -1,20 +1,19 @@
-# ---- Cross Script with update ubuntu version for SIMD compatible Mingw64, See: https://github.com/cross-rs/cross/blob/main/docker/Dockerfile.x86_64-pc-windows-gnu ----
-# TODO: when cross updates their scripts to a newer version, remove this
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS cross-base
 ENV DEBIAN_FRONTEND=noninteractive
 
 COPY common.sh lib.sh /
-RUN chmod +x /common.sh && /common.sh
+RUN /common.sh
 
 COPY cmake.sh /
-RUN chmod +x /cmake.sh && /cmake.sh
+RUN /cmake.sh
+
+FROM cross-base AS build
 
 RUN dpkg --add-architecture i386 && apt-get update && \
     apt-get install --assume-yes --no-install-recommends libz-mingw-w64-dev
 
 COPY wine.sh /
-# We currently don't need wine and it gives us an error
-#RUN /wine.sh
+RUN /wine.sh
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends g++-mingw-w64-x86-64 gfortran-mingw-w64-x86-64
 
@@ -30,7 +29,6 @@ RUN mkdir -p /usr/lib/binfmt-support/ && \
     ln -s /usr/bin/wine /usr/bin/run-detectors
 
 COPY windows-entry.sh /
-RUN chmod +x /windows-entry.sh
 ENTRYPOINT ["/windows-entry.sh"]
 
 COPY toolchain.cmake /opt/toolchain.cmake
@@ -40,7 +38,7 @@ COPY toolchain.cmake /opt/toolchain.cmake
 ENV CROSS_TOOLCHAIN_PREFIX=x86_64-w64-mingw32-
 ENV CROSS_TOOLCHAIN_SUFFIX=-posix
 ENV CROSS_SYSROOT=/usr/x86_64-w64-mingw32
-ENV CROSS_TARGET_RUNNER="env -u CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER wine"
+ENV CROSS_TARGET_RUNNER="env -u CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER wineconsole --backend=curses"
 ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="$CROSS_TOOLCHAIN_PREFIX"gcc"$CROSS_TOOLCHAIN_SUFFIX" \
     CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER="$CROSS_TARGET_RUNNER" \
     AR_x86_64_pc_windows_gnu="$CROSS_TOOLCHAIN_PREFIX"ar \
@@ -53,7 +51,7 @@ ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="$CROSS_TOOLCHAIN_PREFIX"gcc"$CROS
     CROSS_CMAKE_CRT=gnu \
     CROSS_CMAKE_OBJECT_FLAGS="-ffunction-sections -fdata-sections -m64"
 
-# ---- Custom Script ----
+# ------ CUSTOM BUILD COMMANDS ------
 
 # -- Overwrite the openssl finder so we just don't do anything (it'll just error out even though we have the lib)
 RUN echo "" > $(cmake --system-information | grep CMAKE_ROOT | cut -d'"' -f2)/Modules/FindOpenSSL.cmake

@@ -1,6 +1,7 @@
 use std::{
     fmt::{Debug, Display, Formatter},
     ops::{Deref, DerefMut},
+    sync::Arc,
     time::Duration,
 };
 
@@ -21,33 +22,34 @@ use crate::app::{
     auth::{SessionToken, UserAuth},
     host::{Host, HostId},
     password::StoragePassword,
+    role::{Role, RoleId},
     storage::{
         StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
     },
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Role {
+pub enum RoleType {
     User,
     Admin,
 }
 
-impl From<Role> for api_bindings::UserRole {
-    fn from(value: Role) -> Self {
+impl From<RoleType> for api_bindings::RoleType {
+    fn from(value: RoleType) -> Self {
         match value {
-            Role::User => Self::User,
-            Role::Admin => Self::Admin,
+            RoleType::User => Self::User,
+            RoleType::Admin => Self::Admin,
         }
     }
 }
 
-impl From<api_bindings::UserRole> for Role {
-    fn from(value: common::api_bindings::UserRole) -> Self {
-        use common::api_bindings::UserRole;
+impl From<api_bindings::RoleType> for RoleType {
+    fn from(value: common::api_bindings::RoleType) -> Self {
+        use common::api_bindings::RoleType;
 
         match value {
-            UserRole::User => Self::User,
-            UserRole::Admin => Self::Admin,
+            RoleType::User => Self::User,
+            RoleType::Admin => Self::Admin,
         }
     }
 }
@@ -66,7 +68,7 @@ pub struct User {
     pub(super) app: AppRef,
     pub(super) id: UserId,
     // TODO: maybe arc this because the user is getting cloned?
-    pub(super) cache_storage: Option<StorageUser>,
+    pub(super) cache_storage: Option<Arc<StorageUser>>,
 }
 
 impl Debug for User {
@@ -80,7 +82,7 @@ impl User {
         self.id
     }
 
-    async fn storage_user(&mut self) -> Result<StorageUser, AppError> {
+    async fn storage_user(&mut self) -> Result<Arc<StorageUser>, AppError> {
         if let Some(storage) = self.cache_storage.as_ref() {
             return Ok(storage.clone());
         }
@@ -88,6 +90,7 @@ impl User {
         let app = self.app.access()?;
 
         let user = app.storage.get_user(self.id).await?;
+        let user = Arc::new(user);
 
         self.cache_storage = Some(user.clone());
 
@@ -104,7 +107,9 @@ impl User {
         &mut self,
         requesting_user: &mut AuthenticatedUser,
     ) -> Result<DetailedUser, AppError> {
-        if requesting_user.role().await? == Role::Admin || self.id() == requesting_user.id() {
+        if requesting_user.role().await?.ty().await? == RoleType::Admin
+            || self.id() == requesting_user.id()
+        {
             self.detailed_user_no_auth().await
         } else {
             Err(AppError::Forbidden)
@@ -116,9 +121,9 @@ impl User {
         Ok(DetailedUser {
             id: self.id.0,
             is_default_user: self.is_default_user().await?,
-            name: storage.name,
-            role: storage.role.into(),
-            client_unique_id: storage.client_unique_id,
+            name: storage.name.clone(),
+            role: storage.role_id.role_type().into(),
+            client_unique_id: storage.client_unique_id.clone(),
         })
     }
 
@@ -152,7 +157,7 @@ impl User {
                     return Err(AppError::Unauthorized);
                 }
 
-                if let Some(storage_password) = storage.password
+                if let Some(storage_password) = storage.password.as_ref()
                     && storage_password.verify(password)?
                 {
                     Ok(AuthenticatedUser { inner: self })
@@ -169,7 +174,7 @@ impl User {
                     return Err(AppError::SessionTokenNotFound);
                 }
 
-                self.cache_storage = self.cache_storage.or(user);
+                self.cache_storage = self.cache_storage.or(user.map(Arc::new));
 
                 Ok(AuthenticatedUser { inner: self })
             }
@@ -215,10 +220,13 @@ impl AuthenticatedUser {
         self.detailed_user_no_auth().await
     }
 
-    pub async fn role(&mut self) -> Result<Role, AppError> {
+    pub async fn role_id(&mut self) -> Result<RoleId, AppError> {
         let storage = self.storage_user().await?;
 
-        Ok(storage.role)
+        Ok(storage.role_id)
+    }
+    pub async fn role(&mut self) -> Result<Role, AppError> {
+        todo!()
     }
 
     pub async fn set_password(&mut self, password: StoragePassword) -> Result<(), AppError> {
@@ -363,8 +371,8 @@ impl Admin {
     pub async fn try_from(
         mut user: AuthenticatedUser,
     ) -> Result<Result<Admin, AuthenticatedUser>, AppError> {
-        match user.role().await? {
-            Role::Admin => Ok(Ok(Self(user))),
+        match user.role().await?.ty().await? {
+            RoleType::Admin => Ok(Ok(Self(user))),
             _ => Ok(Err(user)),
         }
     }

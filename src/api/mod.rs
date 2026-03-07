@@ -23,7 +23,7 @@ use crate::{
         App, AppError,
         host::{AppId, HostId},
         storage::StorageHostModify,
-        user::{AuthenticatedUser, Role, UserId},
+        user::{AuthenticatedUser, RoleType, UserId},
     },
 };
 use common::api_bindings::{
@@ -168,10 +168,10 @@ async fn patch_host(
     let role = user.role().await?;
     if request.change_owner {
         match role {
-            Role::Admin => {
+            RoleType::Admin => {
                 modify.owner = Some(request.owner.map(UserId));
             }
-            Role::User => {
+            RoleType::User => {
                 return Err(AppError::Forbidden);
             }
         }

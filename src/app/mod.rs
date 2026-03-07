@@ -18,13 +18,15 @@ use crate::app::{
     auth::{SessionToken, UserAuth},
     host::{AppId, HostId},
     password::StoragePassword,
+    role::{Role, RoleId},
     storage::{Either, Storage, StorageHostModify, StorageUserAdd, create_storage},
-    user::{Admin, AuthenticatedUser, Role, User, UserId},
+    user::{Admin, AuthenticatedUser, User, UserId},
 };
 
 pub mod auth;
 pub mod host;
 pub mod password;
+pub mod role;
 pub mod storage;
 pub mod user;
 
@@ -175,11 +177,13 @@ impl App {
             return Err(AppError::FirstUserAlreadyExists);
         }
 
+        let admin_role = self.admin_role().await?;
+
         let mut user = self
             .add_user_no_auth(StorageUserAdd {
                 name: username.clone(),
                 password: Some(StoragePassword::new(&password)?),
-                role: Role::Admin,
+                role_id: admin_role.id(),
                 client_unique_id: username,
             })
             .await?;
@@ -233,7 +237,7 @@ impl App {
             inner: User {
                 app: self.new_ref(),
                 id: user.id,
-                cache_storage: Some(user),
+                cache_storage: Some(user.into()),
             },
         })
     }
@@ -281,9 +285,12 @@ impl App {
                             return Err(AppError::Unauthorized);
                         }
 
+                        // TODO: what role???
+                        let role: Role = todo!();
+
                         let user = self
                             .add_user_no_auth(StorageUserAdd {
-                                role: Role::User,
+                                role_id: role.id(),
                                 name: username.clone(),
                                 password: None,
                                 client_unique_id: username.clone(),
@@ -306,7 +313,7 @@ impl App {
         Ok(User {
             app: self.new_ref(),
             id: user_id,
-            cache_storage: Some(user),
+            cache_storage: Some(user.into()),
         })
     }
     pub async fn user_by_name(&self, name: &str) -> Result<User, AppError> {
@@ -315,7 +322,7 @@ impl App {
         Ok(User {
             app: self.new_ref(),
             id: user_id,
-            cache_storage: user,
+            cache_storage: user.map(Into::into),
         })
     }
     pub async fn user_by_session(
@@ -332,7 +339,7 @@ impl App {
             inner: User {
                 app: self.new_ref(),
                 id: user_id,
-                cache_storage: user,
+                cache_storage: user.map(Into::into),
             },
         })
     }
@@ -354,7 +361,7 @@ impl App {
                 .map(|user| User {
                     app: self.new_ref(),
                     id: user.id,
-                    cache_storage: Some(user),
+                    cache_storage: Some(user.into()),
                 })
                 .collect::<Vec<_>>(),
         };
@@ -364,5 +371,17 @@ impl App {
 
     pub async fn delete_session(&self, session: SessionToken) -> Result<(), AppError> {
         self.inner.storage.remove_session_token(session).await
+    }
+
+    pub async fn admin_role(&self) -> Result<Role, AppError> {
+        todo!()
+    }
+
+    pub async fn role_by_id(&self, id: RoleId) -> Result<Vec<Role>, AppError> {
+        todo!()
+    }
+
+    pub async fn all_roles(&self) -> Result<Vec<Role>, AppError> {
+        todo!()
     }
 }

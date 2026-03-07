@@ -5,7 +5,7 @@ use moonlight_common::mac::MacAddress;
 use pem::Pem;
 use serde::{Deserialize, Serialize};
 
-use crate::app::user::Role;
+use crate::app::user::RoleType;
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "version")]
@@ -99,7 +99,7 @@ pub struct V2 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2User {
-    pub role: Role,
+    pub role: RoleType,
     pub name: String,
     pub password: Option<V2UserPassword>,
     pub client_unique_id: String,

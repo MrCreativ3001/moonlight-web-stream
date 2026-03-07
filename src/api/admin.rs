@@ -12,7 +12,7 @@ use crate::app::{
     App, AppError,
     password::StoragePassword,
     storage::{StorageUserAdd, StorageUserModify},
-    user::{Admin, AuthenticatedUser, Role, UserId},
+    user::{Admin, AuthenticatedUser, RoleType, UserId},
 };
 
 #[post("/user")]
@@ -61,7 +61,7 @@ pub async fn patch_user(
                     &admin,
                     StorageUserModify {
                         password: Some(new_password),
-                        role: request.role.map(Role::from),
+                        role: request.role.map(RoleType::from),
                         client_unique_id: request.client_unique_id,
                     },
                 )

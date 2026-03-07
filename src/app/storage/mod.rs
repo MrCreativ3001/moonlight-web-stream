@@ -10,8 +10,9 @@ use crate::app::{
     auth::SessionToken,
     host::HostId,
     password::StoragePassword,
+    role::RoleId,
     storage::json::JsonStorage,
-    user::{Role, UserId},
+    user::{RoleType, UserId},
 };
 
 pub mod json;
@@ -32,30 +33,64 @@ pub async fn create_storage(
 }
 
 // Storages:
-// - If two options are in a Modify struct it means: First option = change the field, second option = should pair info exist
+// - If two options are in a Modify struct it means: First option = change the field, second option = is this value null
 
+// --- User ---
 #[derive(Clone)]
 pub struct StorageUser {
     pub id: UserId,
     pub name: String,
     pub password: Option<StoragePassword>,
-    pub role: Role,
+    pub role_id: RoleId,
     pub client_unique_id: String,
 }
 #[derive(Clone)]
 pub struct StorageUserAdd {
-    pub role: Role,
+    pub role_id: RoleId,
     pub name: String,
     pub password: Option<StoragePassword>,
     pub client_unique_id: String,
 }
 #[derive(Default, Clone)]
 pub struct StorageUserModify {
-    pub role: Option<Role>,
+    pub role_id: Option<RoleId>,
     pub password: Option<Option<StoragePassword>>,
     pub client_unique_id: Option<String>,
 }
 
+// --- Roles ---
+#[derive(Clone)]
+pub struct StorageStreamSettings {}
+
+#[derive(Clone)]
+pub struct StorageStreamPermissions {}
+
+#[derive(Clone)]
+pub struct StorageRole {
+    pub id: RoleId,
+    pub name: String,
+    pub ty: RoleType,
+    pub settings: StorageStreamSettings,
+    pub permissions: StorageStreamPermissions,
+}
+
+#[derive(Clone)]
+pub struct StorageRoleAdd {
+    pub name: String,
+    pub ty: RoleType,
+    pub settings: StorageStreamSettings,
+    pub permissions: StorageStreamPermissions,
+}
+
+#[derive(Clone)]
+pub struct StorageRoleModify {
+    pub name: String,
+    pub ty: RoleType,
+    pub settings: StorageStreamSettings,
+    pub permissions: StorageStreamPermissions,
+}
+
+// --- Hosts ---
 #[derive(Clone)]
 pub struct StorageHost {
     pub id: HostId,
@@ -108,6 +143,7 @@ pub enum Either<L, R> {
 
 #[async_trait]
 pub trait Storage {
+    // -- Users --
     /// No duplicate names are allowed!
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError>;
     async fn modify_user(&self, user_id: UserId, user: StorageUserModify) -> Result<(), AppError>;
@@ -120,6 +156,7 @@ pub trait Storage {
     async fn list_users(&self) -> Result<Either<Vec<UserId>, Vec<StorageUser>>, AppError>;
     async fn any_user_exists(&self) -> Result<bool, AppError>;
 
+    // -- Session Tokens --
     async fn create_session_token(
         &self,
         user_id: UserId,
@@ -134,6 +171,13 @@ pub trait Storage {
         session: SessionToken,
     ) -> Result<(UserId, Option<StorageUser>), AppError>;
 
+    // -- Roles --
+    async fn add_role(&self, host: StorageRoleAdd) -> Result<StorageRole, AppError>;
+    async fn modify_role(&self, host_id: RoleId, host: StorageRoleModify) -> Result<(), AppError>;
+    async fn get_role(&self, host_id: RoleId) -> Result<StorageRole, AppError>;
+    async fn remove_role(&self, host_id: RoleId) -> Result<(), AppError>;
+
+    // -- Hosts --
     async fn add_host(&self, host: StorageHostAdd) -> Result<StorageHost, AppError>;
     async fn modify_host(&self, host_id: HostId, host: StorageHostModify) -> Result<(), AppError>;
     async fn get_host(&self, host_id: HostId) -> Result<StorageHost, AppError>;

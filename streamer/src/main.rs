@@ -38,7 +38,7 @@ use moonlight_common::{
         },
         connection::ConnectionListener,
         control::{ActiveGamepads, ControllerButtons},
-        video::{ColorRange, SupportedVideoFormats, VideoFormat, VideoSetup},
+        video::{ColorRange, VideoFormat, VideoSetup},
     },
 };
 use tokio::{
@@ -719,8 +719,7 @@ impl StreamConnection {
             encryption_flags: EncryptionFlags::ALL,
             streaming_remotely: StreamingConfig::Auto,
             sops: true,
-            // TODO: where to get the video formats from???
-            supported_video_formats: SupportedVideoFormats::H264,
+            supported_video_formats: settings.video_supported_formats,
             color_space: settings.video_colorspace,
             color_range: if settings.video_color_range_full {
                 ColorRange::Full
@@ -753,6 +752,7 @@ impl StreamConnection {
                         },
                     ))
                     .await;
+                return Err(StreamConfigError::NotSupportedHdr.into());
             }
             Err(err) => return Err(err.into()),
         }

@@ -11,8 +11,9 @@ use log::warn;
 use crate::app::{
     App, AppError,
     password::StoragePassword,
+    role::RoleId,
     storage::{StorageUserAdd, StorageUserModify},
-    user::{Admin, AuthenticatedUser, RoleType, UserId},
+    user::{Admin, AuthenticatedUser, UserId},
 };
 
 #[post("/user")]
@@ -27,7 +28,7 @@ pub async fn add_user(
             StorageUserAdd {
                 name: request.name.clone(),
                 password: Some(StoragePassword::new(&request.password)?),
-                role: request.role.into(),
+                role_id: RoleId(request.role_id),
                 client_unique_id: request.client_unique_id,
             },
         )
@@ -61,7 +62,7 @@ pub async fn patch_user(
                     &admin,
                     StorageUserModify {
                         password: Some(new_password),
-                        role: request.role.map(RoleType::from),
+                        role_id: request.role_id.map(RoleId),
                         client_unique_id: request.client_unique_id,
                     },
                 )
@@ -76,10 +77,10 @@ pub async fn patch_user(
             let PatchUserRequest {
                 id: _,
                 password: _,
-                role,
+                role_id: role_id,
                 client_unique_id,
             } = &request;
-            if role.is_some() || client_unique_id.is_some() {
+            if role_id.is_some() || client_unique_id.is_some() {
                 return Err(AppError::Forbidden);
             }
 

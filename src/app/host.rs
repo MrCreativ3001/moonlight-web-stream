@@ -75,7 +75,7 @@ impl Host {
         let owner = self.owner().await?;
         if owner.is_none()
             || owner == Some(user.id())
-            || matches!(user.role().await?, RoleType::Admin)
+            || matches!(user.role().await?.ty().await?, RoleType::Admin)
         {
             Ok(())
         } else {
@@ -513,7 +513,9 @@ impl Host {
 
         let host = app.storage.get_host(self.id).await?;
 
-        if host.owner == Some(user.id()) || matches!(user.role().await?, RoleType::Admin) {
+        if host.owner == Some(user.id())
+            || matches!(user.role().await?.ty().await?, RoleType::Admin)
+        {
             {
                 let mut app_images = app.app_image_cache.write().await;
                 app_images.retain(|(_, host_id, _), _| *host_id != self.id);

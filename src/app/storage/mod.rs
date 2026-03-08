@@ -60,34 +60,34 @@ pub struct StorageUserModify {
 
 // --- Roles ---
 #[derive(Clone)]
-pub struct StorageStreamSettings {}
+pub struct StorageRoleSettings {}
 
 #[derive(Clone)]
-pub struct StorageStreamPermissions {}
+pub struct StorageRolePermissions {}
 
 #[derive(Clone)]
 pub struct StorageRole {
     pub id: RoleId,
     pub name: String,
     pub ty: RoleType,
-    pub settings: StorageStreamSettings,
-    pub permissions: StorageStreamPermissions,
+    pub default_settings: StorageRoleSettings,
+    pub permissions: StorageRolePermissions,
 }
 
 #[derive(Clone)]
 pub struct StorageRoleAdd {
     pub name: String,
     pub ty: RoleType,
-    pub settings: StorageStreamSettings,
-    pub permissions: StorageStreamPermissions,
+    pub default_settings: StorageRoleSettings,
+    pub permissions: StorageRolePermissions,
 }
 
 #[derive(Clone)]
 pub struct StorageRoleModify {
-    pub name: String,
-    pub ty: RoleType,
-    pub settings: StorageStreamSettings,
-    pub permissions: StorageStreamPermissions,
+    pub name: Option<String>,
+    pub ty: Option<RoleType>,
+    pub default_settings: Option<StorageRoleSettings>,
+    pub permissions: Option<StorageRolePermissions>,
 }
 
 // --- Hosts ---
@@ -143,6 +143,12 @@ pub enum Either<L, R> {
 
 #[async_trait]
 pub trait Storage {
+    // -- Roles --
+    async fn add_role(&self, role: StorageRoleAdd) -> Result<StorageRole, AppError>;
+    async fn modify_role(&self, role_id: RoleId, host: StorageRoleModify) -> Result<(), AppError>;
+    async fn get_role(&self, role_id: RoleId) -> Result<StorageRole, AppError>;
+    async fn remove_role(&self, role_id: RoleId) -> Result<(), AppError>;
+
     // -- Users --
     /// No duplicate names are allowed!
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError>;
@@ -170,12 +176,6 @@ pub trait Storage {
         &self,
         session: SessionToken,
     ) -> Result<(UserId, Option<StorageUser>), AppError>;
-
-    // -- Roles --
-    async fn add_role(&self, host: StorageRoleAdd) -> Result<StorageRole, AppError>;
-    async fn modify_role(&self, host_id: RoleId, host: StorageRoleModify) -> Result<(), AppError>;
-    async fn get_role(&self, host_id: RoleId) -> Result<StorageRole, AppError>;
-    async fn remove_role(&self, host_id: RoleId) -> Result<(), AppError>;
 
     // -- Hosts --
     async fn add_host(&self, host: StorageHostAdd) -> Result<StorageHost, AppError>;

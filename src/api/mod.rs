@@ -165,9 +165,9 @@ async fn patch_host(
 
     let mut modify = StorageHostModify::default();
 
-    let role = user.role().await?;
+    let mut role = user.role().await?;
     if request.change_owner {
-        match role {
+        match role.ty().await? {
             RoleType::Admin => {
                 modify.owner = Some(request.owner.map(UserId));
             }

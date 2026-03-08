@@ -36,6 +36,8 @@ pub enum AppError {
     AppDestroyed,
     #[error("the user was not found")]
     UserNotFound,
+    #[error("the role was not found")]
+    RoleNotFound,
     #[error("more than one user already exists")]
     FirstUserAlreadyExists,
     #[error("the config option first_login_create_admin is not true")]
@@ -286,7 +288,7 @@ impl App {
                         }
 
                         // TODO: what role???
-                        let role: Role = todo!();
+                        let role = self.default_role().await?;
 
                         let user = self
                             .add_user_no_auth(StorageUserAdd {
@@ -374,6 +376,9 @@ impl App {
     }
 
     pub async fn admin_role(&self) -> Result<Role, AppError> {
+        todo!()
+    }
+    pub async fn default_role(&self) -> Result<Role, AppError> {
         todo!()
     }
 

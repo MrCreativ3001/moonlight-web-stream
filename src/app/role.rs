@@ -33,26 +33,24 @@ impl Role {
         self.id
     }
 
-    async fn storage_role(&self) -> Result<Arc<StorageRole>, AppError> {
+    async fn storage_role(&mut self) -> Result<Arc<StorageRole>, AppError> {
         if let Some(storage) = self.cache_storage.as_ref() {
             return Ok(storage.clone());
         }
 
         let app = self.app.access()?;
 
-        let user = app.storage.get_user(self.id).await?;
-        let user = Arc::new(user);
+        let role = app.storage.get_role(self.id).await?;
+        let role = Arc::new(role);
 
-        self.cache_storage = Some(user.clone());
+        self.cache_storage = Some(role.clone());
 
-        Ok(user)
+        Ok(role)
     }
 
-    pub async fn ty(&self) -> Result<RoleType, AppError> {
-        todo!()
-    }
+    pub async fn ty(&mut self) -> Result<RoleType, AppError> {
+        let storage = self.storage_role().await?;
 
-    pub async fn name(&self) -> Result<RoleType, AppError> {
-        todo!()
+        Ok(storage.ty)
     }
 }

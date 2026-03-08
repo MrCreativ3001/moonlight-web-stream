@@ -103,6 +103,21 @@ impl User {
         Ok(app.config.web_server.default_user_id.map(UserId) == Some(self.id))
     }
 
+    pub async fn role_id(&mut self) -> Result<RoleId, AppError> {
+        let storage = self.storage_user().await?;
+
+        Ok(storage.role_id)
+    }
+    pub async fn role(&mut self) -> Result<Role, AppError> {
+        let role = Role {
+            app: self.app.clone(),
+            id: self.role_id().await?,
+            cache_storage: None,
+        };
+
+        Ok(role)
+    }
+
     pub async fn detailed_user(
         &mut self,
         requesting_user: &mut AuthenticatedUser,
@@ -218,15 +233,6 @@ impl DerefMut for AuthenticatedUser {
 impl AuthenticatedUser {
     pub async fn detailed_user(&mut self) -> Result<DetailedUser, AppError> {
         self.detailed_user_no_auth().await
-    }
-
-    pub async fn role_id(&mut self) -> Result<RoleId, AppError> {
-        let storage = self.storage_user().await?;
-
-        Ok(storage.role_id)
-    }
-    pub async fn role(&mut self) -> Result<Role, AppError> {
-        todo!()
     }
 
     pub async fn set_password(&mut self, password: StoragePassword) -> Result<(), AppError> {

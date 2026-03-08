@@ -7,9 +7,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::user::RoleType;
 
+// Those version don't follow the release tags and are just arbitrary
+
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "version")]
 pub enum Json {
+    #[serde(rename = "3")]
+    V3(V3),
     #[serde(rename = "2")]
     V2(V2),
     #[serde(untagged)]
@@ -104,6 +108,7 @@ pub struct V2User {
     pub password: Option<V2UserPassword>,
     pub client_unique_id: String,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2UserPassword {
     #[serde(with = "hex_array")]
@@ -134,9 +139,53 @@ pub struct V2HostCache {
     pub mac: Option<MacAddress>,
 }
 
-pub fn migrate_to_latest(json: Json) -> Result<V2, anyhow::Error> {
+fn migrate_v2_to_v3(old: V2) -> V3 {
+    // TODO
+    todo!()
+}
+
+// V3
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3 {
+    #[serde(deserialize_with = "de_int_key")]
+    pub users: HashMap<u32, V3User>,
+    #[serde(deserialize_with = "de_int_key")]
+    pub hosts: HashMap<u32, V2Host>,
+    #[serde(deserialize_with = "de_int_key")]
+    pub roles: HashMap<u32, V3Role>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3User {
+    pub role_id: u32,
+    pub name: String,
+    pub password: Option<V2UserPassword>,
+    pub client_unique_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum V3RoleType {
+    User,
+    Admin,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3Role {
+    pub name: String,
+    pub ty: V3RoleType,
+    pub default_settings: V3RoleSettings,
+    pub permissions: V3RolePermissions,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3RoleSettings {}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3RolePermissions {}
+
+pub fn migrate_to_latest(json: Json) -> Result<V3, anyhow::Error> {
     match json {
-        Json::V1(v1) => Ok(migrate_v1_to_v2(v1)),
-        Json::V2(v2) => Ok(v2),
+        Json::V1(v1) => Ok(migrate_v2_to_v3(migrate_v1_to_v2(v1))),
+        Json::V2(v2) => Ok(migrate_v2_to_v3(v2)),
+        Json::V3(v3) => Ok(v3),
     }
 }

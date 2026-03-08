@@ -137,6 +137,7 @@ async-trait.workspace = true
 hex.workspace = true
 sha2 = "0.10.9"
 
+[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
 [lints]

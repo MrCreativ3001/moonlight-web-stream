@@ -36,8 +36,9 @@ jobs:
             app-suffix: .exe
           - target: x86_64-unknown-linux-gnu
             app-suffix: ""
-          - target: x86_64-unknown-linux-musl
-            app-suffix: ""
+          # TODO: fix musl build by disabling SIMD in moonlight-common-c
+          #- target: x86_64-unknown-linux-musl
+          #  app-suffix: ""
           - target: aarch64-unknown-linux-gnu
             app-suffix: ""
           - target: aarch64-unknown-linux-musl

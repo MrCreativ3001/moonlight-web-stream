@@ -22,7 +22,6 @@ jobs:
         with:
           toolchain: nightly
       - uses: Swatinem/rust-cache@v2
-        shared-key: cross-${{ matrix.target }}
   
       - name: Test
         run: cargo test --workspace --locked
@@ -63,12 +62,14 @@ jobs:
       with:
         toolchain: nightly
     - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: cross-${{ matrix.target }}
   
     # Install cross
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@v1.17.7
     - name: Install Cross
-      run: cargo binstall cross --no-confirm
+      run: cargo binstall cross --locked --no-confirm
   
     # Restore cached cross docker images
     - name: Restore cross docker cache

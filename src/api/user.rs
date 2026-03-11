@@ -1,12 +1,13 @@
 use actix_web::{
     HttpResponse, delete, get, patch, post,
-    web::{Data, Json},
+    web::{Data, Json, Query},
 };
 use common::api_bindings::{
-    DeleteUserRequest, DetailedUser, GetUsersResponse, PatchUserRequest, PostUserRequest,
+    DeleteUserRequest, DetailedUser, GetUserQuery, GetUsersResponse, PatchUserRequest,
+    PostUserRequest,
 };
 use futures::future::join_all;
-use log::warn;
+use tracing::warn;
 
 use crate::app::{
     App, AppError,
@@ -15,6 +16,38 @@ use crate::app::{
     storage::{StorageUserAdd, StorageUserModify},
     user::{Admin, AuthenticatedUser, UserId},
 };
+
+#[get("/user")]
+async fn get_user(
+    app: Data<App>,
+    mut user: AuthenticatedUser,
+    Query(query): Query<GetUserQuery>,
+) -> Result<Json<DetailedUser>, AppError> {
+    match (query.name, query.user_id) {
+        (None, None) => {
+            let detailed_user = user.detailed_user().await?;
+
+            Ok(Json(detailed_user))
+        }
+        (None, Some(user_id)) => {
+            let target_user_id = UserId(user_id);
+
+            let mut target_user = app.user_by_id(target_user_id).await?;
+
+            let detailed_user = target_user.detailed_user(&mut user).await?;
+
+            Ok(Json(detailed_user))
+        }
+        (Some(name), None) => {
+            let mut target_user = app.user_by_name(&name).await?;
+
+            let detailed_user = target_user.detailed_user(&mut user).await?;
+
+            Ok(Json(detailed_user))
+        }
+        (Some(_), Some(_)) => Err(AppError::BadRequest),
+    }
+}
 
 #[post("/user")]
 pub async fn add_user(

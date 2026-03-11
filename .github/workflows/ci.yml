@@ -66,10 +66,8 @@ jobs:
         shared-key: cross-${{ matrix.target }}
   
     # Install cross
-    - name: Install cargo-binstall
-      uses: cargo-bins/cargo-binstall@v1.17.7
     - name: Install Cross
-      run: cargo binstall cross --locked --no-confirm
+      run: cargo install cross --git https://github.com/cross-rs/cross
   
     # Restore cached cross docker images
     - name: Restore cross docker cache

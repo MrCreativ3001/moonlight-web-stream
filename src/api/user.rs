@@ -110,7 +110,7 @@ pub async fn patch_user(
             let PatchUserRequest {
                 id: _,
                 password: _,
-                role_id: role_id,
+                role_id,
                 client_unique_id,
             } = &request;
             if role_id.is_some() || client_unique_id.is_some() {

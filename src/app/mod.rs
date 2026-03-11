@@ -383,7 +383,7 @@ impl App {
         todo!()
     }
 
-    pub async fn role_by_id(&self, id: RoleId) -> Result<Vec<Role>, AppError> {
+    pub async fn role_by_id(&self, _id: RoleId) -> Result<Vec<Role>, AppError> {
         todo!()
     }
 

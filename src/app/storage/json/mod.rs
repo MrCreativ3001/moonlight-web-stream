@@ -245,17 +245,17 @@ async fn file_writer(mut store_receiver: Receiver<()>, json: Arc<JsonStorage>) {
     }
 }
 
-fn default_settings_from_json(settings: V3RoleSettings) -> StorageRoleSettings {
+fn default_settings_from_json(_settings: V3RoleSettings) -> StorageRoleSettings {
     todo!()
 }
-fn default_settings_to_json(settings: StorageRoleSettings) -> V3RoleSettings {
+fn default_settings_to_json(_settings: StorageRoleSettings) -> V3RoleSettings {
     todo!()
 }
 
-fn permissions_from_json(permissions: V3RolePermissions) -> StorageRolePermissions {
+fn permissions_from_json(_permissions: V3RolePermissions) -> StorageRolePermissions {
     todo!()
 }
-fn permissions_to_json(permissions: StorageRolePermissions) -> V3RolePermissions {
+fn permissions_to_json(_permissions: StorageRolePermissions) -> V3RolePermissions {
     todo!()
 }
 
@@ -368,11 +368,11 @@ impl Storage for JsonStorage {
                 RoleType::User => V3RoleType::User,
             };
         }
-        if let Some(default_settings) = modify.default_settings {
+        if let Some(_default_settings) = modify.default_settings {
             // TODO
             todo!()
         }
-        if let Some(permissions) = modify.permissions {
+        if let Some(_permissions) = modify.permissions {
             // TODO
             todo!()
         }

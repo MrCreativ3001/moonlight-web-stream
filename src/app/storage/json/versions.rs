@@ -139,7 +139,7 @@ pub struct V2HostCache {
     pub mac: Option<MacAddress>,
 }
 
-fn migrate_v2_to_v3(old: V2) -> V3 {
+fn migrate_v2_to_v3(_old: V2) -> V3 {
     // TODO
     todo!()
 }

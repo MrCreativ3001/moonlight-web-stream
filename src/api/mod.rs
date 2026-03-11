@@ -1,39 +1,15 @@
 use actix_web::{
-    HttpRequest, HttpResponse, delete,
     dev::HttpServiceFactory,
-    get,
-    http::header,
-    middleware::from_fn,
-    patch, post, services,
-    web::{self, Data, Json, Query},
+    middleware::from_fn, services,
+    web::{self},
 };
-use futures::future::try_join_all;
-use log::warn;
-use moonlight_common::{crypto::openssl::OpenSSLCryptoBackend, http::pair::PairPin};
-use sha2::{Digest, Sha256};
-use tokio::spawn;
 
-use crate::{
-    api::{
+use crate::api::{
         app::{get_app_image, get_apps},
         auth::auth_middleware,
         host::{delete_host, get_host, pair_host, patch_host, post_host, wake_host},
-        response_streaming::StreamedResponse,
         user::{add_user, get_user, list_users, patch_user},
-    },
-    app::{
-        App, AppError,
-        host::{AppId, HostId},
-        storage::StorageHostModify,
-        user::{AuthenticatedUser, RoleType, UserId},
-    },
-};
-use common::api_bindings::{
-    self, DeleteHostQuery, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse,
-    GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, PatchHostRequest,
-    PostHostRequest, PostHostResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
-    PostWakeUpRequest, UndetailedHost,
-};
+    };
 
 pub mod app;
 pub mod auth;

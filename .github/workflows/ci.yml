@@ -22,6 +22,7 @@ jobs:
         with:
           toolchain: nightly
       - uses: Swatinem/rust-cache@v2
+        shared-key: cross-${{ matrix.target }}
   
       - name: Test
         run: cargo test --workspace --locked

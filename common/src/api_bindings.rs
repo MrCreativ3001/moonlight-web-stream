@@ -290,6 +290,7 @@ pub struct StreamPermissions {}
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct PostRoleRequest {
+    pub name: String,
     pub default_settings: StreamSettings,
     pub permissions: StreamPermissions,
 }

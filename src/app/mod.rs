@@ -19,7 +19,7 @@ use crate::app::{
     host::{AppId, HostId},
     password::StoragePassword,
     role::{Role, RoleId},
-    storage::{Either, Storage, StorageHostModify, StorageUserAdd, create_storage},
+    storage::{Either, Storage, StorageHostModify, StorageRoleAdd, StorageUserAdd, create_storage},
     user::{Admin, AuthenticatedUser, User, UserId},
 };
 
@@ -72,7 +72,7 @@ pub enum AppError {
     #[error("the password is empty")]
     PasswordEmpty,
     #[error("the password is empty")]
-    NameEmpty,
+    UserNameEmpty,
     #[error("the authorization header is not a bearer")]
     BadRequest,
     // --
@@ -109,7 +109,7 @@ impl ResponseError for AppError {
             Self::HeaderAuthMalformed => StatusCode::BAD_REQUEST,
             Self::BearerMalformed => StatusCode::BAD_REQUEST,
             Self::PasswordEmpty => StatusCode::BAD_REQUEST,
-            Self::NameEmpty => StatusCode::BAD_REQUEST,
+            Self::UserNameEmpty => StatusCode::BAD_REQUEST,
             Self::BadRequest => StatusCode::BAD_REQUEST,
             Self::Moonlight(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -231,7 +231,7 @@ impl App {
 
     async fn add_user_no_auth(&self, user: StorageUserAdd) -> Result<AuthenticatedUser, AppError> {
         if user.name.is_empty() {
-            return Err(AppError::NameEmpty);
+            return Err(AppError::UserNameEmpty);
         }
 
         let user = self.inner.storage.add_user(user).await?;
@@ -383,7 +383,17 @@ impl App {
         todo!()
     }
 
-    pub async fn role_by_id(&self, _id: RoleId) -> Result<Vec<Role>, AppError> {
+    pub async fn add_role(&self, admin: &Admin, role: StorageRoleAdd) -> Result<Role, AppError> {
+        let role = self.inner.storage.add_role(role).await?;
+
+        Ok(Role {
+            app: self.new_ref(),
+            id: role.id,
+            cache_storage: Some(role.into()),
+        })
+    }
+
+    pub async fn role_by_id(&self, _id: RoleId) -> Result<Role, AppError> {
         todo!()
     }
 

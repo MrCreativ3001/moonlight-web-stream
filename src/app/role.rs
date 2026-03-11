@@ -1,3 +1,7 @@
+use common::api_bindings::{StreamPermissions, StreamSettings};
+
+use crate::app::storage::StorageRoleModify;
+use crate::app::user::Admin;
 use crate::app::{AppError, AppRef, storage::StorageRole, user::RoleType};
 use std::fmt::{self, Display};
 use std::sync::Arc;
@@ -52,5 +56,32 @@ impl Role {
         let storage = self.storage_role().await?;
 
         Ok(storage.ty)
+    }
+
+    pub async fn permissions(&self) -> Result<StreamPermissions, AppError> {
+        let storage = self.storage_role().await?;
+
+        Ok(storage.permissions.clone())
+    }
+    pub async fn default_settings(&self) -> Result<StreamSettings, AppError> {
+        let storage = self.storage_role().await?;
+
+        Ok(storage.default_settings.clone())
+    }
+
+    pub async fn modify(&self, _admin: &Admin, modify: StorageRoleModify) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
+        app.storage.modify_role(self.id, modify).await?;
+
+        Ok(())
+    }
+
+    pub async fn delete(self, _admin: &Admin) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
+        app.storage.remove_role(self.id).await?;
+
+        Ok(())
     }
 }

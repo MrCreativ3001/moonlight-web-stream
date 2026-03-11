@@ -1,4 +1,4 @@
-name: Linux
+name: CI
 
 on:
   push:
@@ -9,7 +9,25 @@ on:
   pull_request:
 
 jobs:
+  test:
+    name: Test x86_64-unknown-linux-gnu
+    runs-on: ubuntu-latest
+  
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@v2
+  
+      - name: Test
+        run: cargo test --workspace --locked
+
   build:
+    needs: test
     strategy:
       matrix:
         include:
@@ -24,7 +42,7 @@ jobs:
           - target: aarch64-unknown-linux-musl
             app-suffix: ""
 
-    name: ${{ matrix.target }}
+    name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
 
     steps:
@@ -39,14 +57,17 @@ jobs:
     - uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: nightly
-    #- uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@v2
     - name: Install Cross
       run: |
         cargo install cross --git https://github.com/cross-rs/cross
 
     - name: Build
+      env:
+        CROSS_CONTAINER_ENGINE: docker
+        CROSS_CONTAINER_OPTS: "--cache-from type=gha,scope=cross-${{ matrix.target }} --cache-to type=gha,scope=cross-${{ matrix.target }},mode=max"
       run: |
-       cross build --release --target ${{ matrix.target }}
+        cross build --release --target ${{ matrix.target }}
 
        npm install
        npm run build

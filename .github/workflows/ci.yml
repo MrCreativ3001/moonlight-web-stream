@@ -29,6 +29,7 @@ jobs:
   build:
     needs: test
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-pc-windows-gnu
@@ -45,23 +46,33 @@ jobs:
     name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
 
+    env:
+      DOCKER_BUILDKIT: 1
+      BUILDKIT_PROGRESS: plain
+
     steps:
     - uses: actions/checkout@v5
       with:
         submodules: recursive
 
+    # Install node
     - uses: actions/setup-node@v6
       with:
         node-version: 24
 
+    # Install rust
     - uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: nightly
     - uses: Swatinem/rust-cache@v2
-    - name: Install Cross
-      run: |
-        cargo install cross --git https://github.com/cross-rs/cross
 
+    # Install cross
+    - name: Install cargo-binstall
+      uses: cargo-bins/cargo-binstall@v1.17.7
+    - name: Install Cross
+      run: cargo binstall cross --no-confirm
+
+    # Build
     - name: Build
       env:
         CROSS_CONTAINER_ENGINE: docker

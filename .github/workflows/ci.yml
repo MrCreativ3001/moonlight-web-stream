@@ -70,21 +70,6 @@ jobs:
     - name: Install Cross
       run: cargo install cross --git https://github.com/cross-rs/cross
   
-    # Restore cached cross docker images
-    - name: Restore cross docker cache
-      uses: actions/cache@v4
-      with:
-        path: /tmp/cross-docker-cache
-        key: cross-docker-${{ runner.os }}-${{ matrix.target }}
-        restore-keys: |
-          cross-docker-${{ runner.os }}-${{ matrix.target }}-
-  
-    - name: Load cached docker images
-      run: |
-        if [ -f /tmp/cross-docker-cache/images.tar ]; then
-          docker load -i /tmp/cross-docker-cache/images.tar
-        fi
-  
     # Build
     - name: Build
       run: |
@@ -97,13 +82,6 @@ jobs:
         rm -rf streamer web-server
         mv target/${{ matrix.target }}/release/streamer${{ matrix.app-suffix }} streamer${{ matrix.app-suffix }}
         mv target/${{ matrix.target }}/release/web-server${{ matrix.app-suffix }} web-server${{ matrix.app-suffix }}
-  
-    # Save cross docker images
-    - name: Save cross docker images
-      run: |
-        mkdir -p /tmp/cross-docker-cache
-        docker save $(docker images --format '{{.Repository}}:{{.Tag}}' | grep cross) \
-          -o /tmp/cross-docker-cache/images.tar || true
   
     - name: Upload build artifact
       uses: actions/upload-artifact@v4

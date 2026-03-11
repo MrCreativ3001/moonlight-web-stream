@@ -1,10 +1,3 @@
-# default toolchain file for targets, see #1110
-# required so CMAKE_CROSSCOMPILING_EMULATOR is set,
-# as well for embedded systems and other targets.
-#
-# all embedded systems without an OS should set the system name to generic
-# https://cmake.org/cmake/help/book/mastering-cmake/chapter/Cross%20Compiling%20With%20CMake.html
-
 set(CMAKE_SYSTEM_NAME "$ENV{CROSS_CMAKE_SYSTEM_NAME}")
 set(CMAKE_SYSTEM_PROCESSOR "$ENV{CROSS_CMAKE_SYSTEM_PROCESSOR}")
 if(DEFINED ENV{CROSS_TARGET_RUNNER})

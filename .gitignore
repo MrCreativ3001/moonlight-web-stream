@@ -2,7 +2,6 @@
 /target
 finalOutput
 ignore
-.cargo
 
 # VsCode
 .vscode

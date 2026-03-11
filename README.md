@@ -591,7 +591,7 @@ There are 2 ways to build Moonlight Web:
   - [moonlight web streamer](#crate-moonlight-web-streamer)
   - [moonlight common rust](https://github.com/MrCreativ3001/moonlight-common-rust/tree/master/examples#client-common-c)
 
-- Compile using [Cargo Cross](https://github.com/cross-rs/cross)
+- Compile using [Cargo Cross](https://github.com/cross-rs/cross) (doesn't work on most targets because cross-rs images use outdated c/cpp compilers)
 
   After you've got a successful installation of cross just run the command in the project root directory.
   This will compile the [web server](#crate-moonlight-web-server) and the [streamer](#crate-moonlight-web-streamer).

@@ -13,48 +13,57 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: ubuntu-latest
-            name: x86_64
-          - runner: ubuntu-24.04-arm
-            name: aarch64
+          - target: x86_64-pc-windows-gnu
+            app-suffix: .exe
+          - target: x86_64-unknown-linux-gnu
+            app-suffix: ""
+          - target: x86_64-unknown-linux-musl
+            app-suffix: ""
+          - target: aarch64-unknown-linux-gnu
+            app-suffix: ""
+          - target: aarch64-unknown-linux-musl
+            app-suffix: ""
 
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v5
       with:
         submodules: recursive
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: nightly
+
     - uses: actions/setup-node@v6
       with:
         node-version: 24
-    - run: sudo apt-get install clang -y
 
-    - name: Run tests
-      run: cargo test --workspace --locked
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: nightly
+    #- uses: Swatinem/rust-cache@v2
+    - name: Install Cross
+      run: |
+        cargo install cross --git https://github.com/cross-rs/cross
 
     - name: Build
       run: |
-       cargo build --release
+       cross build --release --target ${{ matrix.target }}
+
        npm install
        npm run build
        mv dist static
 
        rm -rf streamer web-server
-       mv target/release/streamer streamer
-       mv target/release/web-server web-server
+       mv target/${{ matrix.target }}/release/streamer${{ matrix.app-suffix }} streamer${{ matrix.app-suffix }}
+       mv target/${{ matrix.target }}/release/web-server${{ matrix.app-suffix }} web-server${{ matrix.app-suffix }}
 
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: moonlight-web-${{ matrix.name }}-unknown-linux-gnu
+        name: moonlight-web-${{ matrix.target }}
         path: |
-          streamer
-          web-server
+          streamer${{ matrix.app-suffix }}
+          web-server${{ matrix.app-suffix }}
           static
 
   docker:

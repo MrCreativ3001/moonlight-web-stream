@@ -67,7 +67,7 @@ jobs:
         CROSS_CONTAINER_ENGINE: docker
         CROSS_CONTAINER_OPTS: "--cache-from type=gha,scope=cross-${{ matrix.target }} --cache-to type=gha,scope=cross-${{ matrix.target }},mode=max"
       run: |
-        cross build --release --target ${{ matrix.target }}
+       cross build --release --target ${{ matrix.target }}
 
        npm install
        npm run build

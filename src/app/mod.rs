@@ -96,6 +96,7 @@ impl ResponseError for AppError {
             Self::HostNotPaired => StatusCode::FORBIDDEN,
             Self::HostPaired => StatusCode::NOT_MODIFIED,
             Self::UserNotFound => StatusCode::NOT_FOUND,
+            Self::RoleNotFound => StatusCode::NOT_FOUND,
             Self::UserAlreadyExists => StatusCode::CONFLICT,
             Self::CredentialsWrong => StatusCode::UNAUTHORIZED,
             Self::SessionTokenNotFound => StatusCode::UNAUTHORIZED,

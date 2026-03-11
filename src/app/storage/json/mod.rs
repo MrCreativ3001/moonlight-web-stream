@@ -349,11 +349,40 @@ impl Storage for JsonStorage {
             permissions: permissions_from_json(role.permissions),
         })
     }
-    async fn modify_role(&self, role_id: RoleId, role: StorageRoleModify) -> Result<(), AppError> {
+    async fn modify_role(
+        &self,
+        role_id: RoleId,
+        modify: StorageRoleModify,
+    ) -> Result<(), AppError> {
         let roles = self.roles.read().await;
 
-        let mut role_lock = roles.get(&role_id).ok_or(AppError::RoleNotFound)?;
+        let role_lock = roles.get(&role_id.0).ok_or(AppError::RoleNotFound)?;
         let mut role = role_lock.write().await;
+
+        if let Some(name) = modify.name {
+            role.name = name;
+        }
+        if let Some(ty) = modify.ty {
+            role.ty = match ty {
+                RoleType::Admin => V3RoleType::Admin,
+                RoleType::User => V3RoleType::User,
+            };
+        }
+        if let Some(default_settings) = modify.default_settings {
+            // TODO
+            todo!()
+        }
+        if let Some(permissions) = modify.permissions {
+            // TODO
+            todo!()
+        }
+
+        drop(role);
+        drop(roles);
+
+        self.force_write();
+
+        Ok(())
     }
     async fn get_role(&self, role_id: RoleId) -> Result<StorageRole, AppError> {
         let roles = self.roles.read().await;

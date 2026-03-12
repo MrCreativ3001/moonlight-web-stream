@@ -127,7 +127,7 @@ jobs:
           mv dist/web-server${{ matrix.suffix }} package/
           mv dist/static package/
 
-          ARCHIVE="moonlight-web-${{ github.ref_name }}-${{ matrix.target }}"
+          ARCHIVE="moonlight-web-${{ matrix.target }}"
 
           if [[ "${{ matrix.suffix }}" == ".exe" ]]; then
             zip -r "$ARCHIVE.zip" package

@@ -10,7 +10,7 @@ use common::api_bindings::{
 use crate::app::{
     App, AppError,
     role::RoleId,
-    storage::{StorageRoleAdd, StorageRolePermissions, StorageRoleSettings},
+    storage::{StorageRoleAdd, StorageRoleModify, StorageRolePermissions, StorageRoleSettings},
     user::{Admin, RoleType},
 };
 
@@ -68,7 +68,17 @@ pub async fn patch_role(
 
     let role = app.role_by_id(role_id).await?;
 
-    Ok(HttpResponse::Ok())
+    role.modify(
+        &admin,
+        StorageRoleModify {
+            name: request.name,
+            ty: None,
+            default_settings: request.default_settings,
+        },
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[delete("/role")]

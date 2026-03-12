@@ -307,8 +307,9 @@ pub struct PostRoleResponse {
 pub struct PatchRoleRequest {
     /// The role id
     pub id: u32,
+    pub name: Option<String>,
     pub default_settings: Option<StreamSettings>,
-    pub restrictions: Option<StreamPermissions>,
+    pub permissions: Option<StreamPermissions>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

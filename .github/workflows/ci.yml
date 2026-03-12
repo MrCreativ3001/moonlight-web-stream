@@ -8,6 +8,9 @@ on:
       - 'v*'
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     name: Test x86_64-unknown-linux-gnu

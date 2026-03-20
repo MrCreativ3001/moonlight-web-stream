@@ -17,8 +17,10 @@ const TOUCH_AS_CLICK_MIN_TIME_MS = 100
 const TOUCH_AS_CLICK_MAX_TIME_MS = 350
 // How much to move to open up the screen keyboard when having three touches at the same time
 const TOUCHES_AS_KEYBOARD_DISTANCE = 100
-// How much time is allowed for a double tap in touch mode relative for dragging
-const DOUBLE_TAP_RELATIVE_MAX_TIME_FOR_DRAG = 100
+// How long is the first tap allowed to be for it to maybe be a double tap
+const DOUBLE_TAP_FIRST_TAP_MAX_TIME_MS = 100
+// How much time is allowed after a touch release for a new tap to count both taps as a double tap
+const DOUBLE_TAP_SECOND_TAP_MAX_TIME_MS = 200
 
 const CONTROLLER_RUMBLE_INTERVAL_MS = 60
 
@@ -388,10 +390,8 @@ export class StreamInput {
     // Used in touch mode "relative" and "pointAndDrag"
     // E.g. scrolling movement
     private primaryTouch: number | null = null
-    // The time of the release of the last touch
-    // Used to see if this is a double tap
-    // This is using Date.now()
-    private lastTouchRelease: number | null = null
+    // If the next touch is a double tap?
+    private nextTouchDoubleTap: boolean = false
 
     private onTouchData(data: ArrayBuffer) {
         const buffer = new ByteBuffer(new Uint8Array(data))
@@ -451,13 +451,15 @@ export class StreamInput {
             const primaryTouch = this.primaryTouch != null && this.touchTracker.get(this.primaryTouch)
 
             // Detect dragging in mouse relative
-            if (this.config.touchMode == "mouseRelative" && primaryTouch && this.lastTouchRelease != null && Date.now() - this.lastTouchRelease <= DOUBLE_TAP_RELATIVE_MAX_TIME_FOR_DRAG) {
+            if (this.config.touchMode == "mouseRelative" && primaryTouch && this.nextTouchDoubleTap) {
                 if (primaryTouch.mouseClicked == null) {
                     this.sendMouseButton(true, StreamMouseButton.LEFT)
                     primaryTouch.mouseClicked = StreamMouseButton.LEFT
                 }
 
                 this.touchMouseAction = "drag"
+
+                this.nextTouchDoubleTap = false
             }
 
             // Detect scrolling
@@ -599,40 +601,62 @@ export class StreamInput {
                 const oldTouch = this.touchTracker.get(this.primaryTouch)
                 this.primaryTouch = null
 
-                // store last touch release time
-                this.lastTouchRelease = Date.now()
-
                 if (oldTouch) {
+                    const touchTime = this.calcTouchTime(oldTouch)
                     const touchOriginDistance = this.calcTouchOriginDistance(touch, oldTouch)
+
+                    const maybeDoubleTap = touchTime < DOUBLE_TAP_FIRST_TAP_MAX_TIME_MS
 
                     // point and drag: Before making a click we should move the mouse to the position
                     if (this.config.touchMode == "pointAndDrag" && !oldTouch.mouseMoved) {
                         this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, true)
                     }
 
-                    // See if we should make a click
-                    if (
-                        touchOriginDistance < TOUCH_AS_CLICK_MAX_DISTANCE &&
-                        // mouse relative: when having moved the mouse we shouldn't allow a click
-                        !(this.config.mouseMode == "relative" && !oldTouch.mouseMoved)
-                    ) {
-                        const time = this.calcTouchTime(oldTouch)
+                    const doClick = (maybeDoubleTap: boolean) => {
+                        // See if we should make a click
+                        if (
+                            touchOriginDistance < TOUCH_AS_CLICK_MAX_DISTANCE &&
+                            // mouse relative:
+                            // - when having moved the mouse we shouldn't allow a click
+                            // - when it's maybe a double click we shouldn't do a click
+                            !(this.config.mouseMode == "relative" && !oldTouch.mouseMoved) &&
+                            !maybeDoubleTap
+                        ) {
+                            // Should we right or left click?
+                            let mouseButton
+                            if (touchTime > TOUCH_AS_CLICK_MAX_TIME_MS) {
+                                mouseButton = StreamMouseButton.RIGHT
+                            } else {
+                                mouseButton = StreamMouseButton.LEFT
+                            }
 
-                        // Should we right or left click?
-                        let mouseButton
-                        if (time > TOUCH_AS_CLICK_MAX_TIME_MS) {
-                            mouseButton = StreamMouseButton.RIGHT
-                        } else {
-                            mouseButton = StreamMouseButton.LEFT
+                            this.sendMouseButton(true, mouseButton)
+                            oldTouch.mouseClicked = mouseButton
                         }
 
-                        this.sendMouseButton(true, mouseButton)
-                        oldTouch.mouseClicked = mouseButton
+                        // Reset mouse click to neutral
+                        if (oldTouch.mouseClicked != null) {
+                            this.sendMouseButton(false, oldTouch.mouseClicked)
+                        }
                     }
 
-                    // Reset mouse click to neutral
-                    if (oldTouch.mouseClicked != null) {
-                        this.sendMouseButton(false, oldTouch.mouseClicked)
+                    doClick(maybeDoubleTap)
+
+                    if (maybeDoubleTap) {
+                        this.nextTouchDoubleTap = true
+
+                        // Schedule the click if it's not a double tap
+                        setTimeout(() => {
+                            if (this.primaryTouch == null) {
+                                // no click present -> no double click -> We need to do the actual click
+                                doClick(false)
+
+                                // it cannot be a double tap
+                                this.nextTouchDoubleTap = false
+                            }
+                        }, DOUBLE_TAP_SECOND_TAP_MAX_TIME_MS)
+                    } else {
+                        this.nextTouchDoubleTap = false
                     }
                 }
             }

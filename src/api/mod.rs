@@ -8,7 +8,7 @@ use actix_web::{
 use crate::api::{
     app::{get_app_image, get_apps},
     auth::auth_middleware,
-    host::{delete_host, get_host, pair_host, patch_host, post_host, wake_host},
+    host::{delete_host, get_host, list_hosts, pair_host, patch_host, post_host, wake_host},
     settings::{get_default_settings, get_permissions},
     user::{add_user, get_user, list_users, patch_user},
 };
@@ -34,6 +34,7 @@ pub fn api_service() -> impl HttpServiceFactory {
         ])
         .service(services![
             // -- Host
+            list_hosts,
             get_host,
             post_host,
             patch_host,

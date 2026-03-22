@@ -42,6 +42,7 @@ impl Default for Config {
             moonlight: Default::default(),
             webrtc: Default::default(),
             log: Default::default(),
+            #[allow(deprecated)]
             default_settings: Default::default(),
         }
     }

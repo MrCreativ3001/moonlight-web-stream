@@ -7,6 +7,7 @@ use std::{
 
 use actix_web::{ResponseError, http::StatusCode, web::Bytes};
 use common::config::Config;
+use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
 use log::{error, warn};
 use moonlight_common::{high::MoonlightClientError, http::client::tokio_hyper::TokioHyperClient};
@@ -20,7 +21,7 @@ use crate::app::{
     password::StoragePassword,
     role::{Role, RoleId},
     storage::{Either, Storage, StorageHostModify, StorageRoleAdd, StorageUserAdd, create_storage},
-    user::{Admin, AuthenticatedUser, User, UserId},
+    user::{Admin, AuthenticatedUser, RoleType, User, UserId},
 };
 
 pub mod auth;
@@ -377,13 +378,37 @@ impl App {
     }
 
     pub async fn admin_role(&self) -> Result<Role, AppError> {
-        todo!()
+        let roles = self.all_roles().await?;
+
+        let result = roles
+            .into_iter()
+            .map(|mut role| async {
+                let ty = role.ty().await?;
+
+                if ty == RoleType::Admin {
+                    Ok(role)
+                } else {
+                    Err(AppError::Unauthorized)
+                }
+            })
+            .collect::<Vec<_>>()
+            .race_ok()
+            .await;
+
+        match result {
+            Ok(value) => return Ok(value),
+            Err(_) => {
+                // We've got no admin role -> add an admin role
+
+                todo!()
+            }
+        }
     }
     pub async fn default_role(&self) -> Result<Role, AppError> {
         todo!()
     }
 
-    pub async fn add_role(&self, admin: &Admin, role: StorageRoleAdd) -> Result<Role, AppError> {
+    pub async fn add_role(&self, _admin: &Admin, role: StorageRoleAdd) -> Result<Role, AppError> {
         let role = self.inner.storage.add_role(role).await?;
 
         Ok(Role {

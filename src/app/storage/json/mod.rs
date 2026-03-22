@@ -246,17 +246,17 @@ async fn file_writer(mut store_receiver: Receiver<()>, json: Arc<JsonStorage>) {
 }
 
 fn default_settings_from_json(_settings: V3RoleSettings) -> StorageRoleSettings {
-    todo!()
+    StorageRoleSettings {}
 }
 fn default_settings_to_json(_settings: StorageRoleSettings) -> V3RoleSettings {
-    todo!()
+    V3RoleSettings {}
 }
 
 fn permissions_from_json(_permissions: V3RolePermissions) -> StorageRolePermissions {
-    todo!()
+    StorageRolePermissions {}
 }
 fn permissions_to_json(_permissions: StorageRolePermissions) -> V3RolePermissions {
-    todo!()
+    V3RolePermissions {}
 }
 
 fn role_from_json(role_id: RoleId, role: &V3Role) -> StorageRole {

@@ -58,15 +58,15 @@ impl Role {
         Ok(storage.ty)
     }
 
-    pub async fn permissions(&self) -> Result<StreamPermissions, AppError> {
+    pub async fn permissions(&mut self) -> Result<StreamPermissions, AppError> {
         let storage = self.storage_role().await?;
 
-        Ok(storage.permissions.clone())
+        Ok(StreamPermissions {})
     }
-    pub async fn default_settings(&self) -> Result<StreamSettings, AppError> {
+    pub async fn default_settings(&mut self) -> Result<StreamSettings, AppError> {
         let storage = self.storage_role().await?;
 
-        Ok(storage.default_settings.clone())
+        Ok(StreamSettings {})
     }
 
     pub async fn modify(&self, _admin: &Admin, modify: StorageRoleModify) -> Result<(), AppError> {

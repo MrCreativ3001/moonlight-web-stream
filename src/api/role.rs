@@ -50,7 +50,7 @@ pub async fn get_role(
 ) -> Result<Json<GetRoleResponse>, AppError> {
     let role_id = RoleId(query.id);
 
-    let role = app.role_by_id(role_id).await?;
+    let mut role = app.role_by_id(role_id).await?;
 
     Ok(Json(GetRoleResponse {
         default_settings: role.default_settings().await?,
@@ -73,7 +73,8 @@ pub async fn patch_role(
         StorageRoleModify {
             name: request.name,
             ty: None,
-            default_settings: request.default_settings,
+            permissions: request.permissions.map(|x| StorageRolePermissions {}),
+            default_settings: request.default_settings.map(|x| StorageRoleSettings {}),
         },
     )
     .await?;

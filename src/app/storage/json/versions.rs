@@ -139,9 +139,53 @@ pub struct V2HostCache {
     pub mac: Option<MacAddress>,
 }
 
-fn migrate_v2_to_v3(_old: V2) -> V3 {
-    // TODO
-    todo!()
+fn migrate_v2_to_v3(old: V2) -> V3 {
+    const ADMIN_ID: u32 = 0;
+    const USER_ID: u32 = 0;
+
+    let mut roles = HashMap::new();
+
+    roles.insert(
+        ADMIN_ID,
+        V3Role {
+            name: "Admin".to_string(),
+            ty: V3RoleType::Admin,
+            default_settings: V3RoleSettings::default(),
+            permissions: V3RolePermissions::default(),
+        },
+    );
+    roles.insert(
+        USER_ID,
+        V3Role {
+            name: "User".to_string(),
+            ty: V3RoleType::User,
+            default_settings: V3RoleSettings::default(),
+            permissions: V3RolePermissions::default(),
+        },
+    );
+
+    V3 {
+        users: old
+            .users
+            .into_iter()
+            .map(|(id, user)| {
+                (
+                    id,
+                    V3User {
+                        client_unique_id: user.client_unique_id,
+                        name: user.name,
+                        password: user.password,
+                        role_id: match user.role {
+                            RoleType::Admin => ADMIN_ID,
+                            RoleType::User => USER_ID,
+                        },
+                    },
+                )
+            })
+            .collect(),
+        hosts: old.hosts,
+        roles,
+    }
 }
 
 // V3
@@ -179,8 +223,21 @@ pub struct V3Role {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V3RoleSettings {}
+
+impl Default for V3RoleSettings {
+    fn default() -> Self {
+        V3RoleSettings {}
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V3RolePermissions {}
+
+impl Default for V3RolePermissions {
+    fn default() -> Self {
+        V3RolePermissions {}
+    }
+}
 
 pub fn migrate_to_latest(json: Json) -> Result<V3, anyhow::Error> {
     match json {

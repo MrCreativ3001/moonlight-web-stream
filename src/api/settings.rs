@@ -7,7 +7,7 @@ use crate::app::{AppError, user::AuthenticatedUser};
 pub async fn get_default_settings(
     mut user: AuthenticatedUser,
 ) -> Result<Json<StreamSettings>, AppError> {
-    let role = user.role().await?;
+    let mut role = user.role().await?;
 
     let default_settings = role.default_settings().await?;
 
@@ -18,7 +18,7 @@ pub async fn get_default_settings(
 pub async fn get_permissions(
     mut user: AuthenticatedUser,
 ) -> Result<Json<StreamPermissions>, AppError> {
-    let role = user.role().await?;
+    let mut role = user.role().await?;
 
     let permissions = role.permissions().await?;
 

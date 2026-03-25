@@ -297,7 +297,6 @@ impl WebRtcInner {
     }
 
     // -- Handle Signaling
-    #[allow(unused)]
     async fn send_answer(&self) -> bool {
         let local_description = match self.peer.create_answer(None).await {
             Err(err) => {
@@ -448,14 +447,18 @@ impl WebRtcInner {
 
                 let remote_ty = description.sdp_type;
 
+                if let Err(err) = self.peer.set_remote_description(description).await {
+                    error!("[Signaling]: failed to set remote description: {err:?}");
+                    return;
+                }
+
+                // If we received an offer (renegotiation from the browser),
+                // respond with an answer per RFC 3264. The previous code
+                // incorrectly sent another offer, violating the WebRTC
+                // signaling state machine and causing disconnects ~10s into
+                // the stream when audio/video tracks trigger renegotiation.
                 if remote_ty == RTCSdpType::Offer {
-                    // Send an offer if we got an offer because we want to make the offer
-                    // This makes negotiation more stable and consistant
-                    self.send_offer().await;
-                } else {
-                    if let Err(err) = self.peer.set_remote_description(description).await {
-                        error!("[Signaling]: failed to set remote description: {err:?}");
-                    }
+                    self.send_answer().await;
                 }
             }
             StreamClientMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(description)) => {

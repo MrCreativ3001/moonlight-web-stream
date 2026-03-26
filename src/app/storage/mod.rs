@@ -60,7 +60,7 @@ pub struct StorageUserModify {
 
 // --- Roles ---
 #[derive(Clone)]
-pub struct StorageRoleSettings {}
+pub struct StorageRoleDefaultSettings {}
 
 #[derive(Clone)]
 pub struct StorageRolePermissions {}
@@ -70,7 +70,7 @@ pub struct StorageRole {
     pub id: RoleId,
     pub name: String,
     pub ty: RoleType,
-    pub default_settings: StorageRoleSettings,
+    pub default_settings: StorageRoleDefaultSettings,
     pub permissions: StorageRolePermissions,
 }
 
@@ -78,7 +78,7 @@ pub struct StorageRole {
 pub struct StorageRoleAdd {
     pub name: String,
     pub ty: RoleType,
-    pub default_settings: StorageRoleSettings,
+    pub default_settings: StorageRoleDefaultSettings,
     pub permissions: StorageRolePermissions,
 }
 
@@ -86,7 +86,7 @@ pub struct StorageRoleAdd {
 pub struct StorageRoleModify {
     pub name: Option<String>,
     pub ty: Option<RoleType>,
-    pub default_settings: Option<StorageRoleSettings>,
+    pub default_settings: Option<StorageRoleDefaultSettings>,
     pub permissions: Option<StorageRolePermissions>,
 }
 
@@ -147,7 +147,12 @@ pub trait Storage {
     async fn add_role(&self, role: StorageRoleAdd) -> Result<StorageRole, AppError>;
     async fn modify_role(&self, role_id: RoleId, host: StorageRoleModify) -> Result<(), AppError>;
     async fn get_role(&self, role_id: RoleId) -> Result<StorageRole, AppError>;
+    /// Deletes a role.
+    ///
+    /// All users that are in that role should also be delete.
     async fn remove_role(&self, role_id: RoleId) -> Result<(), AppError>;
+    /// The returned tuple can contain a Vec<RoleId> or Vec<StorageRole> if the Storage thinks it's more efficient to query all data directly
+    async fn list_roles(&self) -> Result<Either<Vec<RoleId>, Vec<StorageRole>>, AppError>;
 
     // -- Users --
     /// No duplicate names are allowed!

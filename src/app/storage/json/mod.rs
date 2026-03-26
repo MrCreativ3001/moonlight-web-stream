@@ -9,7 +9,6 @@ use std::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures::future::join_all;
-use log::{debug, error};
 use openssl::rand::rand_bytes;
 use tokio::{
     fs, spawn,
@@ -21,6 +20,7 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
+use tracing::{debug, error};
 
 use crate::app::{
     AppError,
@@ -30,9 +30,9 @@ use crate::app::{
     role::RoleId,
     storage::{
         Either, Storage, StorageHost, StorageHostAdd, StorageHostCache, StorageHostModify,
-        StorageHostPairInfo, StorageQueryHosts, StorageRole, StorageRoleAdd, StorageRoleModify,
-        StorageRolePermissions, StorageRoleSettings, StorageUser, StorageUserAdd,
-        StorageUserModify,
+        StorageHostPairInfo, StorageQueryHosts, StorageRole, StorageRoleAdd,
+        StorageRoleDefaultSettings, StorageRoleModify, StorageRolePermissions, StorageUser,
+        StorageUserAdd, StorageUserModify,
         json::versions::{
             Json, V2, V2Host, V2HostCache, V2HostPairInfo, V2UserPassword, V3, V3Role,
             V3RolePermissions, V3RoleSettings, V3RoleType, V3User, migrate_to_latest,
@@ -245,10 +245,10 @@ async fn file_writer(mut store_receiver: Receiver<()>, json: Arc<JsonStorage>) {
     }
 }
 
-fn default_settings_from_json(_settings: V3RoleSettings) -> StorageRoleSettings {
-    StorageRoleSettings {}
+fn default_settings_from_json(_settings: V3RoleSettings) -> StorageRoleDefaultSettings {
+    StorageRoleDefaultSettings {}
 }
-fn default_settings_to_json(_settings: StorageRoleSettings) -> V3RoleSettings {
+fn default_settings_to_json(_settings: StorageRoleDefaultSettings) -> V3RoleSettings {
     V3RoleSettings {}
 }
 
@@ -368,13 +368,11 @@ impl Storage for JsonStorage {
                 RoleType::User => V3RoleType::User,
             };
         }
-        if let Some(_default_settings) = modify.default_settings {
+        if let Some(StorageRoleDefaultSettings {}) = modify.default_settings {
             // TODO
-            todo!()
         }
-        if let Some(_permissions) = modify.permissions {
+        if let Some(StorageRolePermissions {}) = modify.permissions {
             // TODO
-            todo!()
         }
 
         drop(role);
@@ -387,24 +385,64 @@ impl Storage for JsonStorage {
     async fn get_role(&self, role_id: RoleId) -> Result<StorageRole, AppError> {
         let roles = self.roles.read().await;
 
-        let role_lock = roles.get(&role_id.0).ok_or(AppError::UserNotFound)?;
+        let role_lock = roles.get(&role_id.0).ok_or(AppError::RoleNotFound)?;
         let role = role_lock.read().await;
 
         Ok(role_from_json(role_id, &role))
     }
     async fn remove_role(&self, role_id: RoleId) -> Result<(), AppError> {
-        let mut roles = self.roles.write().await;
+        // Delete all users with that role
+        {
+            let mut users = self.users.write().await;
 
-        let result = match roles.remove(&role_id.0) {
-            None => Err(AppError::UserNotFound),
-            Some(_) => Ok(()),
+            let mut users_to_remove = vec![];
+
+            // Find all users with that role
+            for (user_id, user) in users.iter() {
+                let user = user.read().await;
+
+                if user.role_id == role_id.0 {
+                    users_to_remove.push(*user_id);
+                }
+            }
+
+            // Remove all user id's in that list
+            for user_id in users_to_remove {
+                users.remove(&user_id);
+            }
+        }
+
+        // Delete that role
+        let result = {
+            let mut roles = self.roles.write().await;
+
+            let result = match roles.remove(&role_id.0) {
+                None => Err(AppError::RoleNotFound),
+                Some(_) => Ok(()),
+            };
+
+            drop(roles);
+
+            result
         };
-
-        drop(roles);
 
         self.force_write();
 
         result
+    }
+    async fn list_roles(&self) -> Result<Either<Vec<RoleId>, Vec<StorageRole>>, AppError> {
+        let roles = self.roles.read().await;
+
+        let futures = roles.iter().map(|(id, value)| {
+            let id = *id;
+            async move {
+                let role = value.read().await.clone();
+                role_from_json(RoleId(id), &role)
+            }
+        });
+
+        let out = join_all(futures).await;
+        Ok(Either::Right(out))
     }
 
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError> {

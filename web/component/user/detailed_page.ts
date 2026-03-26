@@ -1,9 +1,10 @@
 import { Component, ComponentEvent } from "../index.js";
-import { Api, apiDeleteUser, apiPatchUser } from "../../api.js";
-import { DetailedUser, PatchUserRequest, UserRole } from "../../api_bindings.js";
+import { Api, apiDeleteUser, apiGetRoles, apiPatchUser } from "../../api.js";
+import { DetailedUser, PatchUserRequest } from "../../api_bindings.js";
 import { InputComponent, SelectComponent } from "../input.js";
 import { createSelectRoleInput } from "./role_select.js";
 import { tryDeleteUser, UserEventListener } from "./index.js";
+import { showErrorPopup } from "../error.js";
 
 export class DetailedUserPage implements Component {
 
@@ -48,8 +49,14 @@ export class DetailedUserPage implements Component {
         this.password.setEnabled(false)
         this.password.mount(this.formRoot)
 
-        this.role = createSelectRoleInput(user.role)
+        this.role = createSelectRoleInput([], user.role_id)
         this.role.mount(this.formRoot)
+        apiGetRoles(api).then(roles => {
+            this.role.unmount(this.formRoot)
+
+            this.role = createSelectRoleInput(roles.roles, user.role_id)
+            this.role.mountBefore(this.formRoot, this.clientUniqueId)
+        })
 
         this.clientUniqueId = new InputComponent("userClientUniqueId", "text", "Moonlight Client Id", {
             defaultValue: user.client_unique_id,
@@ -77,9 +84,15 @@ export class DetailedUserPage implements Component {
             password = this.password.getValue()
         }
 
+        const role = this.role.getValue()
+        if (!role) {
+            showErrorPopup("Please select a role!")
+            return
+        }
+
         const request: PatchUserRequest = {
             id: this.id,
-            role: this.role.getValue() as UserRole,
+            role_id: parseInt(role),
             password,
             client_unique_id: this.clientUniqueId.getValue()
         };

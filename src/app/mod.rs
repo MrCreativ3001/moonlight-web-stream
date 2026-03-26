@@ -396,7 +396,7 @@ impl App {
             .await;
 
         match result {
-            Ok(value) => return Ok(value),
+            Ok(value) => Ok(value),
             Err(_) => {
                 // We've got no admin role -> add an admin role
 
@@ -418,11 +418,38 @@ impl App {
         })
     }
 
-    pub async fn role_by_id(&self, _id: RoleId) -> Result<Role, AppError> {
-        todo!()
+    pub async fn role_by_id(&self, id: RoleId) -> Result<Role, AppError> {
+        let role = self.inner.storage.get_role(id).await?;
+
+        Ok(Role {
+            app: self.new_ref(),
+            id: role.id,
+            cache_storage: Some(role.into()),
+        })
     }
 
     pub async fn all_roles(&self) -> Result<Vec<Role>, AppError> {
-        todo!()
+        let roles = self.inner.storage.list_roles().await?;
+
+        let roles = match roles {
+            Either::Left(role_ids) => role_ids
+                .into_iter()
+                .map(|id| Role {
+                    app: self.new_ref(),
+                    id,
+                    cache_storage: None,
+                })
+                .collect::<Vec<_>>(),
+            Either::Right(roles) => roles
+                .into_iter()
+                .map(|role| Role {
+                    app: self.new_ref(),
+                    id: role.id,
+                    cache_storage: Some(role.into()),
+                })
+                .collect::<Vec<_>>(),
+        };
+
+        Ok(roles)
     }
 }

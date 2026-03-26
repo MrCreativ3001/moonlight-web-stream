@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest } from "./api_bindings.js";
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -30,7 +30,7 @@ window.addEventListener("unhandledrejection", handleRejection)
 export async function getApi(): Promise<Api> {
     const host_url = buildUrl("/api")
 
-    let api = { host_url, bearer: null, user: null }
+    let api = { host_url, bearer: null, user: null, roles: null }
 
     if (await apiAuthenticate(api)) {
         return api
@@ -50,7 +50,7 @@ export async function getApi(): Promise<Api> {
 export async function tryLogin(): Promise<Api | null> {
     const host_url = buildUrl("/api")
 
-    let api = { host_url, bearer: null, user: null }
+    let api = { host_url, bearer: null, user: null, roles: null }
 
     const prompt = new ApiUserPasswordPrompt()
     const userAuth = await showModal(prompt)
@@ -79,6 +79,7 @@ export type Api = {
     host_url: string
     bearer: string | null,
     user: DetailedUser | null,
+    roles: Array<UndetailedRole> | null,
 }
 
 export type ApiFetchInit = {
@@ -325,6 +326,47 @@ export async function apiDeleteUser(api: Api, data: DeleteUserRequest): Promise<
     })
 }
 
+export async function apiGetRoles(api: Api): Promise<GetRolesResponse> {
+    if (api.roles) {
+        return {
+            roles: api.roles
+        }
+    }
+
+    const response = await fetchApi(api, "/roles", GET, {
+        response: "json"
+    })
+
+    return response as GetRolesResponse
+}
+export async function apiGetRole(api: Api, query: GetRoleQuery): Promise<GetRoleResponse> {
+    const response = await fetchApi(api, "/role", GET, {
+        query,
+        response: "json"
+    })
+    return response as GetRoleResponse
+}
+export async function apiPostRole(api: Api, request: PostRoleRequest): Promise<PostRoleResponse> {
+    const response = await fetchApi(api, "/role", POST, {
+        json: request,
+        response: "json"
+    });
+
+    return response as PostRoleResponse
+}
+export async function apiPatchRole(api: Api, request: PatchRoleRequest): Promise<void> {
+    await fetchApi(api, "/role", PATCH, {
+        json: request,
+        response: "ignore",
+    })
+}
+export async function apiDeleteRole(api: Api, query: DeleteRoleQuery): Promise<void> {
+    await fetchApi(api, "/role", DELETE, {
+        query,
+        response: "ignore",
+    })
+}
+
 export async function apiGetHosts(api: Api): Promise<StreamedJsonResponse<GetHostsResponse, UndetailedHost>> {
     return await fetchApi<GetHostsResponse, UndetailedHost>(api, "/hosts", GET, { response: "jsonStreaming" })
 }
@@ -374,7 +416,7 @@ export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise
         query,
         response: "ignore"
     },
-    60000)
+        60000)
 
     return await response.blob()
 }

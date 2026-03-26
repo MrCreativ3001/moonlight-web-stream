@@ -245,6 +245,7 @@ pub struct DetailedUser {
     pub is_default_user: bool,
     pub name: String,
     pub role: RoleType,
+    pub role_id: u32,
     pub client_unique_id: String,
 }
 
@@ -281,6 +282,22 @@ pub struct GetUsersResponse {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+pub struct DetailedRole {
+    pub id: u32,
+    pub name: String,
+    pub default_settings: StreamSettings,
+    pub permissions: StreamPermissions,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct UndetailedRole {
+    pub id: u32,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub struct StreamSettings {}
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -298,8 +315,7 @@ pub struct PostRoleRequest {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct PostRoleResponse {
-    /// The role id
-    pub id: u32,
+    pub role: DetailedRole,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -322,8 +338,7 @@ pub struct GetRoleQuery {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetRoleResponse {
-    pub default_settings: StreamSettings,
-    pub permissions: StreamPermissions,
+    pub role: DetailedRole,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -331,6 +346,12 @@ pub struct GetRoleResponse {
 pub struct DeleteRoleQuery {
     /// The role id
     pub id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetRolesResponse {
+    pub roles: Vec<UndetailedRole>,
 }
 
 // -- Stream

@@ -19,6 +19,10 @@ export class ElementWithLabel implements Component {
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
     }
+
+    mountBefore(parent: HTMLElement, before: ElementWithLabel): void {
+        parent.insertBefore(this.div, before.div)
+    }
 }
 
 export type InputInit = {

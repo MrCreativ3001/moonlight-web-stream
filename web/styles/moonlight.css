@@ -867,13 +867,15 @@ canvas.video-stream {
     margin: 0;
 }
 
-.user-panel {
+.user-panel,
+.role-panel {
     display: flex;
     flex-direction: column;
     max-width: 225px;
 }
 
-.user-list {
+.user-list,
+.role-list {
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -881,7 +883,8 @@ canvas.video-stream {
     overflow-y: auto;
 }
 
-.user-element {
+.user-element,
+.role-element {
     margin: 0;
     padding: 10px;
     min-width: 110px;
@@ -892,22 +895,26 @@ canvas.video-stream {
     background-color: rgba(255, 255, 255, 0);
 }
 
-.user-element:hover {
+.user-element:hover,
+.role-element:hover {
     /** animation */
     transition: all 0.2s;
     background-color: rgba(255, 255, 255, 0.2);
 }
 
-.user-element p {
+.user-element p,
+.role-element p {
     padding: 0;
     margin: 0;
 }
 
-.admin-panel-content {
+.admin-panel-users,
+.admin-panel-roles {
     display: flex;
     flex-direction: row;
 }
 
-.user-info-delete {
+.user-info-delete,
+.role-info-delete {
     background-color: red;
 }

@@ -141,7 +141,7 @@ pub struct V2HostCache {
 
 fn migrate_v2_to_v3(old: V2) -> V3 {
     const ADMIN_ID: u32 = 0;
-    const USER_ID: u32 = 0;
+    const USER_ID: u32 = 1;
 
     let mut roles = HashMap::new();
 

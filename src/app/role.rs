@@ -1,9 +1,9 @@
-use common::api_bindings::{StreamPermissions, StreamSettings};
+use common::api_bindings::{DetailedRole, StreamPermissions, StreamSettings, UndetailedRole};
 
 use crate::app::storage::StorageRoleModify;
 use crate::app::user::Admin;
 use crate::app::{AppError, AppRef, storage::StorageRole, user::RoleType};
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,6 +32,12 @@ pub struct Role {
     pub(super) cache_storage: Option<Arc<StorageRole>>,
 }
 
+impl Debug for Role {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.id)
+    }
+}
+
 impl Role {
     pub fn id(&self) -> RoleId {
         self.id
@@ -56,6 +62,12 @@ impl Role {
         let storage = self.storage_role().await?;
 
         Ok(storage.ty)
+    }
+
+    pub async fn name(&mut self) -> Result<String, AppError> {
+        let storage = self.storage_role().await?;
+
+        Ok(storage.name.clone())
     }
 
     pub async fn permissions(&mut self) -> Result<StreamPermissions, AppError> {
@@ -83,5 +95,20 @@ impl Role {
         app.storage.remove_role(self.id).await?;
 
         Ok(())
+    }
+
+    pub async fn undetailed_role(&mut self) -> Result<UndetailedRole, AppError> {
+        Ok(UndetailedRole {
+            id: self.id().0,
+            name: self.name().await?,
+        })
+    }
+    pub async fn detailed_role(&mut self) -> Result<DetailedRole, AppError> {
+        Ok(DetailedRole {
+            id: self.id().0,
+            name: self.name().await?,
+            default_settings: self.default_settings().await?,
+            permissions: self.permissions().await?,
+        })
     }
 }

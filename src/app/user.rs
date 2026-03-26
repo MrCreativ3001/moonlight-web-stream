@@ -137,6 +137,7 @@ impl User {
             id: self.id.0,
             is_default_user: self.is_default_user().await?,
             name: storage.name.clone(),
+            role_id: storage.role_id.0,
             role: storage.role_id.role_type().into(),
             client_unique_id: storage.client_unique_id.clone(),
         })

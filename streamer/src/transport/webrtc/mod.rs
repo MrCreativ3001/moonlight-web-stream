@@ -193,6 +193,12 @@ pub async fn new(
     ));
 
     // -- Signaling
+    peer.on_negotiation_needed(create_event_handler_no_args(
+        this.clone(),
+        async move |this| {
+            this.on_negotiation_needed().await;
+        },
+    ));
     peer.on_ice_candidate(create_event_handler(
         this.clone(),
         async move |this, candidate| {
@@ -219,6 +225,34 @@ pub async fn new(
 }
 
 // It compiling...
+#[allow(clippy::complexity)]
+fn create_event_handler_no_args<F>(
+    inner: Weak<WebRtcInner>,
+    f: F,
+) -> Box<dyn FnMut() -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + Sync + 'static>
+where
+    F: AsyncFn(Arc<WebRtcInner>) + Send + Sync + Clone + 'static,
+    for<'a> F::CallRefFuture<'a>: Send,
+{
+    Box::new(move || {
+        let inner = inner.clone();
+        let Some(inner) = inner.upgrade() else {
+            debug!("Called webrtc event handler while the main type is already deallocated");
+            return Box::pin(ready(())) as Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+        };
+
+        let future = f.clone();
+        Box::pin(async move {
+            future(inner).await;
+        }) as Pin<Box<dyn Future<Output = ()> + Send + 'static>>
+    })
+        as Box<
+            dyn FnMut() -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>
+                + Send
+                + Sync
+                + 'static,
+        >
+}
 #[allow(clippy::complexity)]
 fn create_event_handler<F, Args>(
     inner: Weak<WebRtcInner>,
@@ -297,6 +331,12 @@ impl WebRtcInner {
     }
 
     // -- Handle Signaling
+    async fn on_negotiation_needed(&self) {
+        if !self.send_offer().await {
+            warn!("[Signaling]: failed to create offer in on_negotiation_needed");
+        }
+    }
+
     async fn send_answer(&self) -> bool {
         let local_description = match self.peer.create_answer(None).await {
             Err(err) => {

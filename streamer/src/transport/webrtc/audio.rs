@@ -50,7 +50,7 @@ impl WebRtcAudio {
 impl WebRtcAudio {
     pub async fn setup(
         &mut self,
-        inner: &WebRtcInner,
+        _inner: &WebRtcInner,
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
     ) -> i32 {
@@ -88,11 +88,6 @@ impl WebRtcAudio {
         };
 
         self.config = Some(stream_config);
-
-        // Renegotiate
-        if !inner.send_offer().await {
-            warn!("Failed to renegotiate. Audio was added!");
-        }
 
         0
     }

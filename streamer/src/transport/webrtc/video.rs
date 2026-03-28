@@ -211,11 +211,6 @@ impl WebRtcVideo {
             }),
         };
 
-        // Renegotiate
-        if !inner.send_offer().await {
-            warn!("Failed to renegotiate. Video was added!");
-        }
-
         true
     }
 

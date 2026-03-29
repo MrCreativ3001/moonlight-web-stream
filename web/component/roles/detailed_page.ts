@@ -69,7 +69,9 @@ export class DetailedRolePage implements Component {
     }
 
     private async delete() {
-        await tryDeleteRole(this.api, this.id)
+        if (!await tryDeleteRole(this.api, this.id)) {
+            return
+        }
 
         this.formRoot.dispatchEvent(new ComponentEvent("ml-roledeleted", this))
     }

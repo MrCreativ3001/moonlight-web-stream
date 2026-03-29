@@ -1,7 +1,8 @@
-import { Api, apiDeleteRole, apiGetRole } from "../../api.js";
+import { Api, apiDeleteRole, apiGetRole, apiGetUsers } from "../../api.js";
 import { DetailedRole, UndetailedRole } from "../../api_bindings.js";
 import { setContextMenu } from "../context_menu.js";
 import { Component, ComponentEvent } from "../index.js";
+import { showMessage } from "../modal/index.js";
 
 export type RoleEventListener = (event: ComponentEvent<Role>) => void
 
@@ -9,8 +10,19 @@ export function formatRoleName(role: UndetailedRole | DetailedRole): string {
     return `${role.name} (${role.id})`
 }
 
-export async function tryDeleteRole(api: Api, id: number) {
+export async function tryDeleteRole(api: Api, id: number): Promise<boolean> {
+    // Check if any user still has this role and show error if they do
+    const usersResponse = await apiGetUsers(api)
+    const usersWithRole = usersResponse.users.filter(user => user.role_id == id)
+    if (usersWithRole.length > 0) {
+        await showMessage(`To remove this role all users that are currently assigned this role either need to be deleted or assigned another role.\nCurrently these users still have the role:\n${JSON.stringify(usersWithRole.map(user => user.name))}`)
+        return false
+    }
+
+    // Actually delete the role
     await apiDeleteRole(api, { id })
+
+    return true
 }
 
 export class Role implements Component {
@@ -72,8 +84,10 @@ export class Role implements Component {
         this.div.removeEventListener("ml-roleclicked", listener as any)
     }
 
-    private onDelete() {
-        tryDeleteRole(this.api, this.role.id)
+    private async onDelete() {
+        if (!await tryDeleteRole(this.api, this.role.id)) {
+            return
+        }
 
         this.div.dispatchEvent(new ComponentEvent("ml-roledeleted", this))
     }

@@ -10,10 +10,9 @@ use actix_web::{
 };
 use actix_ws::{Closed, Message, Session};
 use common::{
-    StreamSettings,
     api_bindings::{
         LogMessageType, PostCancelRequest, PostCancelResponse, StreamClientMessage,
-        StreamServerMessage,
+        StreamServerMessage, StreamSettings,
     },
     ipc::{ServerIpcMessage, StreamerConfig, StreamerIpcMessage, create_child_ipc},
     serialize_json,
@@ -26,49 +25,8 @@ use tracing::{Level, instrument, span};
 use crate::app::{
     App, AppError,
     host::{AppId, HostId},
-    storage::StorageRolePermissions,
     user::AuthenticatedUser,
 };
-
-/// Applies the permissions / restrictions to the current settings of the user.
-/// This won't error, it'll just overwrite it, because the GUI should indicate those restrictions.
-fn apply_permissions_to_settings(
-    permissions: &StorageRolePermissions,
-    settings: &mut StreamSettings,
-) {
-    let StorageRolePermissions {
-        allow_add_hosts: _,
-        maximum_bitrate_kbps,
-        allow_codec_h264,
-        allow_codec_h265,
-        allow_codec_av1,
-        allow_hdr,
-        allow_transport_webrtc,
-        allow_transport_websockets,
-    } = permissions;
-
-    if let Some(maximum_bitrate) = maximum_bitrate_kbps
-        && settings.bitrate > *maximum_bitrate
-    {
-        settings.bitrate = *maximum_bitrate;
-    }
-
-    if !allow_codec_h264 {
-        settings.video_supported_formats &= !SupportedVideoFormats::MASK_H264;
-    }
-    if !allow_codec_h265 {
-        settings.video_supported_formats &= !SupportedVideoFormats::MASK_H265;
-    }
-    if !allow_codec_av1 {
-        settings.video_supported_formats &= !SupportedVideoFormats::MASK_AV1;
-    }
-
-    if !allow_hdr {
-        settings.hdr = false;
-    }
-
-    // TODO: handle transport restrictions
-}
 
 #[get("/host/stream")]
 #[instrument(name = "start_host", skip(web_app, user, payload), fields(user_id = %user.id()))]
@@ -81,6 +39,8 @@ pub async fn start_host(
     let (response, mut session, mut stream) = actix_ws::handle(&request, payload)?;
 
     let client_unique_id = user.host_unique_id().await?;
+
+    let permissions = user.role().await?.permissions().await?;
 
     let web_app = web_app.clone();
     actix_rt::spawn(async move {
@@ -373,6 +333,7 @@ pub async fn start_host(
                 app_id: app_id.0,
                 video_frame_queue_size,
                 audio_sample_queue_size,
+                permissions,
             })
             .await;
 

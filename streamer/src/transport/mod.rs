@@ -2,9 +2,9 @@ use std::ops::Range;
 
 use async_trait::async_trait;
 use common::{
-    StreamSettings,
     api_bindings::{
-        GeneralClientMessage, GeneralServerMessage, StreamerStatsUpdate, TransportChannelId,
+        GeneralClientMessage, GeneralServerMessage, StreamSettings, StreamerStatsUpdate,
+        TransportChannelId,
     },
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };

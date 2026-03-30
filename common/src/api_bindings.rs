@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 
 use moonlight_common::{
     ServerState,

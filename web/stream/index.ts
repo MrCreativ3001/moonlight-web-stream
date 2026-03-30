@@ -1,5 +1,5 @@
 import { Api } from "../api.js"
-import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
+import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamPermissions, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
 import { showErrorPopup } from "../component/error.js"
 import { Component } from "../component/index.js"
 import { Settings } from "../component/settings_menu.js"
@@ -85,6 +85,7 @@ export class Stream implements Component {
     private hostId: number
     private appId: number
 
+    private permissions: StreamPermissions
     private settings: Settings
 
     private divElement = document.createElement("div")
@@ -101,7 +102,7 @@ export class Stream implements Component {
 
     private streamerSize: [number, number]
 
-    constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number]) {
+    constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number], permissions: StreamPermissions) {
         this.logger.addInfoListener((info, type) => {
             this.debugLog(info, { type: type ?? undefined })
         })
@@ -111,6 +112,7 @@ export class Stream implements Component {
         this.hostId = hostId
         this.appId = appId
 
+        this.permissions = permissions
         this.settings = settings
 
         this.streamerSize = getStreamerSize(settings, viewerScreenSize)
@@ -141,7 +143,7 @@ export class Stream implements Component {
         this.input = new StreamInput(streamInputConfig)
 
         // Stream Stats
-        this.stats = new StreamStats()
+        this.stats = new StreamStats(this.logger)
     }
 
     private debugLog(message: string, additional?: LogMessageInfo) {
@@ -258,6 +260,8 @@ export class Stream implements Component {
     }
 
     async startConnection() {
+        this.debugLog(`Permissions: ${JSON.stringify(this.permissions)}`)
+
         this.debugLog(`Using transport: ${this.settings.dataTransport}`)
 
         if (this.settings.dataTransport == "auto") {
@@ -391,6 +395,11 @@ export class Stream implements Component {
     }
 
     private async tryWebRTCTransport(): Promise<TransportShutdown> {
+        if (!this.permissions.allow_transport_webrtc) {
+            this.debugLog("Not trying WebRTC transport because permissions disallow it")
+            return "failednoconnect"
+        }
+
         this.debugLog("Trying WebRTC transport")
 
         this.sendWsMessage({
@@ -449,6 +458,11 @@ export class Stream implements Component {
         })
     }
     private async tryWebSocketTransport() {
+        if (!this.permissions.allow_transport_websockets) {
+            this.debugLog("Not trying WebSocket transport becaues permissions disallow it")
+            return
+        }
+
         this.debugLog("Trying Web Socket transport")
 
         this.sendWsMessage({

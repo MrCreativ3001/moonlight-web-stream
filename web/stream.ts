@@ -1,5 +1,5 @@
 import "./polyfill/index.js"
-import { Api, getApi } from "./api.js";
+import { Api, apiGetRole, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
 import { InfoEvent, Stream } from "./stream/index.js"
@@ -8,7 +8,7 @@ import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sideba
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultSettings, getLocalStreamSettings, Settings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { LogMessageType, StreamCapabilities, StreamKeys } from "./api_bindings.js";
+import { LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
@@ -166,7 +166,9 @@ class ViewerApp implements Component {
             edge: settings.sidebarEdge,
         })
 
-        this.stream = new Stream(this.api, hostId, appId, settings, browserSize)
+        const role = (await apiGetRole(this.api, { id: null })).role
+
+        this.stream = new Stream(this.api, hostId, appId, settings, browserSize, role.permissions)
 
         // Add app info listener
         this.stream.addInfoListener(this.onInfo.bind(this))

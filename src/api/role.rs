@@ -2,9 +2,12 @@ use actix_web::{
     HttpResponse, delete, get, patch, post,
     web::{Data, Json, Query},
 };
-use common::api_bindings::{
-    DeleteRoleQuery, GetRoleQuery, GetRoleResponse, GetRolesResponse, PatchRoleRequest,
-    PostRoleRequest, PostRoleResponse, StreamPermissions, StreamSettings,
+use common::{
+    api_bindings::{
+        DeleteRoleQuery, GetRoleQuery, GetRoleResponse, GetRolesResponse, PatchRoleRequest,
+        PostRoleRequest, PostRoleResponse, StreamPermissions, StreamSettings,
+    },
+    api_bindings_ext::TsAny,
 };
 
 use futures::future::join_all;
@@ -19,15 +22,9 @@ use crate::app::{
     user::{Admin, AuthenticatedUser, RoleType},
 };
 
-fn convert_settings(settings: StreamSettings) -> StorageRoleDefaultSettings {
+fn convert_settings(settings: TsAny) -> StorageRoleDefaultSettings {
     StorageRoleDefaultSettings {
-        bitrate_kpbs: settings.bitrate_kpbs,
-        width: settings.width,
-        height: settings.height,
-        fps: settings.fps,
-        play_audio_local: settings.play_audio_local,
-        supported_codecs: settings.supported_codecs,
-        hdr: settings.hdr,
+        value: settings.into(),
     }
 }
 fn convert_permissions(permissions: StreamPermissions) -> StorageRolePermissions {
@@ -114,13 +111,7 @@ pub async fn patch_role(
             default_settings: request
                 .default_settings
                 .map(|settings| StorageRoleDefaultSettings {
-                    bitrate_kpbs: settings.bitrate_kpbs,
-                    width: settings.width,
-                    height: settings.height,
-                    fps: settings.fps,
-                    play_audio_local: settings.play_audio_local,
-                    supported_codecs: settings.supported_codecs,
-                    hdr: settings.hdr,
+                    value: settings.into(),
                 }),
         },
     )

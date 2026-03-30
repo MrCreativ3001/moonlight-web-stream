@@ -35,7 +35,7 @@ use crate::app::{
         StorageUserAdd, StorageUserModify,
         json::versions::{
             Json, V2, V2Host, V2HostCache, V2HostPairInfo, V2UserPassword, V3, V3Role,
-            V3RolePermissions, V3RoleSettings, V3RoleType, V3User, migrate_to_latest,
+            V3RolePermissions, V3RoleType, V3User, migrate_to_latest,
         },
     },
     user::{RoleType, UserId},
@@ -245,29 +245,6 @@ async fn file_writer(mut store_receiver: Receiver<()>, json: Arc<JsonStorage>) {
     }
 }
 
-fn default_settings_from_json(settings: V3RoleSettings) -> StorageRoleDefaultSettings {
-    StorageRoleDefaultSettings {
-        bitrate_kpbs: settings.bitrate_kpbs,
-        width: settings.width,
-        height: settings.height,
-        fps: settings.fps,
-        play_audio_local: settings.play_audio_local,
-        supported_codecs: settings.supported_codecs,
-        hdr: settings.hdr,
-    }
-}
-fn default_settings_to_json(settings: StorageRoleDefaultSettings) -> V3RoleSettings {
-    V3RoleSettings {
-        bitrate_kpbs: settings.bitrate_kpbs,
-        width: settings.width,
-        height: settings.height,
-        fps: settings.fps,
-        play_audio_local: settings.play_audio_local,
-        supported_codecs: settings.supported_codecs,
-        hdr: settings.hdr,
-    }
-}
-
 fn permissions_from_json(permissions: V3RolePermissions) -> StorageRolePermissions {
     StorageRolePermissions {
         allow_add_hosts: permissions.allow_add_hosts,
@@ -301,7 +278,9 @@ fn role_from_json(role_id: RoleId, role: &V3Role) -> StorageRole {
             V3RoleType::Admin => RoleType::Admin,
             V3RoleType::User => RoleType::User,
         },
-        default_settings: default_settings_from_json(role.default_settings.clone()),
+        default_settings: StorageRoleDefaultSettings {
+            value: role.default_settings.clone(),
+        },
         permissions: permissions_from_json(role.permissions.clone()),
     }
 }
@@ -352,7 +331,7 @@ impl Storage for JsonStorage {
                 RoleType::User => V3RoleType::User,
             },
             name: role.name,
-            default_settings: default_settings_to_json(role.default_settings),
+            default_settings: role.default_settings.value,
             permissions: permissions_to_json(role.permissions),
         };
 
@@ -379,7 +358,9 @@ impl Storage for JsonStorage {
             },
             id: RoleId(id),
             name: role.name,
-            default_settings: default_settings_from_json(role.default_settings),
+            default_settings: StorageRoleDefaultSettings {
+                value: role.default_settings,
+            },
             permissions: permissions_from_json(role.permissions),
         })
     }
@@ -402,23 +383,8 @@ impl Storage for JsonStorage {
                 RoleType::User => V3RoleType::User,
             };
         }
-        if let Some(StorageRoleDefaultSettings {
-            bitrate_kpbs,
-            width,
-            height,
-            fps,
-            play_audio_local,
-            supported_codecs,
-            hdr,
-        }) = modify.default_settings
-        {
-            role.default_settings.bitrate_kpbs = bitrate_kpbs;
-            role.default_settings.width = width;
-            role.default_settings.height = height;
-            role.default_settings.fps = fps;
-            role.default_settings.play_audio_local = play_audio_local;
-            role.default_settings.supported_codecs = supported_codecs;
-            role.default_settings.hdr = hdr;
+        if let Some(StorageRoleDefaultSettings { value }) = modify.default_settings {
+            role.default_settings = value;
         }
         if let Some(StorageRolePermissions {
             allow_add_hosts,

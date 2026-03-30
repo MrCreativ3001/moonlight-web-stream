@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use common::config::StorageConfig;
 use moonlight_common::mac::MacAddress;
 use pem::Pem;
+use serde_json::Value;
 
 use crate::app::{
     AppError,
@@ -61,14 +62,7 @@ pub struct StorageUserModify {
 // --- Roles ---
 #[derive(Clone)]
 pub struct StorageRoleDefaultSettings {
-    pub bitrate_kpbs: u32,
-    pub width: u32,
-    pub height: u32,
-    pub fps: u32,
-    pub play_audio_local: bool,
-    /// This is using the [SupportedVideoFormats]
-    pub supported_codecs: u32,
-    pub hdr: bool,
+    pub value: Value,
 }
 
 #[derive(Clone)]

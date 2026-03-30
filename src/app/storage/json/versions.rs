@@ -5,6 +5,7 @@ use moonlight_common::mac::MacAddress;
 use moonlight_common::stream::video::SupportedVideoFormats;
 use pem::Pem;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::app::user::RoleType;
 
@@ -151,7 +152,7 @@ fn migrate_v2_to_v3(old: V2) -> V3 {
         V3Role {
             name: "Admin".to_string(),
             ty: V3RoleType::Admin,
-            default_settings: V3RoleSettings::default(),
+            default_settings: Default::default(),
             permissions: V3RolePermissions::default(),
         },
     );
@@ -160,7 +161,7 @@ fn migrate_v2_to_v3(old: V2) -> V3 {
         V3Role {
             name: "User".to_string(),
             ty: V3RoleType::User,
-            default_settings: V3RoleSettings::default(),
+            default_settings: Default::default(),
             permissions: V3RolePermissions::default(),
         },
     );
@@ -219,32 +220,8 @@ pub enum V3RoleType {
 pub struct V3Role {
     pub name: String,
     pub ty: V3RoleType,
-    pub default_settings: V3RoleSettings,
+    pub default_settings: Value,
     pub permissions: V3RolePermissions,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct V3RoleSettings {
-    pub bitrate_kpbs: u32,
-    pub width: u32,
-    pub height: u32,
-    pub fps: u32,
-    pub play_audio_local: bool,
-    pub supported_codecs: u32,
-    pub hdr: bool,
-}
-
-impl Default for V3RoleSettings {
-    fn default() -> Self {
-        V3RoleSettings {
-            bitrate_kpbs: 10000,
-            width: 1920,
-            height: 1080,
-            fps: 60,
-            play_audio_local: false,
-            supported_codecs: SupportedVideoFormats::MASK_H264.bits(),
-            hdr: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

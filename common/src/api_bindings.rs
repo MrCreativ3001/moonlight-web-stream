@@ -285,7 +285,7 @@ pub struct GetUsersResponse {
 pub struct DetailedRole {
     pub id: u32,
     pub name: String,
-    pub default_settings: StreamSettings,
+    pub default_settings: TsAny,
     pub permissions: StreamPermissions,
 }
 
@@ -327,7 +327,7 @@ pub struct StreamPermissions {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct PostRoleRequest {
     pub name: String,
-    pub default_settings: StreamSettings,
+    pub default_settings: TsAny,
     pub permissions: StreamPermissions,
 }
 
@@ -343,7 +343,7 @@ pub struct PatchRoleRequest {
     /// The role id
     pub id: u32,
     pub name: Option<String>,
-    pub default_settings: Option<StreamSettings>,
+    pub default_settings: Option<TsAny>,
     pub permissions: Option<StreamPermissions>,
 }
 

@@ -1,4 +1,5 @@
 use common::api_bindings::{DetailedRole, StreamPermissions, StreamSettings, UndetailedRole};
+use common::api_bindings_ext::TsAny;
 
 use crate::app::storage::StorageRoleModify;
 use crate::app::user::Admin;
@@ -85,19 +86,11 @@ impl Role {
             allow_transport_websockets: permissions.allow_transport_websockets,
         })
     }
-    pub async fn default_settings(&mut self) -> Result<StreamSettings, AppError> {
+    pub async fn default_settings(&mut self) -> Result<TsAny, AppError> {
         let storage = self.storage_role().await?;
         let default_settings = &storage.default_settings;
 
-        Ok(StreamSettings {
-            bitrate_kpbs: default_settings.bitrate_kpbs,
-            width: default_settings.width,
-            height: default_settings.height,
-            fps: default_settings.fps,
-            play_audio_local: default_settings.play_audio_local,
-            supported_codecs: default_settings.supported_codecs,
-            hdr: default_settings.hdr,
-        })
+        Ok(default_settings.value.clone().into())
     }
 
     pub async fn modify(&self, _admin: &Admin, modify: StorageRoleModify) -> Result<(), AppError> {

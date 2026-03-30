@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest } from "./api_bindings.js";
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -30,7 +30,7 @@ window.addEventListener("unhandledrejection", handleRejection)
 export async function getApi(): Promise<Api> {
     const host_url = buildUrl("/api")
 
-    let api = { host_url, bearer: null, user: null, roles: null }
+    let api = { host_url, bearer: null, user: null, role: null }
 
     if (await apiAuthenticate(api)) {
         return api
@@ -50,7 +50,7 @@ export async function getApi(): Promise<Api> {
 export async function tryLogin(): Promise<Api | null> {
     const host_url = buildUrl("/api")
 
-    let api = { host_url, bearer: null, user: null, roles: null }
+    let api = { host_url, bearer: null, user: null, role: null }
 
     const prompt = new ApiUserPasswordPrompt()
     const userAuth = await showModal(prompt)
@@ -78,8 +78,9 @@ const DELETE = "DELETE"
 export type Api = {
     host_url: string
     bearer: string | null,
+    // User cache
     user: DetailedUser | null,
-    roles: Array<UndetailedRole> | null,
+    role: DetailedRole | null,
 }
 
 export type ApiFetchInit = {
@@ -327,12 +328,6 @@ export async function apiDeleteUser(api: Api, data: DeleteUserRequest): Promise<
 }
 
 export async function apiGetRoles(api: Api): Promise<GetRolesResponse> {
-    if (api.roles) {
-        return {
-            roles: api.roles
-        }
-    }
-
     const response = await fetchApi(api, "/roles", GET, {
         response: "json"
     })

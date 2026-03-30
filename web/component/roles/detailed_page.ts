@@ -1,9 +1,10 @@
 import { Component, ComponentEvent } from "../index.js";
-import { Api, apiGetRoles, apiPatchRole } from "../../api.js";
+import { Api, apiPatchRole } from "../../api.js";
 import { DetailedRole, PatchRoleRequest } from "../../api_bindings.js";
 import { InputComponent } from "../input.js";
 import { tryDeleteRole, RoleEventListener } from "./index.js";
-import { showErrorPopup } from "../error.js";
+import { RolePermissionsMenu } from "./permissions.js";
+import { RoleSettingsMenu } from "./settings.js";
 
 export class DetailedRolePage implements Component {
 
@@ -17,9 +18,13 @@ export class DetailedRolePage implements Component {
     private idElement: InputComponent
     private name: InputComponent
 
-    // -- Default Settings
-
     // -- Permissions
+    private permissionsHeader = document.createElement("h3")
+    private permissions: RolePermissionsMenu
+
+    // -- Default Settings
+    private defaultSettingsHeader = document.createElement("h3")
+    private defaultSettings: RoleSettingsMenu
 
     // -- Apply buttons
     private applyButton = document.createElement("button")
@@ -31,6 +36,7 @@ export class DetailedRolePage implements Component {
 
         this.formRoot.classList.add("role-info")
 
+        // Role stuff
         this.idElement = new InputComponent("roleId", "number", "Role Id", {
             defaultValue: `${role.id}`
         })
@@ -42,6 +48,21 @@ export class DetailedRolePage implements Component {
         })
         this.name.mount(this.formRoot)
 
+        // Permissions
+        this.permissionsHeader.innerText = "Permissions"
+        this.formRoot.appendChild(this.permissionsHeader)
+
+        this.permissions = new RolePermissionsMenu(role.permissions)
+        this.permissions.mount(this.formRoot)
+
+        // Default Settings
+        this.defaultSettingsHeader.innerText = "Default Settings"
+        this.formRoot.appendChild(this.defaultSettingsHeader)
+
+        this.defaultSettings = new RoleSettingsMenu(role.default_settings, role.permissions)
+        this.defaultSettings.mount(this.formRoot)
+
+        // Apply / Delete
         this.applyButton.innerText = "Apply"
         this.applyButton.type = "submit"
         this.formRoot.appendChild(this.applyButton)
@@ -61,8 +82,8 @@ export class DetailedRolePage implements Component {
         const request: PatchRoleRequest = {
             id: this.id,
             name: this.name.getValue(),
-            default_settings: {},
-            permissions: {}
+            default_settings: this.defaultSettings.getSettings(),
+            permissions: this.permissions.getPermissions()
         };
 
         await apiPatchRole(this.api, request)

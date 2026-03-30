@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use log::error;
 use moonlight_common::mac::MacAddress;
+use moonlight_common::stream::video::SupportedVideoFormats;
 use pem::Pem;
 use serde::{Deserialize, Serialize};
 
@@ -222,20 +223,54 @@ pub struct V3Role {
     pub permissions: V3RolePermissions,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct V3RoleSettings {}
+pub struct V3RoleSettings {
+    pub bitrate_kpbs: u32,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub play_audio_local: bool,
+    pub supported_codecs: u32,
+    pub hdr: bool,
+}
 
 impl Default for V3RoleSettings {
     fn default() -> Self {
-        V3RoleSettings {}
+        V3RoleSettings {
+            bitrate_kpbs: 10000,
+            width: 1920,
+            height: 1080,
+            fps: 60,
+            play_audio_local: false,
+            supported_codecs: SupportedVideoFormats::MASK_H264.bits(),
+            hdr: false,
+        }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct V3RolePermissions {}
+pub struct V3RolePermissions {
+    pub allow_add_hosts: bool,
+    pub maximum_bitrate_kbps: Option<u32>,
+    pub allow_codec_h264: bool,
+    pub allow_codec_h265: bool,
+    pub allow_codec_av1: bool,
+    pub allow_hdr: bool,
+    pub allow_transport_webrtc: bool,
+    pub allow_transport_websockets: bool,
+}
 
 impl Default for V3RolePermissions {
     fn default() -> Self {
-        V3RolePermissions {}
+        V3RolePermissions {
+            allow_add_hosts: true,
+            maximum_bitrate_kbps: None,
+            allow_codec_h264: true,
+            allow_codec_h265: true,
+            allow_codec_av1: true,
+            allow_hdr: true,
+            allow_transport_webrtc: true,
+            allow_transport_websockets: true,
+        }
     }
 }
 

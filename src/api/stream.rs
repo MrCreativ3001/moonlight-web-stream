@@ -10,6 +10,7 @@ use actix_web::{
 };
 use actix_ws::{Closed, Message, Session};
 use common::{
+    StreamSettings,
     api_bindings::{
         LogMessageType, PostCancelRequest, PostCancelResponse, StreamClientMessage,
         StreamServerMessage,
@@ -18,14 +19,56 @@ use common::{
     serialize_json,
 };
 use log::{debug, error, info, warn};
+use moonlight_common::stream::video::SupportedVideoFormats;
 use tokio::{process::Command, spawn, time::sleep};
 use tracing::{Level, instrument, span};
 
 use crate::app::{
     App, AppError,
     host::{AppId, HostId},
+    storage::StorageRolePermissions,
     user::AuthenticatedUser,
 };
+
+/// Applies the permissions / restrictions to the current settings of the user.
+/// This won't error, it'll just overwrite it, because the GUI should indicate those restrictions.
+fn apply_permissions_to_settings(
+    permissions: &StorageRolePermissions,
+    settings: &mut StreamSettings,
+) {
+    let StorageRolePermissions {
+        allow_add_hosts: _,
+        maximum_bitrate_kbps,
+        allow_codec_h264,
+        allow_codec_h265,
+        allow_codec_av1,
+        allow_hdr,
+        allow_transport_webrtc,
+        allow_transport_websockets,
+    } = permissions;
+
+    if let Some(maximum_bitrate) = maximum_bitrate_kbps
+        && settings.bitrate > *maximum_bitrate
+    {
+        settings.bitrate = *maximum_bitrate;
+    }
+
+    if !allow_codec_h264 {
+        settings.video_supported_formats &= !SupportedVideoFormats::MASK_H264;
+    }
+    if !allow_codec_h265 {
+        settings.video_supported_formats &= !SupportedVideoFormats::MASK_H265;
+    }
+    if !allow_codec_av1 {
+        settings.video_supported_formats &= !SupportedVideoFormats::MASK_AV1;
+    }
+
+    if !allow_hdr {
+        settings.hdr = false;
+    }
+
+    // TODO: handle transport restrictions
+}
 
 #[get("/host/stream")]
 #[instrument(name = "start_host", skip(web_app, user, payload), fields(user_id = %user.id()))]

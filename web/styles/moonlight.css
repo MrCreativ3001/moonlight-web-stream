@@ -81,6 +81,12 @@ button:hover:not(.logout-button):not(.admin-button):not(.open-settings):not(.hos
     box-shadow: none;
 }
 
+
+/* Disable all fancy effects when the button is disabled */
+button:disabled {
+    background-color: gray !important;
+}
+
 .button-fit-content {
     height: fit-content;
 }

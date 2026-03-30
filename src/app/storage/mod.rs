@@ -60,10 +60,28 @@ pub struct StorageUserModify {
 
 // --- Roles ---
 #[derive(Clone)]
-pub struct StorageRoleDefaultSettings {}
+pub struct StorageRoleDefaultSettings {
+    pub bitrate_kpbs: u32,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub play_audio_local: bool,
+    /// This is using the [SupportedVideoFormats]
+    pub supported_codecs: u32,
+    pub hdr: bool,
+}
 
 #[derive(Clone)]
-pub struct StorageRolePermissions {}
+pub struct StorageRolePermissions {
+    pub allow_add_hosts: bool,
+    pub maximum_bitrate_kbps: Option<u32>,
+    pub allow_codec_h264: bool,
+    pub allow_codec_h265: bool,
+    pub allow_codec_av1: bool,
+    pub allow_hdr: bool,
+    pub allow_transport_webrtc: bool,
+    pub allow_transport_websockets: bool,
+}
 
 #[derive(Clone)]
 pub struct StorageRole {

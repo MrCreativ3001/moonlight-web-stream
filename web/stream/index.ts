@@ -637,16 +637,15 @@ export class Stream implements Component {
     private async startStream(videoCodecSupport: VideoCodecSupport): Promise<void> {
         const message: StreamClientMessage = {
             StartStream: {
-                bitrate: this.settings.bitrate,
-                packet_size: this.settings.packetSize,
-                fps: this.settings.fps,
-                width: this.streamerSize[0],
-                height: this.streamerSize[1],
-                play_audio_local: this.settings.playAudioLocal,
-                video_supported_formats: createSupportedVideoFormatsBits(videoCodecSupport),
-                video_colorspace: "Rec709",
-                video_color_range_full: false,
-                hdr: this.settings.hdr ?? false,
+                settings: {
+                    bitrate_kpbs: this.settings.bitrate,
+                    fps: this.settings.fps,
+                    width: this.streamerSize[0],
+                    height: this.streamerSize[1],
+                    play_audio_local: this.settings.playAudioLocal,
+                    supported_codecs: createSupportedVideoFormatsBits(videoCodecSupport),
+                    hdr: this.settings.hdr ?? false,
+                }
             }
         }
         this.debugLog(`Starting stream with info: ${JSON.stringify(message)}`)

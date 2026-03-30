@@ -149,8 +149,8 @@ button {
     font-weight: 500;
 }
 
-.file-button:hover,
-button:hover {
+.file-button:hover:not(:disabled),
+button:hover:not(:disabled) {
     transition: all var(--dur-med) ease;
     box-shadow: 0 0 30px rgba(0, 212, 255, 0.6), 0 0 60px rgba(0, 212, 255, 0.4);
     transform: translateY(-3px) scale(1.05);
@@ -171,6 +171,12 @@ button,
 .sidebar-button,
 .user-button {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 18px rgba(0, 212, 255, 0.12);
+}
+
+/* Disable all fancy effects when the button is disabled */
+button:disabled {
+    background-color: gray;
+    border-color: gray;
 }
 
 /** Checkbox */

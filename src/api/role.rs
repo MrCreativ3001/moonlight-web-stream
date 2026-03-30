@@ -16,14 +16,31 @@ use crate::app::{
     storage::{
         StorageRoleAdd, StorageRoleDefaultSettings, StorageRoleModify, StorageRolePermissions,
     },
-    user::{Admin, RoleType},
+    user::{Admin, AuthenticatedUser, RoleType},
 };
 
 fn convert_settings(settings: StreamSettings) -> StorageRoleDefaultSettings {
-    StorageRoleDefaultSettings {}
+    StorageRoleDefaultSettings {
+        bitrate_kpbs: settings.bitrate_kpbs,
+        width: settings.width,
+        height: settings.height,
+        fps: settings.fps,
+        play_audio_local: settings.play_audio_local,
+        supported_codecs: settings.supported_codecs,
+        hdr: settings.hdr,
+    }
 }
 fn convert_permissions(permissions: StreamPermissions) -> StorageRolePermissions {
-    StorageRolePermissions {}
+    StorageRolePermissions {
+        allow_add_hosts: permissions.allow_add_hosts,
+        maximum_bitrate_kbps: permissions.maximum_bitrate_kbps,
+        allow_codec_h264: permissions.allow_codec_h264,
+        allow_codec_h265: permissions.allow_codec_h265,
+        allow_codec_av1: permissions.allow_codec_av1,
+        allow_hdr: permissions.allow_hdr,
+        allow_transport_webrtc: permissions.allow_transport_webrtc,
+        allow_transport_websockets: permissions.allow_transport_websockets,
+    }
 }
 
 #[post("/role")]
@@ -52,10 +69,13 @@ pub async fn add_role(
 #[get("/role")]
 pub async fn get_role(
     app: Data<App>,
-    _admin: Admin,
+    mut user: AuthenticatedUser,
     Query(query): Query<GetRoleQuery>,
 ) -> Result<Json<GetRoleResponse>, AppError> {
-    let role_id = RoleId(query.id);
+    let role_id = match query.id {
+        Some(id) => RoleId(id),
+        None => user.role_id().await?,
+    };
 
     let mut role = app.role_by_id(role_id).await?;
 
@@ -79,10 +99,29 @@ pub async fn patch_role(
         StorageRoleModify {
             name: request.name,
             ty: None,
-            permissions: request.permissions.map(|x| StorageRolePermissions {}),
+            permissions: request
+                .permissions
+                .map(|permissions| StorageRolePermissions {
+                    allow_add_hosts: permissions.allow_add_hosts,
+                    maximum_bitrate_kbps: permissions.maximum_bitrate_kbps,
+                    allow_codec_h264: permissions.allow_codec_h264,
+                    allow_codec_h265: permissions.allow_codec_h265,
+                    allow_codec_av1: permissions.allow_codec_av1,
+                    allow_hdr: permissions.allow_hdr,
+                    allow_transport_webrtc: permissions.allow_transport_webrtc,
+                    allow_transport_websockets: permissions.allow_transport_websockets,
+                }),
             default_settings: request
                 .default_settings
-                .map(|x| StorageRoleDefaultSettings {}),
+                .map(|settings| StorageRoleDefaultSettings {
+                    bitrate_kpbs: settings.bitrate_kpbs,
+                    width: settings.width,
+                    height: settings.height,
+                    fps: settings.fps,
+                    play_audio_local: settings.play_audio_local,
+                    supported_codecs: settings.supported_codecs,
+                    hdr: settings.hdr,
+                }),
         },
     )
     .await?;

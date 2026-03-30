@@ -245,18 +245,52 @@ async fn file_writer(mut store_receiver: Receiver<()>, json: Arc<JsonStorage>) {
     }
 }
 
-fn default_settings_from_json(_settings: V3RoleSettings) -> StorageRoleDefaultSettings {
-    StorageRoleDefaultSettings {}
+fn default_settings_from_json(settings: V3RoleSettings) -> StorageRoleDefaultSettings {
+    StorageRoleDefaultSettings {
+        bitrate_kpbs: settings.bitrate_kpbs,
+        width: settings.width,
+        height: settings.height,
+        fps: settings.fps,
+        play_audio_local: settings.play_audio_local,
+        supported_codecs: settings.supported_codecs,
+        hdr: settings.hdr,
+    }
 }
-fn default_settings_to_json(_settings: StorageRoleDefaultSettings) -> V3RoleSettings {
-    V3RoleSettings {}
+fn default_settings_to_json(settings: StorageRoleDefaultSettings) -> V3RoleSettings {
+    V3RoleSettings {
+        bitrate_kpbs: settings.bitrate_kpbs,
+        width: settings.width,
+        height: settings.height,
+        fps: settings.fps,
+        play_audio_local: settings.play_audio_local,
+        supported_codecs: settings.supported_codecs,
+        hdr: settings.hdr,
+    }
 }
 
-fn permissions_from_json(_permissions: V3RolePermissions) -> StorageRolePermissions {
-    StorageRolePermissions {}
+fn permissions_from_json(permissions: V3RolePermissions) -> StorageRolePermissions {
+    StorageRolePermissions {
+        allow_add_hosts: permissions.allow_add_hosts,
+        maximum_bitrate_kbps: permissions.maximum_bitrate_kbps,
+        allow_codec_h264: permissions.allow_codec_h264,
+        allow_codec_h265: permissions.allow_codec_h265,
+        allow_codec_av1: permissions.allow_codec_av1,
+        allow_hdr: permissions.allow_hdr,
+        allow_transport_webrtc: permissions.allow_transport_webrtc,
+        allow_transport_websockets: permissions.allow_transport_websockets,
+    }
 }
-fn permissions_to_json(_permissions: StorageRolePermissions) -> V3RolePermissions {
-    V3RolePermissions {}
+fn permissions_to_json(permissions: StorageRolePermissions) -> V3RolePermissions {
+    V3RolePermissions {
+        allow_add_hosts: permissions.allow_add_hosts,
+        maximum_bitrate_kbps: permissions.maximum_bitrate_kbps,
+        allow_codec_h264: permissions.allow_codec_h264,
+        allow_codec_h265: permissions.allow_codec_h265,
+        allow_codec_av1: permissions.allow_codec_av1,
+        allow_hdr: permissions.allow_hdr,
+        allow_transport_webrtc: permissions.allow_transport_webrtc,
+        allow_transport_websockets: permissions.allow_transport_websockets,
+    }
 }
 
 fn role_from_json(role_id: RoleId, role: &V3Role) -> StorageRole {
@@ -368,11 +402,43 @@ impl Storage for JsonStorage {
                 RoleType::User => V3RoleType::User,
             };
         }
-        if let Some(StorageRoleDefaultSettings {}) = modify.default_settings {
-            // TODO
+        if let Some(StorageRoleDefaultSettings {
+            bitrate_kpbs,
+            width,
+            height,
+            fps,
+            play_audio_local,
+            supported_codecs,
+            hdr,
+        }) = modify.default_settings
+        {
+            role.default_settings.bitrate_kpbs = bitrate_kpbs;
+            role.default_settings.width = width;
+            role.default_settings.height = height;
+            role.default_settings.fps = fps;
+            role.default_settings.play_audio_local = play_audio_local;
+            role.default_settings.supported_codecs = supported_codecs;
+            role.default_settings.hdr = hdr;
         }
-        if let Some(StorageRolePermissions {}) = modify.permissions {
-            // TODO
+        if let Some(StorageRolePermissions {
+            allow_add_hosts,
+            maximum_bitrate_kbps,
+            allow_codec_h264,
+            allow_codec_h265,
+            allow_codec_av1,
+            allow_hdr,
+            allow_transport_webrtc,
+            allow_transport_websockets,
+        }) = modify.permissions
+        {
+            role.permissions.allow_add_hosts = allow_add_hosts;
+            role.permissions.maximum_bitrate_kbps = maximum_bitrate_kbps;
+            role.permissions.allow_codec_h264 = allow_codec_h264;
+            role.permissions.allow_codec_h265 = allow_codec_h265;
+            role.permissions.allow_codec_av1 = allow_codec_av1;
+            role.permissions.allow_hdr = allow_hdr;
+            role.permissions.allow_transport_webrtc = allow_transport_webrtc;
+            role.permissions.allow_transport_websockets = allow_transport_websockets;
         }
 
         drop(role);

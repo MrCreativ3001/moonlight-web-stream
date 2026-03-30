@@ -308,7 +308,10 @@ impl AuthenticatedUser {
     }
 
     pub async fn host_add(&mut self, address: String, http_port: u16) -> Result<Host, AppError> {
-        let app = self.app.access()?;
+        let mut role = self.role().await?;
+        if !role.permissions().await?.allow_add_hosts {
+            return Err(AppError::Forbidden);
+        }
 
         let unique_id = self.host_unique_id().await?;
 
@@ -332,6 +335,8 @@ impl AuthenticatedUser {
             }
             Err(err) => return Err(MoonlightClientError::Backend(Box::new(err)).into()),
         };
+
+        let app = self.app.access()?;
 
         let host = app
             .storage

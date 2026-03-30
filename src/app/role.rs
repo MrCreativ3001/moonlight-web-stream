@@ -72,13 +72,32 @@ impl Role {
 
     pub async fn permissions(&mut self) -> Result<StreamPermissions, AppError> {
         let storage = self.storage_role().await?;
+        let permissions = &storage.permissions;
 
-        Ok(StreamPermissions {})
+        Ok(StreamPermissions {
+            allow_add_hosts: permissions.allow_add_hosts,
+            maximum_bitrate_kbps: permissions.maximum_bitrate_kbps,
+            allow_codec_h264: permissions.allow_codec_h264,
+            allow_codec_h265: permissions.allow_codec_h265,
+            allow_codec_av1: permissions.allow_codec_av1,
+            allow_hdr: permissions.allow_hdr,
+            allow_transport_webrtc: permissions.allow_transport_webrtc,
+            allow_transport_websockets: permissions.allow_transport_websockets,
+        })
     }
     pub async fn default_settings(&mut self) -> Result<StreamSettings, AppError> {
         let storage = self.storage_role().await?;
+        let default_settings = &storage.default_settings;
 
-        Ok(StreamSettings {})
+        Ok(StreamSettings {
+            bitrate_kpbs: default_settings.bitrate_kpbs,
+            width: default_settings.width,
+            height: default_settings.height,
+            fps: default_settings.fps,
+            play_audio_local: default_settings.play_audio_local,
+            supported_codecs: default_settings.supported_codecs,
+            hdr: default_settings.hdr,
+        })
     }
 
     pub async fn modify(&self, _admin: &Admin, modify: StorageRoleModify) -> Result<(), AppError> {

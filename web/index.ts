@@ -1,5 +1,5 @@
 import "./polyfill/index.js"
-import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost } from "./api.js";
+import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost, apiGetRole } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
@@ -8,7 +8,7 @@ import { showModal } from "./component/modal/index.js";
 import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
-import { App, DetailedUser } from "./api_bindings.js";
+import { App, DetailedRole, DetailedUser } from "./api_bindings.js";
 import { getLocalStreamSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
 import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
 import { buildUrl } from "./config_.js";
@@ -68,6 +68,7 @@ function backAppState() {
 class MainApp implements Component {
     private api: Api
     private user: DetailedUser | null = null
+    private role: DetailedRole | null = null
 
     private divElement = document.createElement("div")
 
@@ -316,6 +317,7 @@ class MainApp implements Component {
 
     async forceFetch() {
         const promiseUser = this.refreshUserRole()
+        const promiseRoles = this.refreshUserPermissions()
 
         await Promise.all([
             this.hostList.forceFetch(),
@@ -331,6 +333,7 @@ class MainApp implements Component {
 
         await Promise.all([
             promiseUser,
+            promiseRoles,
             this.refreshGameListActiveGame()
         ])
     }
@@ -355,6 +358,16 @@ class MainApp implements Component {
 
         if (this.user.role == "Admin") {
             this.topLineActions.appendChild(this.adminButton)
+        }
+    }
+    private async refreshUserPermissions() {
+        const response = await apiGetRole(this.api, { id: null })
+        this.role = response.role
+
+        if (this.role.permissions.allow_add_hosts) {
+            this.hostAddButton.disabled = false
+        } else {
+            this.hostAddButton.disabled = true
         }
     }
     private async refreshGameListActiveGame() {

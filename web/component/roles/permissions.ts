@@ -1,5 +1,5 @@
 import { StreamPermissions } from "../../api_bindings.js";
-import { Component } from "../index.js";
+import { Component, ComponentEvent } from "../index.js";
 import { InputComponent } from "../input.js";
 
 export function defaultRolePermissions(): StreamPermissions {
@@ -15,6 +15,8 @@ export function defaultRolePermissions(): StreamPermissions {
     }
 }
 
+export type RolePermissionsChangeListener = (event: ComponentEvent<RolePermissionsMenu>) => void
+
 export class RolePermissionsMenu implements Component {
 
     private rootDiv = document.createElement("div")
@@ -29,15 +31,15 @@ export class RolePermissionsMenu implements Component {
     private allowWebSockets: InputComponent
 
     constructor(permissions: StreamPermissions = defaultRolePermissions()) {
-
         // Allow Add Hosts
         this.allowAddHosts = new InputComponent("allowAddHosts", "checkbox", "Allow adding Hosts", {
             checked: permissions.allow_add_hosts,
         })
         this.allowAddHosts.mount(this.rootDiv)
+        this.allowAddHosts.addChangeListener(this.onChange.bind(this))
 
         // Maximum Bitrate
-        this.maximumBitrateKbps = new InputComponent("maximumBitrateKpbs", "number", "Maximum Bitrate", {
+        this.maximumBitrateKbps = new InputComponent("maximumBitrateKpbs", "number", "Maximum Bitrate (Kpbs)", {
             hasEnableCheckbox: true,
             defaultValue: `${permissions.maximum_bitrate_kbps ?? 10000}`,
             step: "100",
@@ -48,39 +50,57 @@ export class RolePermissionsMenu implements Component {
         })
         this.maximumBitrateKbps.setEnabled(permissions.maximum_bitrate_kbps != null)
         this.maximumBitrateKbps.mount(this.rootDiv)
+        this.maximumBitrateKbps.addChangeListener(this.onChange.bind(this))
 
         // Codecs
         this.allowCodecH264 = new InputComponent("allowCodecH264", "checkbox", "Allow H264", {
             checked: permissions.allow_codec_h264,
         })
         this.allowCodecH264.mount(this.rootDiv)
+        this.allowCodecH264.addChangeListener(this.onChange.bind(this))
 
         this.allowCodecH265 = new InputComponent("allowCodecH265", "checkbox", "Allow H265", {
             checked: permissions.allow_codec_h265,
         })
         this.allowCodecH265.mount(this.rootDiv)
+        this.allowCodecH265.addChangeListener(this.onChange.bind(this))
 
         this.allowCodecAv1 = new InputComponent("allowCodecAv1", "checkbox", "Allow Av1", {
             checked: permissions.allow_codec_av1,
         })
         this.allowCodecAv1.mount(this.rootDiv)
+        this.allowCodecAv1.addChangeListener(this.onChange.bind(this))
 
         // Hdr
         this.allowHdr = new InputComponent("allowHdr", "checkbox", "Allow HDR", {
             checked: permissions.allow_hdr,
         })
         this.allowHdr.mount(this.rootDiv)
+        this.allowHdr.addChangeListener(this.onChange.bind(this))
 
         // Transport
         this.allowWebRTC = new InputComponent("allowTransportWebRTC", "checkbox", "Allow WebRTC", {
             checked: permissions.allow_transport_webrtc,
         })
         this.allowWebRTC.mount(this.rootDiv)
+        this.allowWebRTC.addChangeListener(this.onChange.bind(this))
 
         this.allowWebSockets = new InputComponent("allowTransportWebSockets", "checkbox", "Allow Web Sockets", {
             checked: permissions.allow_transport_websockets,
         })
         this.allowWebSockets.mount(this.rootDiv)
+        this.allowWebSockets.addChangeListener(this.onChange.bind(this))
+    }
+
+    private onChange() {
+        this.rootDiv.dispatchEvent(new ComponentEvent("ml-change", this))
+    }
+
+    addChangeListener(listener: RolePermissionsChangeListener) {
+        this.rootDiv.addEventListener("ml-change", listener as any)
+    }
+    removeChangeListener(listener: RolePermissionsChangeListener) {
+        this.rootDiv.removeEventListener("ml-change", listener as any)
     }
 
     getPermissions(): StreamPermissions {

@@ -6,7 +6,7 @@ import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { defaultSettings, getLocalStreamSettings, Settings } from "./component/settings_menu.js";
+import { globalDefaultSettings, getLocalStreamSettings, Settings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
@@ -75,11 +75,9 @@ class ViewerApp implements Component {
     private statsDiv = document.createElement("div")
     private stream: Stream | null = null
 
-    private settings: Settings
-
     private inputConfig: StreamInputConfig = defaultStreamInputConfig()
     private previousMouseMode: MouseMode
-    private toggleFullscreenWithKeybind: boolean
+    private toggleFullscreenWithKeybind: boolean = false
     private hasShownFullscreenEscapeWarning = false
 
     constructor(api: Api, hostId: number, appId: number) {
@@ -108,16 +106,17 @@ class ViewerApp implements Component {
         this.div.appendChild(this.statsDiv)
 
         // Configure stream
-        const settings = getLocalStreamSettings() ?? defaultSettings()
-
-        let browserWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
-        let browserHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
-
         this.previousMouseMode = this.inputConfig.mouseMode
-        this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
-        this.startStream(hostId, appId, settings, [browserWidth, browserHeight])
 
-        this.settings = settings
+        apiGetRole(this.api, { id: null }).then(response => {
+            const settings = getLocalStreamSettings(response.role.default_settings)
+
+            let browserWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
+            let browserHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
+
+            this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
+            this.startStream(hostId, appId, response.role.permissions, settings, [browserWidth, browserHeight])
+        })
 
         // Configure input
         this.addListeners(document)
@@ -161,14 +160,12 @@ class ViewerApp implements Component {
         element.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
     }
 
-    private async startStream(hostId: number, appId: number, settings: Settings, browserSize: [number, number]) {
+    private async startStream(hostId: number, appId: number, permissions: StreamPermissions, settings: Settings, browserSize: [number, number]) {
         setSidebarStyle({
             edge: settings.sidebarEdge,
         })
 
-        const role = (await apiGetRole(this.api, { id: null })).role
-
-        this.stream = new Stream(this.api, hostId, appId, settings, browserSize, role.permissions)
+        this.stream = new Stream(this.api, hostId, appId, settings, browserSize, permissions)
 
         // Add app info listener
         this.stream.addInfoListener(this.onInfo.bind(this))

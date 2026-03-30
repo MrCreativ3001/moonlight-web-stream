@@ -8,7 +8,6 @@ import { SidebarEdge } from "./sidebar/index.js";
 export type Settings = {
     sidebarEdge: SidebarEdge,
     bitrate: number
-    packetSize: number
     videoFrameQueueSize: number
     videoSize: "720p" | "1080p" | "1440p" | "4k" | "native" | "custom"
     videoSizeCustom: {
@@ -35,27 +34,32 @@ export type StreamCodec = "h264" | "auto" | "h265" | "av1"
 export type TransportType = "auto" | "webrtc" | "websocket"
 
 import DEFAULT_SETTINGS from "../default_settings.js"
+import { StreamPermissions } from "../api_bindings.js";
 
-export function defaultSettings(): Settings {
+/// You should use the role default settings instead!
+export function globalDefaultSettings(): Settings {
     // We are deep cloning this
+    return deepClone(DEFAULT_SETTINGS)
+}
+function deepClone<T>(value: T): T {
     if ("structuredClone" in window) {
-        return structuredClone(DEFAULT_SETTINGS)
+        return structuredClone(value)
     } else {
         return JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
     }
 }
 
-export function getLocalStreamSettings(): Settings | null {
-    let settings = null
+export function getLocalStreamSettings(defaultSettings: Settings): Settings {
+    let settings: any = null
     try {
         const settingsLoadedJson = localStorage.getItem("mlSettings")
         if (settingsLoadedJson == null) {
-            return null
+            return defaultSettings
         }
 
         const settingsLoaded = JSON.parse(settingsLoadedJson)
 
-        settings = defaultSettings()
+        settings = defaultSettings
         Object.assign(settings, settingsLoaded)
     } catch (e) {
         localStorage.removeItem("mlSettings")
@@ -74,16 +78,44 @@ export function setLocalStreamSettings(settings?: Settings) {
 
 export type StreamSettingsChangeListener = (event: ComponentEvent<StreamSettingsComponent>) => void
 
+function makeSettingsValid(permissions: StreamPermissions, settings: Settings) {
+    if (permissions.maximum_bitrate_kbps != null && permissions.maximum_bitrate_kbps < settings.bitrate) {
+        settings.bitrate = permissions.maximum_bitrate_kbps
+    }
+
+    if (!permissions.allow_codec_av1 && settings.videoCodec == "av1") {
+        settings.videoCodec = "h265"
+    }
+    if (!permissions.allow_codec_h265 && settings.videoCodec == "h265") {
+        settings.videoCodec = "h264"
+    }
+    if (!permissions.allow_codec_h264 && settings.videoCodec == "h264") {
+        settings.videoCodec = "auto"
+    }
+
+    if (!permissions.allow_hdr && settings.hdr) {
+        settings.hdr = false
+    }
+
+    if (!permissions.allow_transport_webrtc && settings.dataTransport == "webrtc") {
+        settings.dataTransport = "auto"
+    }
+    if (!permissions.allow_transport_websockets && settings.dataTransport == "websocket") {
+        settings.dataTransport = "auto"
+    }
+}
+
 export class StreamSettingsComponent implements Component {
+
+    private permissions: StreamPermissions
 
     private divElement: HTMLDivElement = document.createElement("div")
 
-    private sidebarHeader: HTMLHeadingElement = document.createElement("h2")
+    private sidebarHeader: HTMLHeadingElement = document.createElement("h3")
     private sidebarEdge: SelectComponent
 
-    private streamHeader: HTMLHeadingElement = document.createElement("h2")
+    private streamHeader: HTMLHeadingElement = document.createElement("h3")
     private bitrate: InputComponent
-    private packetSize: InputComponent
     private fps: InputComponent
     private videoCodec: SelectComponent
     private forceVideoElementRenderer: InputComponent
@@ -97,19 +129,19 @@ export class StreamSettingsComponent implements Component {
 
     private videoSampleQueueSize: InputComponent
 
-    private audioHeader: HTMLHeadingElement = document.createElement("h2")
+    private audioHeader: HTMLHeadingElement = document.createElement("h3")
     private playAudioLocal: InputComponent
     private audioSampleQueueSize: InputComponent
 
-    private mouseHeader: HTMLHeadingElement = document.createElement("h2")
+    private mouseHeader: HTMLHeadingElement = document.createElement("h3")
     private mouseScrollMode: SelectComponent
 
-    private controllerHeader: HTMLHeadingElement = document.createElement("h2")
+    private controllerHeader: HTMLHeadingElement = document.createElement("h3")
     private controllerInvertAB: InputComponent
     private controllerInvertXY: InputComponent
     private controllerSendIntervalOverride: InputComponent
 
-    private otherHeader: HTMLHeadingElement = document.createElement("h2")
+    private otherHeader: HTMLHeadingElement = document.createElement("h3")
     private dataTransport: SelectComponent
     private toggleFullscreenWithKeybind: InputComponent
 
@@ -117,8 +149,15 @@ export class StreamSettingsComponent implements Component {
 
     private useSelectElementPolyfill: InputComponent
 
-    constructor(settings?: Settings) {
-        const defaultSettings_ = defaultSettings()
+    constructor(permissions: StreamPermissions, settings: Settings) {
+        // Sometimes the normal settings object doesn't have some values, because they change between versions.
+        // Use those as fallback
+        const defaultSettings_ = globalDefaultSettings()
+
+        makeSettingsValid(permissions, defaultSettings_)
+        makeSettingsValid(permissions, settings)
+
+        this.permissions = permissions
 
         // Root div
         this.divElement.classList.add("settings")
@@ -144,26 +183,17 @@ export class StreamSettingsComponent implements Component {
         this.divElement.appendChild(this.streamHeader)
 
         // Bitrate
-        this.bitrate = new InputComponent("bitrate", "number", "Bitrate", {
+        this.bitrate = new InputComponent("bitrate", "number", "Bitrate (Kpbs)", {
             defaultValue: defaultSettings_.bitrate.toString(),
             value: settings?.bitrate?.toString(),
             step: "100",
             numberSlider: {
-                range_min: 1000,
-                range_max: 10000,
+                range_min: Math.min(this.permissions.maximum_bitrate_kbps ?? 1000, 1000),
+                range_max: this.permissions.maximum_bitrate_kbps ?? 10000,
             }
         })
         this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
         this.bitrate.mount(this.divElement)
-
-        // Packet Size
-        this.packetSize = new InputComponent("packetSize", "number", "Packet Size", {
-            defaultValue: defaultSettings_.packetSize.toString(),
-            value: settings?.packetSize?.toString(),
-            step: "100"
-        })
-        this.packetSize.addChangeListener(this.onSettingsChange.bind(this))
-        this.packetSize.mount(this.divElement)
 
         // Fps
         this.fps = new InputComponent("fps", "number", "Fps", {
@@ -194,14 +224,14 @@ export class StreamSettingsComponent implements Component {
 
         this.videoSizeWidth = new InputComponent("videoSizeWidth", "number", "Video Width", {
             defaultValue: defaultSettings_.videoSizeCustom.width.toString(),
-            value: settings?.videoSizeCustom.width.toString()
+            value: settings?.videoSizeCustom?.width.toString()
         })
         this.videoSizeWidth.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeWidth.mount(this.divElement)
 
         this.videoSizeHeight = new InputComponent("videoSizeHeight", "number", "Video Height", {
             defaultValue: defaultSettings_.videoSizeCustom.height.toString(),
-            value: settings?.videoSizeCustom.height.toString()
+            value: settings?.videoSizeCustom?.height.toString()
         })
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeHeight.mount(this.divElement)
@@ -215,12 +245,26 @@ export class StreamSettingsComponent implements Component {
         this.videoSampleQueueSize.mount(this.divElement)
 
         // Codec
-        this.videoCodec = new SelectComponent("videoCodec", [
-            { value: "h264", name: "H264" },
+        const allowedVideoCodecs = [
             { value: "auto", name: "Auto (Experimental)" },
-            { value: "h265", name: "H265" },
-            { value: "av1", name: "AV1 (Experimental)" },
-        ], {
+        ]
+        if (this.permissions.allow_codec_h264) {
+            allowedVideoCodecs.push(
+                { value: "h264", name: "H264" },
+            )
+        }
+        if (this.permissions.allow_codec_h265) {
+            allowedVideoCodecs.push(
+                { value: "h265", name: "H265" },
+            )
+        }
+        if (this.permissions.allow_codec_av1) {
+            allowedVideoCodecs.push(
+                { value: "av1", name: "AV1 (Experimental)" }
+            )
+        }
+
+        this.videoCodec = new SelectComponent("videoCodec", allowedVideoCodecs, {
             displayName: "Video Codec",
             preSelectedOption: settings?.videoCodec ?? defaultSettings_.videoCodec
         })
@@ -255,6 +299,11 @@ export class StreamSettingsComponent implements Component {
         })
         this.hdr.addChangeListener(this.onSettingsChange.bind(this))
         this.hdr.mount(this.divElement)
+
+        if (!this.permissions.allow_hdr) {
+            this.hdr.setChecked(false)
+            this.hdr.setEnabled(false)
+        }
 
         // Audio local
         this.audioHeader.innerText = "Audio"
@@ -300,13 +349,13 @@ export class StreamSettingsComponent implements Component {
         this.divElement.appendChild(this.controllerHeader)
 
         this.controllerInvertAB = new InputComponent("controllerInvertAB", "checkbox", "Invert A and B", {
-            checked: settings?.controllerConfig.invertAB
+            checked: settings?.controllerConfig?.invertAB
         })
         this.controllerInvertAB.addChangeListener(this.onSettingsChange.bind(this))
         this.controllerInvertAB.mount(this.divElement)
 
         this.controllerInvertXY = new InputComponent("controllerInvertXY", "checkbox", "Invert X and Y", {
-            checked: settings?.controllerConfig.invertXY
+            checked: settings?.controllerConfig?.invertXY
         })
         this.controllerInvertXY.addChangeListener(this.onSettingsChange.bind(this))
         this.controllerInvertXY.mount(this.divElement)
@@ -315,13 +364,13 @@ export class StreamSettingsComponent implements Component {
         this.controllerSendIntervalOverride = new InputComponent("controllerSendIntervalOverride", "number", "Override Controller State Send Interval", {
             hasEnableCheckbox: true,
             defaultValue: "20",
-            value: settings?.controllerConfig.sendIntervalOverride?.toString(),
+            value: settings?.controllerConfig?.sendIntervalOverride?.toString(),
             numberSlider: {
                 range_min: 10,
                 range_max: 120
             }
         })
-        this.controllerSendIntervalOverride.setEnabled(settings?.controllerConfig.sendIntervalOverride != null)
+        this.controllerSendIntervalOverride.setEnabled(settings?.controllerConfig?.sendIntervalOverride != null)
         this.controllerSendIntervalOverride.addChangeListener(this.onSettingsChange.bind(this))
         this.controllerSendIntervalOverride.mount(this.divElement)
 
@@ -334,23 +383,36 @@ export class StreamSettingsComponent implements Component {
         this.otherHeader.innerText = "Other"
         this.divElement.appendChild(this.otherHeader)
 
-        this.dataTransport = new SelectComponent("transport", [
+        // Data Transport
+        const allowedDataTransport = [
             { value: "auto", name: "Auto" },
-            { value: "webrtc", name: "WebRTC" },
-            { value: "websocket", name: "Web Socket (Experimental)" },
-        ], {
+        ]
+        if (this.permissions.allow_transport_webrtc) {
+            allowedDataTransport.push(
+                { value: "webrtc", name: "WebRTC" },
+            )
+        }
+        if (this.permissions.allow_transport_websockets) {
+            allowedDataTransport.push(
+                { value: "websocket", name: "Web Socket" },
+            )
+        }
+
+        this.dataTransport = new SelectComponent("transport", allowedDataTransport, {
             displayName: "Data Transport",
             preSelectedOption: settings?.dataTransport ?? defaultSettings_.dataTransport
         })
         this.dataTransport.addChangeListener(this.onSettingsChange.bind(this))
         this.dataTransport.mount(this.divElement)
 
+        // Fullscreen Keybind
         this.toggleFullscreenWithKeybind = new InputComponent("toggleFullscreenWithKeybind", "checkbox", "Toggle Fullscreen and Mouse Lock with Ctrl + Shift + I", {
             checked: settings?.toggleFullscreenWithKeybind
         })
         this.toggleFullscreenWithKeybind.addChangeListener(this.onSettingsChange.bind(this))
         this.toggleFullscreenWithKeybind.mount(this.divElement)
 
+        // Page Style
         this.pageStyle = new SelectComponent("pageStyle", [
             { value: "standard", name: "Standard" },
             { value: "moonlight", name: "Moonlight" },
@@ -361,6 +423,7 @@ export class StreamSettingsComponent implements Component {
         this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
         this.pageStyle.mount(this.divElement)
 
+        // Custom Select Element
         this.useSelectElementPolyfill = new InputComponent("useSelectElementPolyfill", "checkbox", "Use Custom Dropdown Implementation", {
             checked: settings?.useSelectElementPolyfill ?? defaultSettings_.useSelectElementPolyfill
         })
@@ -390,11 +453,10 @@ export class StreamSettingsComponent implements Component {
     }
 
     getStreamSettings(): Settings {
-        const settings = defaultSettings()
+        const settings = globalDefaultSettings()
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
         settings.bitrate = parseInt(this.bitrate.getValue())
-        settings.packetSize = parseInt(this.packetSize.getValue())
         settings.fps = parseInt(this.fps.getValue())
         settings.videoSize = this.videoSize.getValue() as any
         settings.videoSizeCustom = {
@@ -430,9 +492,14 @@ export class StreamSettingsComponent implements Component {
 
         settings.useSelectElementPolyfill = this.useSelectElementPolyfill.isChecked()
 
+        makeSettingsValid(this.permissions, settings)
+
         return settings
     }
 
+    mountBefore(parent: HTMLElement, before: HTMLElement): void {
+        parent.insertBefore(this.divElement, before)
+    }
     mount(parent: HTMLElement): void {
         parent.appendChild(this.divElement)
     }

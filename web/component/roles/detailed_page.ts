@@ -4,7 +4,7 @@ import { DetailedRole, PatchRoleRequest } from "../../api_bindings.js";
 import { InputComponent } from "../input.js";
 import { tryDeleteRole, RoleEventListener } from "./index.js";
 import { RolePermissionsMenu } from "./permissions.js";
-import { RoleSettingsMenu } from "./settings.js";
+import { StreamSettingsComponent } from "../settings_menu.js";
 
 export class DetailedRolePage implements Component {
 
@@ -24,7 +24,7 @@ export class DetailedRolePage implements Component {
 
     // -- Default Settings
     private defaultSettingsHeader = document.createElement("h3")
-    private defaultSettings: RoleSettingsMenu
+    private defaultSettings: StreamSettingsComponent
 
     // -- Apply buttons
     private applyButton = document.createElement("button")
@@ -54,12 +54,13 @@ export class DetailedRolePage implements Component {
 
         this.permissions = new RolePermissionsMenu(role.permissions)
         this.permissions.mount(this.formRoot)
+        this.permissions.addChangeListener(this.onPermissionsChange.bind(this))
 
         // Default Settings
         this.defaultSettingsHeader.innerText = "Default Settings"
         this.formRoot.appendChild(this.defaultSettingsHeader)
 
-        this.defaultSettings = new RoleSettingsMenu(role.default_settings, role.permissions)
+        this.defaultSettings = new StreamSettingsComponent(role.permissions, role.default_settings)
         this.defaultSettings.mount(this.formRoot)
 
         // Apply / Delete
@@ -76,13 +77,22 @@ export class DetailedRolePage implements Component {
         this.formRoot.addEventListener("submit", this.apply.bind(this))
     }
 
+    private onPermissionsChange() {
+        const currentSettings = this.defaultSettings.getStreamSettings()
+
+        this.defaultSettings.unmount(this.formRoot)
+
+        this.defaultSettings = new StreamSettingsComponent(this.permissions.getPermissions(), currentSettings)
+        this.defaultSettings.mountBefore(this.formRoot, this.applyButton)
+    }
+
     private async apply(event: SubmitEvent) {
         event.preventDefault()
 
         const request: PatchRoleRequest = {
             id: this.id,
             name: this.name.getValue(),
-            default_settings: this.defaultSettings.getSettings(),
+            default_settings: this.defaultSettings.getStreamSettings(),
             permissions: this.permissions.getPermissions()
         };
 

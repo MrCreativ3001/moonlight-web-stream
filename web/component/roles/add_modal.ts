@@ -2,8 +2,8 @@ import { Api } from "../../api.js";
 import { PostRoleRequest } from "../../api_bindings.js";
 import { InputComponent } from "../input.js";
 import { FormModal } from "../modal/form.js";
+import { globalDefaultSettings, StreamSettingsComponent } from "../settings_menu.js";
 import { RolePermissionsMenu } from "./permissions.js";
-import { RoleSettingsMenu } from "./settings.js";
 
 export class AddRoleModal extends FormModal<PostRoleRequest> {
 
@@ -17,7 +17,7 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
     private permissions: RolePermissionsMenu
 
     private defaultSettingsHeader = document.createElement("h3")
-    private defaultSettings: RoleSettingsMenu
+    private defaultSettings: StreamSettingsComponent
 
     constructor() {
         super()
@@ -42,7 +42,7 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
         this.defaultSettingsHeader.innerText = "Default Settings"
         this.modalRoot.appendChild(this.defaultSettingsHeader)
 
-        this.defaultSettings = new RoleSettingsMenu()
+        this.defaultSettings = new StreamSettingsComponent(this.permissions.getPermissions(), globalDefaultSettings())
         this.defaultSettings.mount(this.modalRoot)
     }
 
@@ -58,7 +58,7 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
 
         return {
             name,
-            default_settings: this.defaultSettings.getSettings(),
+            default_settings: this.defaultSettings.getStreamSettings(),
             permissions: this.permissions.getPermissions()
         }
     }

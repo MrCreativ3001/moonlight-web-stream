@@ -130,6 +130,13 @@ input[type="checkbox"]:checked::after {
     opacity: 1;
 }
 
+input[type="checkbox"]:disabled {
+    color: none;
+    border-color: black;
+    box-shadow: none;
+}
+
+
 /** Slider */
 input[type="range"] {
     accent-color: rgba(63, 81, 181, 1.0);
@@ -282,6 +289,7 @@ input[type=number] {
     visibility: visible;
     opacity: 1;
     transition: visibility 0s, background 0.1s linear, opacity 0.1s linear;
+    overflow-y: auto;
 }
 
 .modal-content {

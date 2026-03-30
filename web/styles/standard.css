@@ -227,6 +227,12 @@ input[type="checkbox"]:checked::after {
     opacity: 1;
 }
 
+input[type="checkbox"]:disabled {
+    color: lightgray;
+    border-color: gray;
+    box-shadow: none;
+}
+
 /** Slider */
 input[type="range"] {
     accent-color: #00f5ff;
@@ -390,6 +396,7 @@ input[type=number] {
     visibility: visible;
     opacity: 1;
     transition: visibility 0s, background 0.1s linear, opacity 0.1s linear;
+    overflow-y: auto;
 }
 
 .modal-content {

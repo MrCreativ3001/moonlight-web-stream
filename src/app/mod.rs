@@ -377,8 +377,9 @@ impl App {
         self.inner.storage.remove_session_token(session).await
     }
 
+    /// Returns any role that is an Admin
     pub async fn admin_role(&self) -> Result<Role, AppError> {
-        let roles = self.all_roles().await?;
+        let roles = self.all_roles_no_auth().await?;
 
         let result = roles
             .into_iter()
@@ -400,6 +401,7 @@ impl App {
             Err(_) => {
                 // We've got no admin role -> add an admin role
 
+                // TODO: add an Admin role
                 todo!()
             }
         }
@@ -428,7 +430,11 @@ impl App {
         })
     }
 
-    pub async fn all_roles(&self) -> Result<Vec<Role>, AppError> {
+    pub async fn all_roles(&self, _admin: &Admin) -> Result<Vec<Role>, AppError> {
+        self.all_roles_no_auth().await
+    }
+
+    pub async fn all_roles_no_auth(&self) -> Result<Vec<Role>, AppError> {
         let roles = self.inner.storage.list_roles().await?;
 
         let roles = match roles {

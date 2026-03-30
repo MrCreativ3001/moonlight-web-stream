@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use log::error;
 use moonlight_common::mac::MacAddress;
-use moonlight_common::stream::video::SupportedVideoFormats;
 use pem::Pem;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -9,13 +9,13 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use common::{
-    api_bindings::{StreamClientMessage, StreamSettings, StreamerStatsUpdate, TransportChannelId},
+    api_bindings::{StreamClientMessage, StreamerStatsUpdate, TransportChannelId},
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
 use log::{trace, warn};
 use moonlight_common::stream::{
     audio::{AudioConfig, OpusMultistreamConfig},
-    video::{DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoSetup},
+    video::{DecodeResult, FrameType, VideoDecodeUnit, VideoSetup},
 };
 use tokio::{
     spawn,
@@ -274,11 +274,6 @@ impl TransportSender for WebSocketTransportSender {
                 }
             }
             ServerIpcMessage::WebSocket(StreamClientMessage::StartStream { settings }) => {
-                let video_supported_formats = SupportedVideoFormats::from_bits(settings.supported_codecs).unwrap_or_else(|| {
-                    warn!("Failed to deserialize SupportedVideoFormats: {}, falling back to only H264", SupportedVideoFormats::from_bits_retain(settings.supported_codecs));
-                    SupportedVideoFormats::H264
-                });
-
                 if self
                     .event_sender
                     .send(TransportEvent::StartStream { settings })

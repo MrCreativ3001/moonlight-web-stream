@@ -1,4 +1,4 @@
-use common::api_bindings::{DetailedRole, StreamPermissions, StreamSettings, UndetailedRole};
+use common::api_bindings::{DetailedRole, StreamPermissions, UndetailedRole};
 use common::api_bindings_ext::TsAny;
 
 use crate::app::storage::StorageRoleModify;

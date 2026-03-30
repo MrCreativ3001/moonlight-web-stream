@@ -91,6 +91,7 @@ cmake = { version = "0.1.54" }
 [workspace.lints.clippy]
 too_many_arguments = "allow"
 unwrap_used = "warn"
+todo = "warn"
 
 [package]
 name = "web-server"

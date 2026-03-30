@@ -5,7 +5,7 @@ use actix_web::{
 use common::{
     api_bindings::{
         DeleteRoleQuery, GetRoleQuery, GetRoleResponse, GetRolesResponse, PatchRoleRequest,
-        PostRoleRequest, PostRoleResponse, StreamPermissions, StreamSettings,
+        PostRoleRequest, PostRoleResponse, StreamPermissions,
     },
     api_bindings_ext::TsAny,
 };
@@ -137,7 +137,7 @@ pub async fn delete_role(
 
 #[get("/roles")]
 pub async fn list_roles(app: Data<App>, admin: Admin) -> Result<Json<GetRolesResponse>, AppError> {
-    let mut roles = app.all_roles().await?;
+    let mut roles = app.all_roles(&admin).await?;
 
     let role_results = join_all(roles.iter_mut().map(|role| role.undetailed_role())).await;
 

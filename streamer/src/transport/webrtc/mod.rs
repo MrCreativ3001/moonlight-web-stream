@@ -10,7 +10,7 @@ use bytes::Bytes;
 use common::{
     api_bindings::{
         RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
-        StreamServerMessage, StreamSettings, StreamSignalingMessage, TransportChannelId,
+        StreamServerMessage, StreamSignalingMessage, TransportChannelId,
     },
     config::{PortRange, WebRtcConfig},
     ipc::{ServerIpcMessage, StreamerIpcMessage},

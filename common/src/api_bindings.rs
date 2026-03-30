@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{Display, Formatter};
 
 use moonlight_common::{
     ServerState,
@@ -16,7 +16,6 @@ const EXPORT_PATH: &str = "../../web/api_bindings.ts";
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct ConfigJs {
     pub path_prefix: String,
-    pub default_settings: Option<TsAny>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone)]

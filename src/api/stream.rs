@@ -12,13 +12,12 @@ use actix_ws::{Closed, Message, Session};
 use common::{
     api_bindings::{
         LogMessageType, PostCancelRequest, PostCancelResponse, StreamClientMessage,
-        StreamServerMessage, StreamSettings,
+        StreamServerMessage,
     },
     ipc::{ServerIpcMessage, StreamerConfig, StreamerIpcMessage, create_child_ipc},
     serialize_json,
 };
 use log::{debug, error, info, warn};
-use moonlight_common::stream::video::SupportedVideoFormats;
 use tokio::{process::Command, spawn, time::sleep};
 use tracing::{Level, instrument, span};
 

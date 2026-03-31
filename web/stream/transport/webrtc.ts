@@ -27,7 +27,6 @@ export class WebRTCTransport implements Transport {
         this.peer = new RTCPeerConnection(configuration)
         this.peer.addEventListener("error", this.onError.bind(this))
 
-        this.peer.addEventListener("negotiationneeded", this.onNegotiationNeeded.bind(this))
         this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
 
         this.peer.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this))
@@ -43,8 +42,6 @@ export class WebRTCTransport implements Transport {
         // Maybe we already received data
         if (this.remoteDescription) {
             await this.handleRemoteDescription(this.remoteDescription)
-        } else {
-            await this.onNegotiationNeeded()
         }
         await this.tryDequeueIceCandidates()
     }
@@ -79,29 +76,6 @@ export class WebRTCTransport implements Transport {
                 usernameFragment: candidate.username_fragment
             })
         }
-    }
-
-    private async onNegotiationNeeded() {
-        // We're polite
-        if (!this.peer) {
-            this.logger?.debug("OnNegotiationNeeded without a peer")
-            return
-        }
-
-        await this.peer.setLocalDescription()
-        const localDescription = this.peer.localDescription
-        if (!localDescription) {
-            this.logger?.debug("Failed to set local description in OnNegotiationNeeded")
-            return
-        }
-
-        this.logger?.debug(`OnNegotiationNeeded: Sending local description: ${localDescription.type}`)
-        this.sendMessage({
-            Description: {
-                ty: localDescription.type,
-                sdp: localDescription.sdp ?? ""
-            }
-        })
     }
 
     private remoteDescription: RTCSessionDescriptionInit | null = null
@@ -270,13 +244,9 @@ export class WebRTCTransport implements Transport {
                 continue
             }
 
+            // All Data Channels are created by the server
             const id = TransportChannelId[channel]
-            const dataChannel = options.serverCreated ? null : this.peer.createDataChannel(channel.toLowerCase(), {
-                ordered: options.ordered,
-                maxRetransmits: options.reliable ? undefined : 0
-            })
-
-            this.channels[id] = new WebRTCDataTransportChannel(channel, dataChannel)
+            this.channels[id] = new WebRTCDataTransportChannel(channel, null)
         }
     }
 

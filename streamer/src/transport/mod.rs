@@ -636,6 +636,8 @@ pub trait TransportSender {
     ) -> i32;
     async fn send_audio_sample(&self, data: &[u8]) -> Result<(), TransportError>;
 
+    async fn on_setup_complete(&self);
+
     async fn send(&self, packet: OutboundPacket) -> Result<(), TransportError>;
 
     async fn on_ipc_message(&self, message: ServerIpcMessage) -> Result<(), TransportError>;

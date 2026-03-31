@@ -419,17 +419,6 @@ export class Stream implements Component {
         })
         this.setTransport(transport)
 
-        // Wait for negotiation
-        const result = await (new Promise((resolve, _reject) => {
-            transport.onconnect = () => resolve(true)
-            transport.onclose = () => resolve(false)
-        }))
-        this.debugLog(`WebRTC negotiation success: ${result}`)
-
-        if (!result) {
-            return "failednoconnect"
-        }
-
         // Print pipe support
         const pipesInfo = await gatherPipeInfo()
 
@@ -449,7 +438,19 @@ export class Stream implements Component {
             return "failednoconnect"
         }
 
+        // Starting the stream will start negotiation
         await this.startStream(videoCodecSupport)
+
+        // Wait for negotiation
+        const result = await (new Promise((resolve, _reject) => {
+            transport.onconnect = () => resolve(true)
+            transport.onclose = () => resolve(false)
+        }))
+        this.debugLog(`WebRTC negotiation success: ${result}`)
+
+        if (!result) {
+            return "failednoconnect"
+        }
 
         return new Promise((resolve, reject) => {
             transport.onclose = (shutdown) => {

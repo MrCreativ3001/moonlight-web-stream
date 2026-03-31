@@ -788,10 +788,6 @@ input[type=number] {
     height: 70px;
 }
 
-.settings {
-    color: #e0e0ff;
-}
-
 .host-actions {
     display: flex;
     gap: var(--space-xs);

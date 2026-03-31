@@ -15,7 +15,6 @@ use common::{
     config::{PortRange, WebRtcConfig},
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
-use log::{debug, error, trace, warn};
 use moonlight_common::stream::{
     audio::{AudioConfig, OpusMultistreamConfig},
     video::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoSetup},
@@ -29,6 +28,7 @@ use tokio::{
     },
     time::sleep,
 };
+use tracing::{debug, error, trace, warn};
 use webrtc::{
     api::{
         APIBuilder, interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
@@ -73,7 +73,8 @@ struct WebRtcInner {
     peer: Arc<RTCPeerConnection>,
     event_sender: Sender<TransportEvent>,
     general_channel: Arc<RTCDataChannel>,
-    stats_channel: Mutex<Option<Arc<RTCDataChannel>>>,
+    stats_channel: Arc<RTCDataChannel>,
+    input_channels: Mutex<Vec<Arc<RTCDataChannel>>>,
     video: Mutex<WebRtcVideo>,
     audio: Mutex<WebRtcAudio>,
     // Timeout / Terminate
@@ -149,13 +150,15 @@ pub async fn new(
     let peer = Arc::new(api.new_peer_connection(rtc_config).await?);
 
     let general_channel = peer.create_data_channel("general", None).await?;
+    let stats_channel = peer.create_data_channel("stats", None).await?;
 
     let runtime = Handle::current();
     let this_owned = Arc::new(WebRtcInner {
         peer: peer.clone(),
         event_sender,
         general_channel: general_channel.clone(),
-        stats_channel: Mutex::new(None),
+        stats_channel,
+        input_channels: Default::default(),
         video: Mutex::new(WebRtcVideo::new(
             runtime.clone(),
             Arc::downgrade(&peer),
@@ -169,10 +172,44 @@ pub async fn new(
         timeout_terminate_request: Mutex::new(None),
     });
 
-    // don't forget to register the general channel created by us
+    // Add all data channels. The server creates all data channels
     {
         let this = this_owned.clone();
-        this.on_data_channel(general_channel).await;
+        this.clone().on_data_channel(general_channel).await;
+
+        const INPUT_CHANNELS: &[&str] = &[
+            "mouse_reliable",
+            "mouse_absolute",
+            "mouse_relative",
+            "keyboard",
+            "touch",
+            "controllers",
+            "controller0",
+            "controller1",
+            "controller2",
+            "controller3",
+            "controller4",
+            "controller5",
+            "controller6",
+            "controller7",
+            "controller8",
+            "controller9",
+            "controller10",
+            "controller11",
+            "controller12",
+            "controller13",
+            "controller14",
+            "controller15",
+        ];
+
+        let mut input_channels = this.input_channels.lock().await;
+        for channel in INPUT_CHANNELS {
+            let data_channel = this.peer.create_data_channel(channel, None).await?;
+
+            this.clone().on_data_channel(data_channel.clone()).await;
+
+            input_channels.push(data_channel);
+        }
     }
 
     let this = Arc::downgrade(&this_owned);
@@ -192,24 +229,10 @@ pub async fn new(
     ));
 
     // -- Signaling
-    peer.on_negotiation_needed(create_event_handler_no_args(
-        this.clone(),
-        async move |this| {
-            this.on_negotiation_needed().await;
-        },
-    ));
     peer.on_ice_candidate(create_event_handler(
         this.clone(),
         async move |this, candidate| {
             this.on_ice_candidate(candidate).await;
-        },
-    ));
-
-    // -- Data Channels
-    peer.on_data_channel(create_event_handler(
-        this.clone(),
-        async move |this, channel| {
-            this.on_data_channel(channel).await;
         },
     ));
 
@@ -224,34 +247,6 @@ pub async fn new(
 }
 
 // It compiling...
-#[allow(clippy::complexity)]
-fn create_event_handler_no_args<F>(
-    inner: Weak<WebRtcInner>,
-    f: F,
-) -> Box<dyn FnMut() -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + Sync + 'static>
-where
-    F: AsyncFn(Arc<WebRtcInner>) + Send + Sync + Clone + 'static,
-    for<'a> F::CallRefFuture<'a>: Send,
-{
-    Box::new(move || {
-        let inner = inner.clone();
-        let Some(inner) = inner.upgrade() else {
-            debug!("Called webrtc event handler while the main type is already deallocated");
-            return Box::pin(ready(())) as Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
-        };
-
-        let future = f.clone();
-        Box::pin(async move {
-            future(inner).await;
-        }) as Pin<Box<dyn Future<Output = ()> + Send + 'static>>
-    })
-        as Box<
-            dyn FnMut() -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>
-                + Send
-                + Sync
-                + 'static,
-        >
-}
 #[allow(clippy::complexity)]
 fn create_event_handler<F, Args>(
     inner: Weak<WebRtcInner>,
@@ -330,52 +325,6 @@ impl WebRtcInner {
     }
 
     // -- Handle Signaling
-    async fn on_negotiation_needed(&self) {
-        if !self.send_offer().await {
-            warn!("[Signaling]: failed to create offer in on_negotiation_needed");
-        }
-    }
-
-    async fn send_answer(&self) -> bool {
-        let local_description = match self.peer.create_answer(None).await {
-            Err(err) => {
-                warn!("[Signaling]: failed to create answer: {err:?}");
-                return false;
-            }
-            Ok(value) => value,
-        };
-
-        if let Err(err) = self
-            .peer
-            .set_local_description(local_description.clone())
-            .await
-        {
-            warn!("[Signaling]: failed to set local description: {err:?}");
-            return false;
-        }
-
-        debug!(
-            "[Signaling] Sending Local Description as Answer: {:?}",
-            local_description.sdp
-        );
-
-        if let Err(err) = self
-            .event_sender
-            .send(TransportEvent::SendIpc(StreamerIpcMessage::WebSocket(
-                StreamServerMessage::WebRtc(StreamSignalingMessage::Description(
-                    RtcSessionDescription {
-                        ty: from_webrtc_sdp(local_description.sdp_type),
-                        sdp: local_description.sdp,
-                    },
-                )),
-            )))
-            .await
-        {
-            warn!("Failed to send local description (answer) via web socket from peer: {err:?}");
-        }
-
-        true
-    }
     async fn send_offer(&self) -> bool {
         let local_description = match self.peer.create_offer(None).await {
             Err(err) => {
@@ -462,18 +411,14 @@ impl WebRtcInner {
 
                 let remote_ty = description.sdp_type;
 
-                if let Err(err) = self.peer.set_remote_description(description).await {
-                    error!("[Signaling]: failed to set remote description: {err:?}");
+                if remote_ty == RTCSdpType::Offer {
+                    warn!(
+                        "Received an offer from the client. This shouldn't be possible. Dropping the offer"
+                    );
                     return;
                 }
-
-                // If we received an offer (renegotiation from the browser),
-                // respond with an answer per RFC 3264. The previous code
-                // incorrectly sent another offer, violating the WebRTC
-                // signaling state machine and causing disconnects ~10s into
-                // the stream when audio/video tracks trigger renegotiation.
-                if remote_ty == RTCSdpType::Offer {
-                    self.send_answer().await;
+                if let Err(err) = self.peer.set_remote_description(description).await {
+                    error!("[Signaling]: failed to set remote description: {err:?}");
                 }
             }
             StreamClientMessage::WebRtc(StreamSignalingMessage::AddIceCandidate(description)) => {
@@ -543,28 +488,6 @@ impl WebRtcInner {
                     TransportChannel(TransportChannelId::GENERAL),
                 ));
             }
-            "stats" => {
-                let mut stats = self.stats_channel.lock().await;
-
-                channel.on_close({
-                    let this = Arc::downgrade(&self);
-
-                    Box::new(move ||{
-                        let this = this.clone();
-
-                        Box::pin(async move {
-                            let Some(this) = this.upgrade() else {
-                                warn!("Failed to close stats channel because the main type is already deallocated");
-                                return;
-                            };
-
-                            this.close_stats().await;
-                        })
-                    })
-                });
-
-                *stats = Some(channel);
-            }
             "mouse_reliable" | "mouse_absolute" | "mouse_relative" => {
                 channel.on_message(create_channel_message_handler(
                     inner,
@@ -601,12 +524,6 @@ impl WebRtcInner {
                 }
             }
         };
-    }
-
-    async fn close_stats(&self) {
-        let mut stats = self.stats_channel.lock().await;
-
-        *stats = None;
     }
 
     // -- Termination
@@ -692,6 +609,13 @@ impl TransportSender for WebRTCTransportSender {
         Ok(())
     }
 
+    async fn on_setup_complete(&self) {
+        if !self.inner.send_offer().await {
+            error!("Failed to send offer to client. Requesting Termination");
+            self.inner.request_terminate().await;
+        }
+    }
+
     async fn send(&self, packet: OutboundPacket) -> Result<(), TransportError> {
         let mut buffer = Vec::new();
 
@@ -712,17 +636,8 @@ impl TransportSender for WebRTCTransportSender {
                 _ => {}
             },
             TransportChannelId::STATS => {
-                let stats = self.inner.stats_channel.lock().await;
-                if let Some(stats) = stats.as_ref() {
-                    match stats.send(&bytes).await {
-                        Ok(_) => {}
-                        Err(webrtc::Error::ErrDataChannelNotOpen) => {
-                            return Err(TransportError::ChannelClosed);
-                        }
-                        _ => {}
-                    }
-                } else {
-                    return Err(TransportError::ChannelClosed);
+                if let Err(err) = self.inner.stats_channel.send(&bytes).await {
+                    debug!(error = ?err, "Failed to send stat message");
                 }
             }
             _ => {

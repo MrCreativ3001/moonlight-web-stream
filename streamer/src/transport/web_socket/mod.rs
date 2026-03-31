@@ -290,6 +290,10 @@ impl TransportSender for WebSocketTransportSender {
         Ok(())
     }
 
+    async fn on_setup_complete(&self) {
+        // empty
+    }
+
     async fn close(&self) -> Result<(), TransportError> {
         // emtpy
         Ok(())

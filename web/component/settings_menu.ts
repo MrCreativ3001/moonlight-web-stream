@@ -41,32 +41,56 @@ export function globalDefaultSettings(): Settings {
     // We are deep cloning this
     return deepClone(DEFAULT_SETTINGS)
 }
+
 function deepClone<T>(value: T): T {
-    if ("structuredClone" in window) {
+    if (typeof structuredClone == "function") {
         return structuredClone(value)
     } else {
         return JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
     }
 }
+function deepMerge(target: any, source: any) {
+    for (const key in source) {
+        const sourceVal = source[key]
+        const targetVal = target[key]
 
-export function getLocalStreamSettings(defaultSettings: Settings): Settings {
-    let settings: any = null
-    try {
-        const settingsLoadedJson = localStorage.getItem("mlSettings")
-        if (settingsLoadedJson == null) {
-            return defaultSettings
+        if (
+            sourceVal &&
+            typeof sourceVal === "object" &&
+            !Array.isArray(sourceVal)
+        ) {
+            target[key] = deepMerge(
+                targetVal && typeof targetVal === "object" ? targetVal : {},
+                sourceVal
+            )
+        } else if (sourceVal !== undefined) {
+            target[key] = sourceVal
         }
+    }
+    return target
+}
 
-        const settingsLoaded = JSON.parse(settingsLoadedJson)
+export function getLocalStreamSettings(defaultSettings: Settings) {
+    // Start with FULL global defaults
+    let settings = globalDefaultSettings()
 
-        settings = defaultSettings
-        Object.assign(settings, settingsLoaded)
+    // Fill/override with role defaults (even if partial)
+    settings = deepMerge(settings, defaultSettings)
+
+    try {
+        const json = localStorage.getItem("mlSettings")
+        if (json) {
+            const loaded = JSON.parse(json)
+
+            // Finally override with user settings
+            settings = deepMerge(settings, loaded)
+        }
     } catch (e) {
         localStorage.removeItem("mlSettings")
     }
 
     // Migration
-    if (settings?.pageStyle == "old") {
+    if (settings?.pageStyle === "old") {
         settings.pageStyle = "moonlight"
     }
 

@@ -873,6 +873,19 @@ impl StreamConnection {
         let mut stream_guard = self.stream.write().await;
         stream_guard.replace(stream);
 
+        {
+            let mut sender = self.transport_sender.lock().await;
+            match sender.as_mut() {
+                Some(sender) => {
+                    sender.on_setup_complete().await;
+                }
+                None => {
+                    warn!("No transport found after starting stream. Requesting Termination");
+                    self.request_terminate().await;
+                }
+            }
+        }
+
         Ok(())
     }
 

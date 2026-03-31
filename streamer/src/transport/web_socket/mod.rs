@@ -273,6 +273,7 @@ impl TransportSender for WebSocketTransportSender {
                     return Err(TransportError::Closed);
                 }
             }
+            #[allow(clippy::collapsible_match)]
             ServerIpcMessage::WebSocket(StreamClientMessage::StartStream { settings }) => {
                 if self
                     .event_sender

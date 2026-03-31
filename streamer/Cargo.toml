@@ -8,18 +8,10 @@ license.workspace = true
 moonlight-common = { workspace = true }
 common = { workspace = true }
 
-# TODO: remove when cross-rs compiles, fix openssl versions
-openssl-src.workspace = true
-openssl-sys.workspace = true
-
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 webrtc = { workspace = true }
 bytes = { workspace = true }
 async-trait = { workspace = true }
-
-pem = { workspace = true }
-
-serde = { workspace = true }
 serde_json = { workspace = true }
 
 anyhow = { workspace = true }

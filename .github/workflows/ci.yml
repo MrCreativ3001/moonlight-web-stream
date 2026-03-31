@@ -25,7 +25,16 @@ jobs:
         with:
           toolchain: nightly
       - uses: Swatinem/rust-cache@v2
+
+      # Cargo Shear
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+      - name: Install cargo-shear
+        run: cargo binstall --no-confirm cargo-shear
+      - name: Cargo Shear
+        run: cargo shear --expand
   
+      # Test
       - name: Test
         run: cargo test --workspace --locked
 
@@ -70,8 +79,10 @@ jobs:
         shared-key: cross-${{ matrix.target }}
   
     # Install cross
+    - name: Install cargo-binstall
+      uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
-      run: cargo install cross --git https://github.com/cross-rs/cross
+      run: cargo binstall cross
   
     # Build
     - name: Build

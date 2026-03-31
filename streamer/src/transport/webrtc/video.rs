@@ -54,6 +54,9 @@ mod annexb;
 mod h264;
 mod h265;
 
+// Av1 specification:
+// - https://aomediacodec.github.io/av1-rtp-spec/v1.0.0.html
+
 enum VideoCodec {
     H264 {
         nal_reader: H264Reader<Cursor<Vec<u8>>>,

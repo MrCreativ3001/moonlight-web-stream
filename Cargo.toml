@@ -34,15 +34,11 @@ venator = "1.1.0"
 
 # Cli
 clap = { version = "4.5.53" }
-
-# Util
-slab = "0.4.10"
 ts-rs = "11.0.1"
 async-trait = "0.1.89"
 
 # Async
 tokio = { version = "1.47.1" }
-async-stream = "0.3.6"
 futures = "0.3.31"
 bytes = "1.11.1"
 
@@ -51,9 +47,6 @@ bytes = "1.11.1"
 # TODO: make moonlight common rust use the latest version
 uuid = { version = "0.8.2" }
 hex = { version = "0.4.3" }
-url = { version = "2.5.4" }
-roxmltree = { version = "0.20.0" }
-form_urlencoded = { version = "1.2.1" }
 
 # WebRTC
 webrtc = "0.17.1"
@@ -65,11 +58,7 @@ actix-ws = "0.3.0"
 
 # OpenSSL / Crypto
 openssl = "0.10.67"
-# version required for cross-rs, higher version don't compile for some reason
-openssl-src = "=300.5.3"
-openssl-sys = "=0.9.109"
 pem = "3.0.5"
-rustls = "0.23.36"
 
 # Serialization
 serde = { version = "1.0.219", features = ["derive"] }
@@ -83,10 +72,6 @@ thiserror = "2.0.16"
 num = "0.4"
 num-derive = "0.4"
 num-traits = "0.2"
-
-# Sys
-bindgen = { version = "0.72.0" }
-cmake = { version = "0.1.54" }
 
 [workspace.lints.clippy]
 too_many_arguments = "allow"
@@ -103,10 +88,6 @@ default-run = "web-server"
 [dependencies]
 moonlight-common = { workspace = true }
 common = { workspace = true }
-
-# TODO: remove when cross-rs compiles, fix openssl versions
-openssl-src.workspace = true
-openssl-sys.workspace = true
 
 tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
 futures-concurrency = "7.7.1"
@@ -130,8 +111,6 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 pem = { workspace = true }
-
-async-stream = { workspace = true }
 futures = { workspace = true }
 uuid.workspace = true
 thiserror.workspace = true

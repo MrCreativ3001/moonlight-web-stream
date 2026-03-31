@@ -22,7 +22,6 @@ moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-ru
     "serde",
 ], default-features = false }
 common = { path = "./common" }
-# TODO: remove some dependencies that were moved into the other repo
 
 # Log
 log = "0.4.28"

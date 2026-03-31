@@ -422,13 +422,6 @@ impl Host {
         self.modify(user, modify).await
     }
 
-    #[allow(dead_code)]
-    pub async fn unpair(&self, user: &mut AuthenticatedUser) -> Result<Host, AppError> {
-        self.can_use(user).await?;
-
-        todo!()
-    }
-
     pub async fn wake(&self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
         self.can_use(user).await?;
 

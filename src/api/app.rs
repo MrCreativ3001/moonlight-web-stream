@@ -56,13 +56,13 @@ async fn get_app_image(
 
     let cache_control = "private, no-cache, must-revalidate";
 
-    if let Some(if_none_match) = req.headers().get(header::IF_NONE_MATCH) {
-        if if_none_match.to_str().ok() == Some(&etag) && query.force_refresh == false {
-            return Ok(HttpResponse::NotModified()
-                .insert_header((header::ETAG, etag))
-                .insert_header((header::CACHE_CONTROL, cache_control))
-                .finish());
-        }
+    if let Some(if_none_match) = req.headers().get(header::IF_NONE_MATCH)
+        && if_none_match.to_str().ok() == Some(&etag)
+        && !query.force_refresh
+    {
+        return Ok(HttpResponse::NotModified()
+            .insert_header((header::ETAG, etag))
+            .finish());
     }
 
     Ok(HttpResponse::Ok()

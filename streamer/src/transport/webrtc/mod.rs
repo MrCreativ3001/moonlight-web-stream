@@ -34,7 +34,10 @@ use webrtc::{
         APIBuilder, interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
         setting_engine::SettingEngine,
     },
-    data_channel::{RTCDataChannel, data_channel_message::DataChannelMessage},
+    data_channel::{
+        RTCDataChannel, data_channel_init::RTCDataChannelInit,
+        data_channel_message::DataChannelMessage,
+    },
     ice::udp_network::{EphemeralUDP, UDPNetwork},
     ice_transport::{
         ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
@@ -177,34 +180,49 @@ pub async fn new(
         let this = this_owned.clone();
         this.clone().on_data_channel(general_channel).await;
 
-        const INPUT_CHANNELS: &[&str] = &[
-            "mouse_reliable",
-            "mouse_absolute",
-            "mouse_relative",
-            "keyboard",
-            "touch",
-            "controllers",
-            "controller0",
-            "controller1",
-            "controller2",
-            "controller3",
-            "controller4",
-            "controller5",
-            "controller6",
-            "controller7",
-            "controller8",
-            "controller9",
-            "controller10",
-            "controller11",
-            "controller12",
-            "controller13",
-            "controller14",
-            "controller15",
+        struct Options {
+            reliable: bool,
+            ordered: bool,
+        }
+        #[rustfmt::skip]
+        const INPUT_CHANNELS: &[(&str, Options)] = &[
+            ("mouse_reliable", Options { reliable: true , ordered: true  }),
+            ("mouse_absolute", Options { reliable: false, ordered: false }),
+            ("mouse_relative", Options { reliable: true , ordered: false }),
+            ("keyboard",       Options { reliable: true , ordered: true  }),
+            ("touch",          Options { reliable: true , ordered: true  }),
+            ("controllers",    Options { reliable: true , ordered: true  }),
+            ("controller0",    Options { reliable: false, ordered: false }),
+            ("controller1",    Options { reliable: false, ordered: false }),
+            ("controller2",    Options { reliable: false, ordered: false }),
+            ("controller3",    Options { reliable: false, ordered: false }),
+            ("controller4",    Options { reliable: false, ordered: false }),
+            ("controller5",    Options { reliable: false, ordered: false }),
+            ("controller6",    Options { reliable: false, ordered: false }),
+            ("controller7",    Options { reliable: false, ordered: false }),
+            ("controller8",    Options { reliable: false, ordered: false }),
+            ("controller9",    Options { reliable: false, ordered: false }),
+            ("controller10",   Options { reliable: false, ordered: false }),
+            ("controller11",   Options { reliable: false, ordered: false }),
+            ("controller12",   Options { reliable: false, ordered: false }),
+            ("controller13",   Options { reliable: false, ordered: false }),
+            ("controller14",   Options { reliable: false, ordered: false }),
+            ("controller15",   Options { reliable: false, ordered: false }),
         ];
 
         let mut input_channels = this.input_channels.lock().await;
-        for channel in INPUT_CHANNELS {
-            let data_channel = this.peer.create_data_channel(channel, None).await?;
+        for (channel, options) in INPUT_CHANNELS {
+            let data_channel = this
+                .peer
+                .create_data_channel(
+                    channel,
+                    Some(RTCDataChannelInit {
+                        ordered: Some(options.ordered),
+                        max_retransmits: (!options.reliable).then_some(0),
+                        ..Default::default()
+                    }),
+                )
+                .await?;
 
             this.clone().on_data_channel(data_channel.clone()).await;
 

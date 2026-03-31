@@ -30,36 +30,6 @@ export type TransportChannelOption = {
     // default = false
     serverCreated?: boolean
 }
-export const TRANSPORT_CHANNEL_OPTIONS: Record<keyof typeof TransportChannelId, TransportChannelOption> = {
-    GENERAL: { reliable: true, ordered: true },
-    STATS: { reliable: true, ordered: true },
-    HOST_VIDEO: { reliable: false, ordered: true },
-    HOST_AUDIO: { reliable: false, ordered: true },
-    MOUSE_RELIABLE: { reliable: true, ordered: true },
-    MOUSE_ABSOLUTE: { reliable: false, ordered: false },
-    MOUSE_RELATIVE: { reliable: true, ordered: false },
-    KEYBOARD: { reliable: true, ordered: true },
-    TOUCH: { reliable: true, ordered: true },
-    CONTROLLERS: { reliable: true, ordered: true },
-    CONTROLLER0: { reliable: false, ordered: false },
-    CONTROLLER1: { reliable: false, ordered: false },
-    CONTROLLER2: { reliable: false, ordered: false },
-    CONTROLLER3: { reliable: false, ordered: false },
-    CONTROLLER4: { reliable: false, ordered: false },
-    CONTROLLER5: { reliable: false, ordered: false },
-    CONTROLLER6: { reliable: false, ordered: false },
-    CONTROLLER7: { reliable: false, ordered: false },
-    CONTROLLER8: { reliable: false, ordered: false },
-    CONTROLLER9: { reliable: false, ordered: false },
-    CONTROLLER10: { reliable: false, ordered: false },
-    CONTROLLER11: { reliable: false, ordered: false },
-    CONTROLLER12: { reliable: false, ordered: false },
-    CONTROLLER13: { reliable: false, ordered: false },
-    CONTROLLER14: { reliable: false, ordered: false },
-    CONTROLLER15: { reliable: false, ordered: false },
-    RTT: { reliable: true, ordered: true }
-}
-
 // failednoconnect => a connection failed without firstly being established
 // failed => a connection was ungracefully closed
 // disconnect => a connection was gracefully closed

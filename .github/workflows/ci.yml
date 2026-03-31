@@ -24,11 +24,16 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: nightly
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+
+      # Format check
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
 
       # Clippy
       - name: Clippy
-        run: cargo clippy --all-targets --all-features
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       # Binstall
       - name: Install cargo-binstall

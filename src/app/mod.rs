@@ -294,6 +294,8 @@ impl App {
 
                         let role = self.default_role().await?;
 
+                        info!("Adding new user {username:?} from proxy.");
+
                         let user = self
                             .add_user_no_auth(StorageUserAdd {
                                 role_id: role.id(),
@@ -442,37 +444,42 @@ impl App {
     }
     /// Returns the first user role it finds
     pub async fn default_role(&self) -> Result<Role, AppError> {
-        // TODO: put this into a config option
+        let default_role_id = self.config().web_server.default_role_id.map(RoleId);
 
-        let result = self
-            .find_role(async |role| {
-                let ty = role.ty().await?;
+        match default_role_id {
+            None => {
+                let result = self
+                    .find_role(async |role| {
+                        let ty = role.ty().await?;
 
-                Ok(matches!(ty, RoleType::User))
-            })
-            .await;
-
-        match result {
-            Ok(value) => Ok(value),
-            Err(AppError::RoleNotFound) => {
-                // We've got no admin role -> add an admin role
-
-                info!("There was no user role found. Adding a user role");
-
-                let role = self
-                    .add_role_no_auth(StorageRoleAdd {
-                        name: "User".to_owned(),
-                        ty: RoleType::User,
-                        default_settings: StorageRoleDefaultSettings::default(),
-                        permissions: StorageRolePermissions::default(),
+                        Ok(matches!(ty, RoleType::User))
                     })
-                    .await?;
+                    .await;
 
-                info!("Added user role: {role:?}");
+                match result {
+                    Ok(value) => Ok(value),
+                    Err(AppError::RoleNotFound) => {
+                        // We've got no admin role -> add an admin role
 
-                Ok(role)
+                        info!("There was no default role found. Adding a new default user role");
+
+                        let role = self
+                            .add_role_no_auth(StorageRoleAdd {
+                                name: "User".to_owned(),
+                                ty: RoleType::User,
+                                default_settings: StorageRoleDefaultSettings::default(),
+                                permissions: StorageRolePermissions::default(),
+                            })
+                            .await?;
+
+                        info!("Added user role: {role:?}");
+
+                        Ok(role)
+                    }
+                    Err(err) => Err(err),
+                }
             }
-            Err(err) => Err(err),
+            Some(id) => self.role_by_id(id).await,
         }
     }
 

@@ -253,6 +253,7 @@ pub struct WebServerConfig {
     pub first_login_create_admin: bool,
     pub first_login_assign_global_hosts: bool,
     pub default_user_id: Option<u32>,
+    pub default_role_id: Option<u32>,
     pub forwarded_header: Option<ForwardedHeaders>,
 }
 
@@ -273,6 +274,7 @@ impl Default for WebServerConfig {
             first_login_create_admin: true,
             first_login_assign_global_hosts: true,
             default_user_id: None,
+            default_role_id: None,
             forwarded_header: None,
         }
     }

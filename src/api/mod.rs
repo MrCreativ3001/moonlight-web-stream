@@ -58,7 +58,6 @@ pub fn api_service() -> impl HttpServiceFactory {
         ])
         .service(services![
             // -- Roles
-            // TODO: delete role?
             get_role,
             add_role,
             patch_role,

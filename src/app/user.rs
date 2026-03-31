@@ -67,7 +67,6 @@ impl Display for UserId {
 pub struct User {
     pub(super) app: AppRef,
     pub(super) id: UserId,
-    // TODO: maybe arc this because the user is getting cloned?
     pub(super) cache_storage: Option<Arc<StorageUser>>,
 }
 
@@ -132,13 +131,14 @@ impl User {
     }
     pub async fn detailed_user_no_auth(&mut self) -> Result<DetailedUser, AppError> {
         let storage = self.storage_user().await?;
+        let role = self.role().await?.ty().await?;
 
         Ok(DetailedUser {
             id: self.id.0,
             is_default_user: self.is_default_user().await?,
             name: storage.name.clone(),
             role_id: storage.role_id.0,
-            role: storage.role_id.role_type().into(),
+            role: role.into(),
             client_unique_id: storage.client_unique_id.clone(),
         })
     }
@@ -169,7 +169,6 @@ impl User {
                 let storage = self.storage_user().await?;
 
                 if username.as_str() != storage.name.as_str() {
-                    // TODO: maybe another error?
                     return Err(AppError::Unauthorized);
                 }
 

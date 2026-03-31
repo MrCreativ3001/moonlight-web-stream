@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io,
+    io, mem,
     ops::Deref,
     sync::{Arc, Weak},
 };
@@ -9,18 +9,21 @@ use actix_web::{ResponseError, http::StatusCode, web::Bytes};
 use common::config::Config;
 use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
-use log::{error, warn};
 use moonlight_common::{high::MoonlightClientError, http::client::tokio_hyper::TokioHyperClient};
 use openssl::error::ErrorStack;
 use thiserror::Error;
 use tokio::sync::RwLock;
+use tracing::{error, info, warn};
 
 use crate::app::{
     auth::{SessionToken, UserAuth},
     host::{AppId, HostId},
     password::StoragePassword,
     role::{Role, RoleId},
-    storage::{Either, Storage, StorageHostModify, StorageRoleAdd, StorageUserAdd, create_storage},
+    storage::{
+        Either, Storage, StorageHostModify, StorageRoleAdd, StorageRoleDefaultSettings,
+        StorageRolePermissions, StorageUserAdd, create_storage,
+    },
     user::{Admin, AuthenticatedUser, RoleType, User, UserId},
 };
 
@@ -289,7 +292,6 @@ impl App {
                             return Err(AppError::Unauthorized);
                         }
 
-                        // TODO: what role???
                         let role = self.default_role().await?;
 
                         let user = self
@@ -377,40 +379,107 @@ impl App {
         self.inner.storage.remove_session_token(session).await
     }
 
-    /// Returns any role that is an Admin
-    pub async fn admin_role(&self) -> Result<Role, AppError> {
+    async fn find_role(
+        &self,
+        filter: impl AsyncFn(&mut Role) -> Result<bool, AppError>,
+    ) -> Result<Role, AppError> {
         let roles = self.all_roles_no_auth().await?;
 
-        let result = roles
+        let role = roles
             .into_iter()
             .map(|mut role| async {
-                let ty = role.ty().await?;
-
-                if ty == RoleType::Admin {
+                if filter(&mut role).await? {
                     Ok(role)
                 } else {
-                    Err(AppError::Unauthorized)
+                    Err(AppError::RoleNotFound)
                 }
             })
             .collect::<Vec<_>>()
             .race_ok()
+            .await
+            .map_err(|mut err| {
+                let err = mem::take(&mut *err);
+                err.into_iter()
+                    .find(|x| !matches!(x, AppError::RoleNotFound))
+                    .unwrap_or(AppError::RoleNotFound)
+            })?;
+
+        Ok(role)
+    }
+
+    /// Returns any role that is an Admin
+    pub async fn admin_role(&self) -> Result<Role, AppError> {
+        let result = self
+            .find_role(async |role| {
+                let ty = role.ty().await?;
+
+                Ok(matches!(ty, RoleType::Admin))
+            })
             .await;
 
         match result {
             Ok(value) => Ok(value),
-            Err(_) => {
+            Err(AppError::RoleNotFound) => {
                 // We've got no admin role -> add an admin role
 
-                // TODO: add an Admin role
-                todo!()
+                info!("There was no admin role found. Adding an Admin role");
+
+                let role = self
+                    .add_role_no_auth(StorageRoleAdd {
+                        name: "Admin".to_owned(),
+                        ty: RoleType::Admin,
+                        default_settings: StorageRoleDefaultSettings::default(),
+                        permissions: StorageRolePermissions::default(),
+                    })
+                    .await?;
+
+                info!("Added admin role: {role:?}");
+
+                Ok(role)
             }
+            Err(err) => Err(err),
         }
     }
+    /// Returns the first user role it finds
     pub async fn default_role(&self) -> Result<Role, AppError> {
-        todo!()
+        // TODO: put this into a config option
+
+        let result = self
+            .find_role(async |role| {
+                let ty = role.ty().await?;
+
+                Ok(matches!(ty, RoleType::User))
+            })
+            .await;
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(AppError::RoleNotFound) => {
+                // We've got no admin role -> add an admin role
+
+                info!("There was no user role found. Adding a user role");
+
+                let role = self
+                    .add_role_no_auth(StorageRoleAdd {
+                        name: "User".to_owned(),
+                        ty: RoleType::User,
+                        default_settings: StorageRoleDefaultSettings::default(),
+                        permissions: StorageRolePermissions::default(),
+                    })
+                    .await?;
+
+                info!("Added user role: {role:?}");
+
+                Ok(role)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     pub async fn add_role(&self, _admin: &Admin, role: StorageRoleAdd) -> Result<Role, AppError> {
+        self.add_role_no_auth(role).await
+    }
+    pub async fn add_role_no_auth(&self, role: StorageRoleAdd) -> Result<Role, AppError> {
         let role = self.inner.storage.add_role(role).await?;
 
         Ok(Role {

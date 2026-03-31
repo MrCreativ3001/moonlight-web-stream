@@ -16,16 +16,6 @@ impl Display for RoleId {
     }
 }
 
-impl RoleId {
-    pub fn role_type(&self) -> RoleType {
-        if self.0 == 0 {
-            RoleType::Admin
-        } else {
-            RoleType::User
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Role {
     pub(super) app: AppRef,

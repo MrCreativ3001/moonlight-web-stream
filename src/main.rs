@@ -254,7 +254,6 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
                     scope(&url_path_prefix)
                         .app_data(app.clone())
                         .wrap(
-                            // TODO: maybe only re cache when required?
                             middleware::DefaultHeaders::new()
                                 .add((
                                     "Cache-Control",

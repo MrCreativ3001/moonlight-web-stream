@@ -42,23 +42,4 @@ const trueDefaultSettings: Settings =
     "useSelectElementPolyfill": false
 }
 
-function assignIfMissing(target: any, source: any) {
-    for (const key in source) {
-        if (!(key in target)) {
-            target[key] = source[key]
-        }
-    }
-}
-
-const defaultSettings = {} as Settings
-
-Object.assign(defaultSettings, trueDefaultSettings)
-if (CONFIG?.default_settings) {
-    Object.assign(defaultSettings, CONFIG.default_settings)
-
-    // Just in case, i don't know if missing values will cause errors
-    assignIfMissing(defaultSettings.controllerConfig, trueDefaultSettings.controllerConfig)
-    assignIfMissing(defaultSettings.videoSizeCustom, trueDefaultSettings.videoSizeCustom)
-}
-
-export default defaultSettings as Settings
+export default trueDefaultSettings as Settings

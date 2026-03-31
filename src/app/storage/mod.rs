@@ -60,7 +60,7 @@ pub struct StorageUserModify {
 }
 
 // --- Roles ---
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct StorageRoleDefaultSettings {
     pub value: Value,
 }
@@ -75,6 +75,21 @@ pub struct StorageRolePermissions {
     pub allow_hdr: bool,
     pub allow_transport_webrtc: bool,
     pub allow_transport_websockets: bool,
+}
+
+impl Default for StorageRolePermissions {
+    fn default() -> Self {
+        Self {
+            allow_add_hosts: true,
+            maximum_bitrate_kbps: None,
+            allow_codec_h264: true,
+            allow_codec_h265: true,
+            allow_codec_av1: true,
+            allow_hdr: true,
+            allow_transport_webrtc: true,
+            allow_transport_websockets: true,
+        }
+    }
 }
 
 #[derive(Clone)]

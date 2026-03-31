@@ -8,7 +8,6 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use common::{
-    StreamSettings,
     api_bindings::{
         RtcIceCandidate, RtcSdpType, RtcSessionDescription, StreamClientMessage,
         StreamServerMessage, StreamSignalingMessage, TransportChannelId,
@@ -420,20 +419,9 @@ impl WebRtcInner {
 
     async fn on_ws_message(&self, message: StreamClientMessage) {
         match message {
-            StreamClientMessage::StartStream {
-                bitrate,
-                packet_size,
-                fps,
-                width,
-                height,
-                play_audio_local,
-                video_supported_formats,
-                video_colorspace,
-                video_color_range_full,
-                hdr,
-            } => {
-                let video_supported_formats = SupportedVideoFormats::from_bits(video_supported_formats).unwrap_or_else(|| {
-                    warn!("Failed to deserialize SupportedVideoFormats: {video_supported_formats}, falling back to only H264");
+            StreamClientMessage::StartStream { settings } => {
+                let video_supported_formats = SupportedVideoFormats::from_bits(settings.supported_codecs).unwrap_or_else(|| {
+                    warn!("Failed to deserialize SupportedVideoFormats: {}, falling back to only H264", SupportedVideoFormats::from_bits_retain(settings.supported_codecs));
                     SupportedVideoFormats::H264
                 });
                 {
@@ -445,20 +433,7 @@ impl WebRtcInner {
 
                 if let Err(err) = self
                     .event_sender
-                    .send(TransportEvent::StartStream {
-                        settings: StreamSettings {
-                            bitrate,
-                            packet_size,
-                            fps,
-                            width,
-                            height,
-                            video_supported_formats,
-                            video_color_range_full,
-                            video_colorspace: video_colorspace.into(),
-                            play_audio_local,
-                            hdr,
-                        },
-                    })
+                    .send(TransportEvent::StartStream { settings })
                     .await
                 {
                     error!("Failed to send start stream: {err}");

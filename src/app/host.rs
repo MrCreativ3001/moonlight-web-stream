@@ -18,7 +18,7 @@ use moonlight_common::{
 use crate::app::{
     AppError, AppInner, AppRef, MoonlightClient,
     storage::{StorageHost, StorageHostModify, StorageHostPairInfo},
-    user::{AuthenticatedUser, Role, UserId},
+    user::{AuthenticatedUser, RoleType, UserId},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -73,7 +73,9 @@ impl Host {
 
     async fn can_use(&self, user: &mut AuthenticatedUser) -> Result<(), AppError> {
         let owner = self.owner().await?;
-        if owner.is_none() || owner == Some(user.id()) || matches!(user.role().await?, Role::Admin)
+        if owner.is_none()
+            || owner == Some(user.id())
+            || matches!(user.role().await?.ty().await?, RoleType::Admin)
         {
             Ok(())
         } else {
@@ -511,7 +513,9 @@ impl Host {
 
         let host = app.storage.get_host(self.id).await?;
 
-        if host.owner == Some(user.id()) || matches!(user.role().await?, Role::Admin) {
+        if host.owner == Some(user.id())
+            || matches!(user.role().await?.ty().await?, RoleType::Admin)
+        {
             {
                 let mut app_images = app.app_image_cache.write().await;
                 app_images.retain(|(_, host_id, _), _| *host_id != self.id);

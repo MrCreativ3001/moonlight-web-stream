@@ -7,7 +7,7 @@ use std::{
     str::FromStr,
 };
 use tokio::fs::{self};
-use tracing::{Level, Span, level_filters::LevelFilter, span};
+use tracing::{Level, Span, level_filters::LevelFilter, span, warn};
 use tracing_actix_web::{RootSpanBuilder, TracingLogger};
 use tracing_appender::non_blocking;
 use tracing_subscriber::{
@@ -91,6 +91,13 @@ async fn main() {
     }
 
     let guard = init_log(&config);
+
+    #[allow(deprecated)]
+    if config.default_settings.is_some() {
+        warn!(
+            "You're currently using the \"default_settings\" config option. Please remove this option. Default Settings have been moved into roles. You can edit them in the Admin UI"
+        );
+    }
 
     if let Err(err) = start(config).await {
         error!("{err:?}");
@@ -247,7 +254,6 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
                     scope(&url_path_prefix)
                         .app_data(app.clone())
                         .wrap(
-                            // TODO: maybe only re cache when required?
                             middleware::DefaultHeaders::new()
                                 .add((
                                     "Cache-Control",

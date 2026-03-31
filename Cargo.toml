@@ -91,6 +91,7 @@ cmake = { version = "0.1.54" }
 [workspace.lints.clippy]
 too_many_arguments = "allow"
 unwrap_used = "warn"
+todo = "warn"
 
 [package]
 name = "web-server"
@@ -108,6 +109,7 @@ openssl-src.workspace = true
 openssl-sys.workspace = true
 
 tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
+futures-concurrency = "7.7.1"
 
 clap = { workspace = true, features = ["derive", "env"] }
 

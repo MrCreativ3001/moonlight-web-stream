@@ -1,30 +1,36 @@
 use std::{
     collections::HashMap,
-    io,
+    io, mem,
     ops::Deref,
     sync::{Arc, Weak},
 };
 
 use actix_web::{ResponseError, http::StatusCode, web::Bytes};
 use common::config::Config;
+use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
-use log::{error, warn};
 use moonlight_common::{high::MoonlightClientError, http::client::tokio_hyper::TokioHyperClient};
 use openssl::error::ErrorStack;
 use thiserror::Error;
 use tokio::sync::RwLock;
+use tracing::{error, info, warn};
 
 use crate::app::{
     auth::{SessionToken, UserAuth},
     host::{AppId, HostId},
     password::StoragePassword,
-    storage::{Either, Storage, StorageHostModify, StorageUserAdd, create_storage},
-    user::{Admin, AuthenticatedUser, Role, User, UserId},
+    role::{Role, RoleId},
+    storage::{
+        Either, Storage, StorageHostModify, StorageRoleAdd, StorageRoleDefaultSettings,
+        StorageRolePermissions, StorageUserAdd, create_storage,
+    },
+    user::{Admin, AuthenticatedUser, RoleType, User, UserId},
 };
 
 pub mod auth;
 pub mod host;
 pub mod password;
+pub mod role;
 pub mod storage;
 pub mod user;
 
@@ -34,6 +40,8 @@ pub enum AppError {
     AppDestroyed,
     #[error("the user was not found")]
     UserNotFound,
+    #[error("the role was not found")]
+    RoleNotFound,
     #[error("more than one user already exists")]
     FirstUserAlreadyExists,
     #[error("the config option first_login_create_admin is not true")]
@@ -68,7 +76,7 @@ pub enum AppError {
     #[error("the password is empty")]
     PasswordEmpty,
     #[error("the password is empty")]
-    NameEmpty,
+    UserNameEmpty,
     #[error("the authorization header is not a bearer")]
     BadRequest,
     // --
@@ -92,6 +100,7 @@ impl ResponseError for AppError {
             Self::HostNotPaired => StatusCode::FORBIDDEN,
             Self::HostPaired => StatusCode::NOT_MODIFIED,
             Self::UserNotFound => StatusCode::NOT_FOUND,
+            Self::RoleNotFound => StatusCode::NOT_FOUND,
             Self::UserAlreadyExists => StatusCode::CONFLICT,
             Self::CredentialsWrong => StatusCode::UNAUTHORIZED,
             Self::SessionTokenNotFound => StatusCode::UNAUTHORIZED,
@@ -104,7 +113,7 @@ impl ResponseError for AppError {
             Self::HeaderAuthMalformed => StatusCode::BAD_REQUEST,
             Self::BearerMalformed => StatusCode::BAD_REQUEST,
             Self::PasswordEmpty => StatusCode::BAD_REQUEST,
-            Self::NameEmpty => StatusCode::BAD_REQUEST,
+            Self::UserNameEmpty => StatusCode::BAD_REQUEST,
             Self::BadRequest => StatusCode::BAD_REQUEST,
             Self::Moonlight(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -175,11 +184,13 @@ impl App {
             return Err(AppError::FirstUserAlreadyExists);
         }
 
+        let admin_role = self.admin_role().await?;
+
         let mut user = self
             .add_user_no_auth(StorageUserAdd {
                 name: username.clone(),
                 password: Some(StoragePassword::new(&password)?),
-                role: Role::Admin,
+                role_id: admin_role.id(),
                 client_unique_id: username,
             })
             .await?;
@@ -224,7 +235,7 @@ impl App {
 
     async fn add_user_no_auth(&self, user: StorageUserAdd) -> Result<AuthenticatedUser, AppError> {
         if user.name.is_empty() {
-            return Err(AppError::NameEmpty);
+            return Err(AppError::UserNameEmpty);
         }
 
         let user = self.inner.storage.add_user(user).await?;
@@ -233,7 +244,7 @@ impl App {
             inner: User {
                 app: self.new_ref(),
                 id: user.id,
-                cache_storage: Some(user),
+                cache_storage: Some(user.into()),
             },
         })
     }
@@ -281,9 +292,11 @@ impl App {
                             return Err(AppError::Unauthorized);
                         }
 
+                        let role = self.default_role().await?;
+
                         let user = self
                             .add_user_no_auth(StorageUserAdd {
-                                role: Role::User,
+                                role_id: role.id(),
                                 name: username.clone(),
                                 password: None,
                                 client_unique_id: username.clone(),
@@ -306,7 +319,7 @@ impl App {
         Ok(User {
             app: self.new_ref(),
             id: user_id,
-            cache_storage: Some(user),
+            cache_storage: Some(user.into()),
         })
     }
     pub async fn user_by_name(&self, name: &str) -> Result<User, AppError> {
@@ -315,7 +328,7 @@ impl App {
         Ok(User {
             app: self.new_ref(),
             id: user_id,
-            cache_storage: user,
+            cache_storage: user.map(Into::into),
         })
     }
     pub async fn user_by_session(
@@ -332,7 +345,7 @@ impl App {
             inner: User {
                 app: self.new_ref(),
                 id: user_id,
-                cache_storage: user,
+                cache_storage: user.map(Into::into),
             },
         })
     }
@@ -354,7 +367,7 @@ impl App {
                 .map(|user| User {
                     app: self.new_ref(),
                     id: user.id,
-                    cache_storage: Some(user),
+                    cache_storage: Some(user.into()),
                 })
                 .collect::<Vec<_>>(),
         };
@@ -364,5 +377,154 @@ impl App {
 
     pub async fn delete_session(&self, session: SessionToken) -> Result<(), AppError> {
         self.inner.storage.remove_session_token(session).await
+    }
+
+    async fn find_role(
+        &self,
+        filter: impl AsyncFn(&mut Role) -> Result<bool, AppError>,
+    ) -> Result<Role, AppError> {
+        let roles = self.all_roles_no_auth().await?;
+
+        let role = roles
+            .into_iter()
+            .map(|mut role| async {
+                if filter(&mut role).await? {
+                    Ok(role)
+                } else {
+                    Err(AppError::RoleNotFound)
+                }
+            })
+            .collect::<Vec<_>>()
+            .race_ok()
+            .await
+            .map_err(|mut err| {
+                let err = mem::take(&mut *err);
+                err.into_iter()
+                    .find(|x| !matches!(x, AppError::RoleNotFound))
+                    .unwrap_or(AppError::RoleNotFound)
+            })?;
+
+        Ok(role)
+    }
+
+    /// Returns any role that is an Admin
+    pub async fn admin_role(&self) -> Result<Role, AppError> {
+        let result = self
+            .find_role(async |role| {
+                let ty = role.ty().await?;
+
+                Ok(matches!(ty, RoleType::Admin))
+            })
+            .await;
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(AppError::RoleNotFound) => {
+                // We've got no admin role -> add an admin role
+
+                info!("There was no admin role found. Adding an Admin role");
+
+                let role = self
+                    .add_role_no_auth(StorageRoleAdd {
+                        name: "Admin".to_owned(),
+                        ty: RoleType::Admin,
+                        default_settings: StorageRoleDefaultSettings::default(),
+                        permissions: StorageRolePermissions::default(),
+                    })
+                    .await?;
+
+                info!("Added admin role: {role:?}");
+
+                Ok(role)
+            }
+            Err(err) => Err(err),
+        }
+    }
+    /// Returns the first user role it finds
+    pub async fn default_role(&self) -> Result<Role, AppError> {
+        // TODO: put this into a config option
+
+        let result = self
+            .find_role(async |role| {
+                let ty = role.ty().await?;
+
+                Ok(matches!(ty, RoleType::User))
+            })
+            .await;
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(AppError::RoleNotFound) => {
+                // We've got no admin role -> add an admin role
+
+                info!("There was no user role found. Adding a user role");
+
+                let role = self
+                    .add_role_no_auth(StorageRoleAdd {
+                        name: "User".to_owned(),
+                        ty: RoleType::User,
+                        default_settings: StorageRoleDefaultSettings::default(),
+                        permissions: StorageRolePermissions::default(),
+                    })
+                    .await?;
+
+                info!("Added user role: {role:?}");
+
+                Ok(role)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    pub async fn add_role(&self, _admin: &Admin, role: StorageRoleAdd) -> Result<Role, AppError> {
+        self.add_role_no_auth(role).await
+    }
+    pub async fn add_role_no_auth(&self, role: StorageRoleAdd) -> Result<Role, AppError> {
+        let role = self.inner.storage.add_role(role).await?;
+
+        Ok(Role {
+            app: self.new_ref(),
+            id: role.id,
+            cache_storage: Some(role.into()),
+        })
+    }
+
+    pub async fn role_by_id(&self, id: RoleId) -> Result<Role, AppError> {
+        let role = self.inner.storage.get_role(id).await?;
+
+        Ok(Role {
+            app: self.new_ref(),
+            id: role.id,
+            cache_storage: Some(role.into()),
+        })
+    }
+
+    pub async fn all_roles(&self, _admin: &Admin) -> Result<Vec<Role>, AppError> {
+        self.all_roles_no_auth().await
+    }
+
+    pub async fn all_roles_no_auth(&self) -> Result<Vec<Role>, AppError> {
+        let roles = self.inner.storage.list_roles().await?;
+
+        let roles = match roles {
+            Either::Left(role_ids) => role_ids
+                .into_iter()
+                .map(|id| Role {
+                    app: self.new_ref(),
+                    id,
+                    cache_storage: None,
+                })
+                .collect::<Vec<_>>(),
+            Either::Right(roles) => roles
+                .into_iter()
+                .map(|role| Role {
+                    app: self.new_ref(),
+                    id: role.id,
+                    cache_storage: Some(role.into()),
+                })
+                .collect::<Vec<_>>(),
+        };
+
+        Ok(roles)
     }
 }

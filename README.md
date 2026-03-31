@@ -436,7 +436,7 @@ Linux example using a bash script:
 ```sh
 #!/bin/bash
 
-:: Assign arguments to variables
+# Assign arguments to variables
 username="user"
 credential="cred"
 

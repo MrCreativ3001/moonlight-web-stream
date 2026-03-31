@@ -9,7 +9,6 @@ use std::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures::future::join_all;
-use log::{debug, error};
 use openssl::rand::rand_bytes;
 use tokio::{
     fs, spawn,
@@ -21,21 +20,25 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
+use tracing::{debug, error};
 
 use crate::app::{
     AppError,
     auth::SessionToken,
     host::HostId,
     password::StoragePassword,
+    role::RoleId,
     storage::{
         Either, Storage, StorageHost, StorageHostAdd, StorageHostCache, StorageHostModify,
-        StorageHostPairInfo, StorageQueryHosts, StorageUser, StorageUserAdd, StorageUserModify,
+        StorageHostPairInfo, StorageQueryHosts, StorageRole, StorageRoleAdd,
+        StorageRoleDefaultSettings, StorageRoleModify, StorageRolePermissions, StorageUser,
+        StorageUserAdd, StorageUserModify,
         json::versions::{
-            Json, V2, V2Host, V2HostCache, V2HostPairInfo, V2User, V2UserPassword,
-            migrate_to_latest,
+            Json, V2, V2Host, V2HostCache, V2HostPairInfo, V2UserPassword, V3, V3Role,
+            V3RolePermissions, V3RoleType, V3User, migrate_to_latest,
         },
     },
-    user::UserId,
+    user::{RoleType, UserId},
 };
 
 mod serde_helpers;
@@ -45,8 +48,10 @@ pub struct JsonStorage {
     file: PathBuf,
     store_sender: Sender<()>,
     session_expiration_checker: JoinHandle<()>,
-    users: RwLock<HashMap<u32, RwLock<V2User>>>,
+    // IMPORTANT: only lock those mutexes in descending order to prevent deadlocks
+    users: RwLock<HashMap<u32, RwLock<V3User>>>,
     hosts: RwLock<HashMap<u32, RwLock<V2Host>>>,
+    roles: RwLock<HashMap<u32, RwLock<V3Role>>>,
     sessions: RwLock<HashMap<SessionToken, Session>>,
 }
 
@@ -103,6 +108,7 @@ impl JsonStorage {
             session_expiration_checker,
             hosts: Default::default(),
             users: Default::default(),
+            roles: Default::default(),
             sessions: Default::default(),
         };
         let this = Arc::new(this);
@@ -160,6 +166,7 @@ impl JsonStorage {
         {
             let mut users = self.users.write().await;
             let mut hosts = self.hosts.write().await;
+            let mut roles = self.roles.write().await;
 
             *users = data
                 .users
@@ -171,6 +178,11 @@ impl JsonStorage {
                 .into_iter()
                 .map(|(id, host)| (id, RwLock::new(host)))
                 .collect();
+            *roles = data
+                .roles
+                .into_iter()
+                .map(|(id, role)| (id, RwLock::new(role)))
+                .collect();
         }
 
         Ok(())
@@ -179,6 +191,7 @@ impl JsonStorage {
         let json = {
             let users = self.users.read().await;
             let hosts = self.hosts.read().await;
+            let roles = self.roles.read().await;
 
             let mut users_json = HashMap::new();
             for (key, value) in users.iter() {
@@ -194,9 +207,17 @@ impl JsonStorage {
                 hosts_json.insert(*key, (*value).clone());
             }
 
-            Json::V2(V2 {
+            let mut roles_json = HashMap::new();
+            for (key, value) in roles.iter() {
+                let value = value.read().await;
+
+                roles_json.insert(*key, (*value).clone());
+            }
+
+            Json::V3(V3 {
                 users: users_json,
                 hosts: hosts_json,
+                roles: roles_json,
             })
         };
 
@@ -224,7 +245,47 @@ async fn file_writer(mut store_receiver: Receiver<()>, json: Arc<JsonStorage>) {
     }
 }
 
-fn user_from_json(user_id: UserId, user: &V2User) -> StorageUser {
+fn permissions_from_json(permissions: V3RolePermissions) -> StorageRolePermissions {
+    StorageRolePermissions {
+        allow_add_hosts: permissions.allow_add_hosts,
+        maximum_bitrate_kbps: permissions.maximum_bitrate_kbps,
+        allow_codec_h264: permissions.allow_codec_h264,
+        allow_codec_h265: permissions.allow_codec_h265,
+        allow_codec_av1: permissions.allow_codec_av1,
+        allow_hdr: permissions.allow_hdr,
+        allow_transport_webrtc: permissions.allow_transport_webrtc,
+        allow_transport_websockets: permissions.allow_transport_websockets,
+    }
+}
+fn permissions_to_json(permissions: StorageRolePermissions) -> V3RolePermissions {
+    V3RolePermissions {
+        allow_add_hosts: permissions.allow_add_hosts,
+        maximum_bitrate_kbps: permissions.maximum_bitrate_kbps,
+        allow_codec_h264: permissions.allow_codec_h264,
+        allow_codec_h265: permissions.allow_codec_h265,
+        allow_codec_av1: permissions.allow_codec_av1,
+        allow_hdr: permissions.allow_hdr,
+        allow_transport_webrtc: permissions.allow_transport_webrtc,
+        allow_transport_websockets: permissions.allow_transport_websockets,
+    }
+}
+
+fn role_from_json(role_id: RoleId, role: &V3Role) -> StorageRole {
+    StorageRole {
+        id: role_id,
+        name: role.name.clone(),
+        ty: match role.ty {
+            V3RoleType::Admin => RoleType::Admin,
+            V3RoleType::User => RoleType::User,
+        },
+        default_settings: StorageRoleDefaultSettings {
+            value: role.default_settings.clone(),
+        },
+        permissions: permissions_from_json(role.permissions.clone()),
+    }
+}
+
+fn user_from_json(user_id: UserId, user: &V3User) -> StorageUser {
     StorageUser {
         id: user_id,
         name: user.name.clone(),
@@ -232,7 +293,7 @@ fn user_from_json(user_id: UserId, user: &V2User) -> StorageUser {
             salt: password.salt,
             hash: password.hash,
         }),
-        role: user.role,
+        role_id: RoleId(user.role_id),
         client_unique_id: user.client_unique_id.clone(),
     }
 }
@@ -255,11 +316,170 @@ fn host_from_json(host_id: HostId, host: &V2Host) -> StorageHost {
     }
 }
 
+fn random_number() -> Result<u32, AppError> {
+    let mut id_bytes = [0u8; 4];
+    rand_bytes(&mut id_bytes)?;
+    Ok(u32::from_be_bytes(id_bytes))
+}
+
 #[async_trait]
 impl Storage for JsonStorage {
+    async fn add_role(&self, role: StorageRoleAdd) -> Result<StorageRole, AppError> {
+        let role = V3Role {
+            ty: match role.ty {
+                RoleType::Admin => V3RoleType::Admin,
+                RoleType::User => V3RoleType::User,
+            },
+            name: role.name,
+            default_settings: role.default_settings.value,
+            permissions: permissions_to_json(role.permissions),
+        };
+
+        let mut roles = self.roles.write().await;
+
+        let mut id;
+        loop {
+            id = random_number()?;
+
+            if !roles.contains_key(&id) {
+                break;
+            }
+        }
+        roles.insert(id, RwLock::new(role.clone()));
+
+        drop(roles);
+
+        self.force_write();
+
+        Ok(StorageRole {
+            ty: match role.ty {
+                V3RoleType::Admin => RoleType::Admin,
+                V3RoleType::User => RoleType::User,
+            },
+            id: RoleId(id),
+            name: role.name,
+            default_settings: StorageRoleDefaultSettings {
+                value: role.default_settings,
+            },
+            permissions: permissions_from_json(role.permissions),
+        })
+    }
+    async fn modify_role(
+        &self,
+        role_id: RoleId,
+        modify: StorageRoleModify,
+    ) -> Result<(), AppError> {
+        let roles = self.roles.read().await;
+
+        let role_lock = roles.get(&role_id.0).ok_or(AppError::RoleNotFound)?;
+        let mut role = role_lock.write().await;
+
+        if let Some(name) = modify.name {
+            role.name = name;
+        }
+        if let Some(ty) = modify.ty {
+            role.ty = match ty {
+                RoleType::Admin => V3RoleType::Admin,
+                RoleType::User => V3RoleType::User,
+            };
+        }
+        if let Some(StorageRoleDefaultSettings { value }) = modify.default_settings {
+            role.default_settings = value;
+        }
+        if let Some(StorageRolePermissions {
+            allow_add_hosts,
+            maximum_bitrate_kbps,
+            allow_codec_h264,
+            allow_codec_h265,
+            allow_codec_av1,
+            allow_hdr,
+            allow_transport_webrtc,
+            allow_transport_websockets,
+        }) = modify.permissions
+        {
+            role.permissions.allow_add_hosts = allow_add_hosts;
+            role.permissions.maximum_bitrate_kbps = maximum_bitrate_kbps;
+            role.permissions.allow_codec_h264 = allow_codec_h264;
+            role.permissions.allow_codec_h265 = allow_codec_h265;
+            role.permissions.allow_codec_av1 = allow_codec_av1;
+            role.permissions.allow_hdr = allow_hdr;
+            role.permissions.allow_transport_webrtc = allow_transport_webrtc;
+            role.permissions.allow_transport_websockets = allow_transport_websockets;
+        }
+
+        drop(role);
+        drop(roles);
+
+        self.force_write();
+
+        Ok(())
+    }
+    async fn get_role(&self, role_id: RoleId) -> Result<StorageRole, AppError> {
+        let roles = self.roles.read().await;
+
+        let role_lock = roles.get(&role_id.0).ok_or(AppError::RoleNotFound)?;
+        let role = role_lock.read().await;
+
+        Ok(role_from_json(role_id, &role))
+    }
+    async fn remove_role(&self, role_id: RoleId) -> Result<(), AppError> {
+        // Delete all users with that role
+        {
+            let mut users = self.users.write().await;
+
+            let mut users_to_remove = vec![];
+
+            // Find all users with that role
+            for (user_id, user) in users.iter() {
+                let user = user.read().await;
+
+                if user.role_id == role_id.0 {
+                    users_to_remove.push(*user_id);
+                }
+            }
+
+            // Remove all user id's in that list
+            for user_id in users_to_remove {
+                users.remove(&user_id);
+            }
+        }
+
+        // Delete that role
+        let result = {
+            let mut roles = self.roles.write().await;
+
+            let result = match roles.remove(&role_id.0) {
+                None => Err(AppError::RoleNotFound),
+                Some(_) => Ok(()),
+            };
+
+            drop(roles);
+
+            result
+        };
+
+        self.force_write();
+
+        result
+    }
+    async fn list_roles(&self) -> Result<Either<Vec<RoleId>, Vec<StorageRole>>, AppError> {
+        let roles = self.roles.read().await;
+
+        let futures = roles.iter().map(|(id, value)| {
+            let id = *id;
+            async move {
+                let role = value.read().await.clone();
+                role_from_json(RoleId(id), &role)
+            }
+        });
+
+        let out = join_all(futures).await;
+        Ok(Either::Right(out))
+    }
+
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError> {
-        let user = V2User {
-            role: user.role,
+        let user = V3User {
+            role_id: user.role_id.0,
             name: user.name,
             password: user.password.map(|password| V2UserPassword {
                 salt: password.salt,
@@ -282,9 +502,7 @@ impl Storage for JsonStorage {
 
         let mut id;
         loop {
-            let mut id_bytes = [0u8; 4];
-            rand_bytes(&mut id_bytes)?;
-            id = u32::from_be_bytes(id_bytes);
+            id = random_number()?;
 
             if !users.contains_key(&id) {
                 break;
@@ -303,7 +521,7 @@ impl Storage for JsonStorage {
                 salt: password.salt,
                 hash: password.hash,
             }),
-            role: user.role,
+            role_id: RoleId(user.role_id),
             client_unique_id: user.client_unique_id,
         })
     }
@@ -323,8 +541,8 @@ impl Storage for JsonStorage {
                 hash: password.hash,
             });
         }
-        if let Some(role) = modify.role {
-            user.role = role;
+        if let Some(role_id) = modify.role_id {
+            user.role_id = role_id.0;
         }
         if let Some(client_unique_id) = modify.client_unique_id {
             user.client_unique_id = client_unique_id;
@@ -475,9 +693,7 @@ impl Storage for JsonStorage {
 
         let mut id;
         loop {
-            let mut id_bytes = [0u8; 4];
-            rand_bytes(&mut id_bytes)?;
-            id = u32::from_be_bytes(id_bytes);
+            id = random_number()?;
 
             if !hosts.contains_key(&id) {
                 break;

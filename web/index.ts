@@ -1,5 +1,5 @@
 import "./polyfill/index.js"
-import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost } from "./api.js";
+import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost, apiGetRole } from "./api.js";
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
@@ -8,7 +8,7 @@ import { showModal } from "./component/modal/index.js";
 import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
 import { Host } from "./component/host/index.js";
-import { App, DetailedUser } from "./api_bindings.js";
+import { App, DetailedRole, DetailedUser } from "./api_bindings.js";
 import { getLocalStreamSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
 import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
 import { buildUrl } from "./config_.js";
@@ -68,6 +68,7 @@ function backAppState() {
 class MainApp implements Component {
     private api: Api
     private user: DetailedUser | null = null
+    private role: DetailedRole | null = null
 
     private divElement = document.createElement("div")
 
@@ -95,7 +96,7 @@ class MainApp implements Component {
 
     private hostList: HostList
     private gameList: GameList | null = null
-    private settings: StreamSettingsComponent
+    private settings: StreamSettingsComponent | null = null
 
     constructor(api: Api) {
         this.api = api
@@ -149,8 +150,15 @@ class MainApp implements Component {
         this.settingsButton.addEventListener("click", () => this.setCurrentDisplay("settings"))
 
         // Settings
-        this.settings = new StreamSettingsComponent(getLocalStreamSettings() ?? undefined)
-        this.settings.addChangeListener(this.onSettingsChange.bind(this))
+        apiGetRole(this.api, { id: null }).then(response => {
+            this.settings = new StreamSettingsComponent(response.role.permissions, getLocalStreamSettings(response.role.default_settings))
+            this.settings.addChangeListener(this.onSettingsChange.bind(this))
+
+            // Make sure to mount it properly, if it was selected
+            if (this.currentDisplay == "settings") {
+                this.settings.mount(this.divElement)
+            }
+        })
 
         // Append default elements
         this.divElement.appendChild(this.topLine)
@@ -218,6 +226,11 @@ class MainApp implements Component {
     }
 
     private onSettingsChange() {
+        if (!this.settings) {
+            showErrorPopup("Couldn't save settings")
+            return
+        }
+
         const newSettings = this.settings.getStreamSettings()
 
         // store settings in localStorage
@@ -278,7 +291,7 @@ class MainApp implements Component {
         } else if (this.currentDisplay == "settings") {
             this.actionElement.removeChild(this.backButton)
 
-            this.settings.unmount(this.divElement)
+            this.settings?.unmount(this.divElement)
         }
 
         // Mount the new display
@@ -306,7 +319,7 @@ class MainApp implements Component {
         } else if (display == "settings") {
             this.actionElement.appendChild(this.backButton)
 
-            this.settings.mount(this.divElement)
+            this.settings?.mount(this.divElement)
 
             setAppState({ display: "settings" }, pushIntoHistory)
         }
@@ -316,6 +329,7 @@ class MainApp implements Component {
 
     async forceFetch() {
         const promiseUser = this.refreshUserRole()
+        const promiseRoles = this.refreshUserPermissions()
 
         await Promise.all([
             this.hostList.forceFetch(),
@@ -331,6 +345,7 @@ class MainApp implements Component {
 
         await Promise.all([
             promiseUser,
+            promiseRoles,
             this.refreshGameListActiveGame()
         ])
     }
@@ -355,6 +370,16 @@ class MainApp implements Component {
 
         if (this.user.role == "Admin") {
             this.topLineActions.appendChild(this.adminButton)
+        }
+    }
+    private async refreshUserPermissions() {
+        const response = await apiGetRole(this.api, { id: null })
+        this.role = response.role
+
+        if (this.role.permissions.allow_add_hosts) {
+            this.hostAddButton.disabled = false
+        } else {
+            this.hostAddButton.disabled = true
         }
     }
     private async refreshGameListActiveGame() {

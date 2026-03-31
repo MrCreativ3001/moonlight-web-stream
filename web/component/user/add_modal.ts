@@ -1,4 +1,6 @@
-import { PostUserRequest, UserRole } from "../../api_bindings.js";
+import { Api, apiGetRoles } from "../../api.js";
+import { PostUserRequest, UndetailedRole } from "../../api_bindings.js";
+import { showErrorPopup } from "../error.js";
 import { InputComponent, SelectComponent } from "../input.js";
 import { FormModal } from "../modal/form.js";
 import { createSelectRoleInput } from "./role_select.js";
@@ -7,30 +9,43 @@ export class AddUserModal extends FormModal<PostUserRequest> {
 
     private header: HTMLElement = document.createElement("h2")
 
+    private modalRoot: HTMLDivElement = document.createElement("div")
+
     private name: InputComponent
     private defaultPassword: InputComponent
     private role: SelectComponent
     private clientUniqueId: InputComponent
 
-    constructor() {
+    constructor(api: Api) {
         super()
 
         this.header.innerText = "User"
+        this.modalRoot.appendChild(this.header)
 
         this.name = new InputComponent("userName", "text", "Name", {
             formRequired: true
         })
+        this.name.mount(this.modalRoot)
 
         this.defaultPassword = new InputComponent("userPassword", "text", "Default Password", {
             formRequired: true
         })
+        this.defaultPassword.mount(this.modalRoot)
 
-        this.role = createSelectRoleInput("User")
+        this.role = createSelectRoleInput([])
+        this.role.mount(this.modalRoot)
+        apiGetRoles(api).then(roles => {
+            this.role.unmount(this.modalRoot)
+
+            this.role = createSelectRoleInput(roles.roles)
+            this.role.mountBefore(this.modalRoot, this.clientUniqueId)
+        })
 
         this.clientUniqueId = new InputComponent("userClientUniqueId", "text", "Moonlight Client Id", {
             formRequired: true,
             hasEnableCheckbox: true
         })
+        this.clientUniqueId.mount(this.modalRoot)
         this.name.addChangeListener(this.updateClientUniqueId.bind(this))
     }
 
@@ -39,11 +54,7 @@ export class AddUserModal extends FormModal<PostUserRequest> {
     }
 
     mountForm(form: HTMLFormElement): void {
-        form.appendChild(this.header)
-        this.name.mount(form)
-        this.defaultPassword.mount(form)
-        this.role.mount(form)
-        this.clientUniqueId.mount(form)
+        form.appendChild(this.modalRoot)
     }
 
     reset(): void {
@@ -54,7 +65,12 @@ export class AddUserModal extends FormModal<PostUserRequest> {
     submit(): PostUserRequest | null {
         const name = this.name.getValue()
         const password = this.defaultPassword.getValue()
-        const role = this.role.getValue() as UserRole
+        const role = this.role.getValue()
+
+        if (!role) {
+            showErrorPopup("Please select a role!")
+            return null
+        }
 
         let clientUniqueId = name
         if (this.clientUniqueId.isEnabled()) {
@@ -64,7 +80,7 @@ export class AddUserModal extends FormModal<PostUserRequest> {
         return {
             name,
             password,
-            role,
+            role_id: parseInt(role),
             client_unique_id: clientUniqueId,
         }
     }

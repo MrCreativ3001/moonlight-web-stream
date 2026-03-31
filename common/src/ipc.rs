@@ -15,7 +15,7 @@ use tokio::{
 use tracing::{Span, info, trace, warn};
 
 use crate::{
-    api_bindings::{StreamClientMessage, StreamServerMessage},
+    api_bindings::{StreamClientMessage, StreamPermissions, StreamServerMessage},
     config::WebRtcConfig,
 };
 
@@ -39,6 +39,7 @@ pub enum ServerIpcMessage {
         app_id: u32,
         video_frame_queue_size: usize,
         audio_sample_queue_size: usize,
+        permissions: StreamPermissions,
     },
     WebSocket(StreamClientMessage),
     WebSocketTransport(Bytes),

@@ -39,6 +39,8 @@ pub async fn start_host(
 
     let client_unique_id = user.host_unique_id().await?;
 
+    let permissions = user.role().await?.permissions().await?;
+
     let web_app = web_app.clone();
     actix_rt::spawn(async move {
         // -- Init and Configure
@@ -330,6 +332,7 @@ pub async fn start_host(
                 app_id: app_id.0,
                 video_frame_queue_size,
                 audio_sample_queue_size,
+                permissions,
             })
             .await;
 

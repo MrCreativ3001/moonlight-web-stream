@@ -16,7 +16,6 @@ const EXPORT_PATH: &str = "../../web/api_bindings.ts";
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct ConfigJs {
     pub path_prefix: String,
-    pub default_settings: Option<TsAny>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone)]
@@ -226,7 +225,7 @@ pub struct PostCancelResponse {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub enum UserRole {
+pub enum RoleType {
     User,
     Admin,
 }
@@ -244,7 +243,8 @@ pub struct DetailedUser {
     pub id: u32,
     pub is_default_user: bool,
     pub name: String,
-    pub role: UserRole,
+    pub role: RoleType,
+    pub role_id: u32,
     pub client_unique_id: String,
 }
 
@@ -253,7 +253,7 @@ pub struct DetailedUser {
 pub struct PostUserRequest {
     pub name: String,
     pub password: String,
-    pub role: UserRole,
+    pub role_id: u32,
     pub client_unique_id: String,
 }
 
@@ -263,7 +263,7 @@ pub struct PatchUserRequest {
     /// The user id of the user to change
     pub id: u32,
     pub password: Option<String>,
-    pub role: Option<UserRole>,
+    pub role_id: Option<u32>,
     pub client_unique_id: Option<String>,
 }
 
@@ -277,6 +277,100 @@ pub struct DeleteUserRequest {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetUsersResponse {
     pub users: Vec<DetailedUser>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct DetailedRole {
+    pub id: u32,
+    pub name: String,
+    pub default_settings: TsAny,
+    pub permissions: StreamPermissions,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct UndetailedRole {
+    pub id: u32,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct StreamSettings {
+    pub bitrate_kpbs: u32,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub play_audio_local: bool,
+    /// This is using the [SupportedVideoFormats]
+    pub supported_codecs: u32,
+    pub hdr: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct StreamPermissions {
+    pub allow_add_hosts: bool,
+    /// If [None] there's no limit
+    pub maximum_bitrate_kbps: Option<u32>,
+    pub allow_codec_h264: bool,
+    pub allow_codec_h265: bool,
+    pub allow_codec_av1: bool,
+    pub allow_hdr: bool,
+    pub allow_transport_webrtc: bool,
+    pub allow_transport_websockets: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostRoleRequest {
+    pub name: String,
+    pub default_settings: TsAny,
+    pub permissions: StreamPermissions,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostRoleResponse {
+    pub role: DetailedRole,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PatchRoleRequest {
+    /// The role id
+    pub id: u32,
+    pub name: Option<String>,
+    pub default_settings: Option<TsAny>,
+    pub permissions: Option<StreamPermissions>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetRoleQuery {
+    /// The role id
+    /// If empty the role of the user making the request is used
+    pub id: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetRoleResponse {
+    pub role: DetailedRole,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct DeleteRoleQuery {
+    /// The role id
+    pub id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetRolesResponse {
+    pub roles: Vec<UndetailedRole>,
 }
 
 // -- Stream
@@ -374,16 +468,7 @@ pub enum StreamClientMessage {
     WebRtc(StreamSignalingMessage),
     SetTransport(TransportType),
     StartStream {
-        bitrate: u32,
-        packet_size: u32,
-        fps: u32,
-        width: u32,
-        height: u32,
-        play_audio_local: bool,
-        video_supported_formats: u32,
-        video_colorspace: StreamColorspace,
-        video_color_range_full: bool,
-        hdr: bool,
+        settings: StreamSettings,
     },
 }
 

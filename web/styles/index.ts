@@ -1,4 +1,4 @@
-import { defaultSettings, getLocalStreamSettings } from "../component/settings_menu.js"
+import { globalDefaultSettings, getLocalStreamSettings } from "../component/settings_menu.js"
 
 // old doesn't exist anymore and is always replaced with moonlight when loading the settings
 export type PageStyle = "standard" | "old" | "moonlight"
@@ -29,7 +29,6 @@ export function getStyle(): PageStyle {
     return currentStyle as PageStyle
 }
 
-const settings = getLocalStreamSettings()
-const defaultSettings_ = defaultSettings()
+const settings = getLocalStreamSettings(globalDefaultSettings())
 
-setStyle(settings?.pageStyle ?? defaultSettings_.pageStyle)
+setStyle(settings.pageStyle)

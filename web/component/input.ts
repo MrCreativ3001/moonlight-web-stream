@@ -1,5 +1,5 @@
 import { Component, ComponentEvent } from "./index.js"
-import { getLocalStreamSettings } from "./settings_menu.js"
+import { getLocalStreamSettings, globalDefaultSettings } from "./settings_menu.js"
 
 export class ElementWithLabel implements Component {
     protected div: HTMLDivElement = document.createElement("div")
@@ -18,6 +18,10 @@ export class ElementWithLabel implements Component {
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
+    }
+
+    mountBefore(parent: HTMLElement, before: ElementWithLabel): void {
+        parent.insertBefore(this.div, before.div)
     }
 }
 
@@ -164,6 +168,9 @@ export class InputComponent extends ElementWithLabel {
         return this.input.value
     }
 
+    setChecked(checked: boolean) {
+        this.input.checked = checked
+    }
     isChecked(): boolean {
         return this.input.checked
     }
@@ -219,7 +226,7 @@ type SelectStrategy =
     { name: "polyfill", opened: boolean, wrapper: HTMLDivElement, display: HTMLParagraphElement, list: HTMLDivElement, value: string | null, disabled: Set<string> }
 
 function useSelectElementPolyfill(): boolean {
-    return getLocalStreamSettings()?.useSelectElementPolyfill ?? false
+    return getLocalStreamSettings(globalDefaultSettings())?.useSelectElementPolyfill ?? false
 }
 
 export class SelectComponent extends ElementWithLabel {

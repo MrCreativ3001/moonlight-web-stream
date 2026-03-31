@@ -4,14 +4,16 @@ use async_trait::async_trait;
 use common::config::StorageConfig;
 use moonlight_common::mac::MacAddress;
 use pem::Pem;
+use serde_json::Value;
 
 use crate::app::{
     AppError,
     auth::SessionToken,
     host::HostId,
     password::StoragePassword,
+    role::RoleId,
     storage::json::JsonStorage,
-    user::{Role, UserId},
+    user::{RoleType, UserId},
 };
 
 pub mod json;
@@ -32,30 +34,90 @@ pub async fn create_storage(
 }
 
 // Storages:
-// - If two options are in a Modify struct it means: First option = change the field, second option = should pair info exist
+// - If two options are in a Modify struct it means: First option = change the field, second option = is this value null
 
+// --- User ---
 #[derive(Clone)]
 pub struct StorageUser {
     pub id: UserId,
     pub name: String,
     pub password: Option<StoragePassword>,
-    pub role: Role,
+    pub role_id: RoleId,
     pub client_unique_id: String,
 }
 #[derive(Clone)]
 pub struct StorageUserAdd {
-    pub role: Role,
+    pub role_id: RoleId,
     pub name: String,
     pub password: Option<StoragePassword>,
     pub client_unique_id: String,
 }
 #[derive(Default, Clone)]
 pub struct StorageUserModify {
-    pub role: Option<Role>,
+    pub role_id: Option<RoleId>,
     pub password: Option<Option<StoragePassword>>,
     pub client_unique_id: Option<String>,
 }
 
+// --- Roles ---
+#[derive(Clone, Default)]
+pub struct StorageRoleDefaultSettings {
+    pub value: Value,
+}
+
+#[derive(Clone)]
+pub struct StorageRolePermissions {
+    pub allow_add_hosts: bool,
+    pub maximum_bitrate_kbps: Option<u32>,
+    pub allow_codec_h264: bool,
+    pub allow_codec_h265: bool,
+    pub allow_codec_av1: bool,
+    pub allow_hdr: bool,
+    pub allow_transport_webrtc: bool,
+    pub allow_transport_websockets: bool,
+}
+
+impl Default for StorageRolePermissions {
+    fn default() -> Self {
+        Self {
+            allow_add_hosts: true,
+            maximum_bitrate_kbps: None,
+            allow_codec_h264: true,
+            allow_codec_h265: true,
+            allow_codec_av1: true,
+            allow_hdr: true,
+            allow_transport_webrtc: true,
+            allow_transport_websockets: true,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct StorageRole {
+    pub id: RoleId,
+    pub name: String,
+    pub ty: RoleType,
+    pub default_settings: StorageRoleDefaultSettings,
+    pub permissions: StorageRolePermissions,
+}
+
+#[derive(Clone)]
+pub struct StorageRoleAdd {
+    pub name: String,
+    pub ty: RoleType,
+    pub default_settings: StorageRoleDefaultSettings,
+    pub permissions: StorageRolePermissions,
+}
+
+#[derive(Clone)]
+pub struct StorageRoleModify {
+    pub name: Option<String>,
+    pub ty: Option<RoleType>,
+    pub default_settings: Option<StorageRoleDefaultSettings>,
+    pub permissions: Option<StorageRolePermissions>,
+}
+
+// --- Hosts ---
 #[derive(Clone)]
 pub struct StorageHost {
     pub id: HostId,
@@ -108,6 +170,18 @@ pub enum Either<L, R> {
 
 #[async_trait]
 pub trait Storage {
+    // -- Roles --
+    async fn add_role(&self, role: StorageRoleAdd) -> Result<StorageRole, AppError>;
+    async fn modify_role(&self, role_id: RoleId, host: StorageRoleModify) -> Result<(), AppError>;
+    async fn get_role(&self, role_id: RoleId) -> Result<StorageRole, AppError>;
+    /// Deletes a role.
+    ///
+    /// All users that are in that role should also be delete.
+    async fn remove_role(&self, role_id: RoleId) -> Result<(), AppError>;
+    /// The returned tuple can contain a Vec<RoleId> or Vec<StorageRole> if the Storage thinks it's more efficient to query all data directly
+    async fn list_roles(&self) -> Result<Either<Vec<RoleId>, Vec<StorageRole>>, AppError>;
+
+    // -- Users --
     /// No duplicate names are allowed!
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError>;
     async fn modify_user(&self, user_id: UserId, user: StorageUserModify) -> Result<(), AppError>;
@@ -120,6 +194,7 @@ pub trait Storage {
     async fn list_users(&self) -> Result<Either<Vec<UserId>, Vec<StorageUser>>, AppError>;
     async fn any_user_exists(&self) -> Result<bool, AppError>;
 
+    // -- Session Tokens --
     async fn create_session_token(
         &self,
         user_id: UserId,
@@ -134,6 +209,7 @@ pub trait Storage {
         session: SessionToken,
     ) -> Result<(UserId, Option<StorageUser>), AppError>;
 
+    // -- Hosts --
     async fn add_host(&self, host: StorageHostAdd) -> Result<StorageHost, AppError>;
     async fn modify_host(&self, host_id: HostId, host: StorageHostModify) -> Result<(), AppError>;
     async fn get_host(&self, host_id: HostId) -> Result<StorageHost, AppError>;

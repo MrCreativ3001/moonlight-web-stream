@@ -9,14 +9,13 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use common::{
-    StreamSettings,
     api_bindings::{StreamClientMessage, StreamerStatsUpdate, TransportChannelId},
     ipc::{ServerIpcMessage, StreamerIpcMessage},
 };
 use log::{trace, warn};
 use moonlight_common::stream::{
     audio::{AudioConfig, OpusMultistreamConfig},
-    video::{DecodeResult, FrameType, SupportedVideoFormats, VideoDecodeUnit, VideoSetup},
+    video::{DecodeResult, FrameType, VideoDecodeUnit, VideoSetup},
 };
 use tokio::{
     spawn,
@@ -274,39 +273,10 @@ impl TransportSender for WebSocketTransportSender {
                     return Err(TransportError::Closed);
                 }
             }
-            ServerIpcMessage::WebSocket(StreamClientMessage::StartStream {
-                bitrate,
-                packet_size,
-                fps,
-                width,
-                height,
-                play_audio_local,
-                video_supported_formats,
-                video_colorspace,
-                video_color_range_full,
-                hdr,
-            }) => {
-                let video_supported_formats = SupportedVideoFormats::from_bits(video_supported_formats).unwrap_or_else(|| {
-                    warn!("Failed to deserialize SupportedVideoFormats: {video_supported_formats}, falling back to only H264");
-                    SupportedVideoFormats::H264
-                });
-
+            ServerIpcMessage::WebSocket(StreamClientMessage::StartStream { settings }) => {
                 if self
                     .event_sender
-                    .send(TransportEvent::StartStream {
-                        settings: StreamSettings {
-                            bitrate,
-                            packet_size,
-                            fps,
-                            width,
-                            height,
-                            video_supported_formats,
-                            video_color_range_full,
-                            video_colorspace: video_colorspace.into(),
-                            play_audio_local,
-                            hdr,
-                        },
-                    })
+                    .send(TransportEvent::StartStream { settings })
                     .await
                     .is_err()
                 {

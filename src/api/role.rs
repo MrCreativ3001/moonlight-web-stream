@@ -19,7 +19,7 @@ use crate::app::{
     storage::{
         StorageRoleAdd, StorageRoleDefaultSettings, StorageRoleModify, StorageRolePermissions,
     },
-    user::{Admin, AuthenticatedUser, RoleType},
+    user::{Admin, AuthenticatedUser},
 };
 
 fn convert_settings(settings: TsAny) -> StorageRoleDefaultSettings {
@@ -46,14 +46,21 @@ pub async fn add_role(
     admin: Admin,
     Json(request): Json<PostRoleRequest>,
 ) -> Result<Json<PostRoleResponse>, AppError> {
+    let PostRoleRequest {
+        name,
+        ty,
+        default_settings,
+        permissions,
+    } = request;
+
     let mut role = app
         .add_role(
             &admin,
             StorageRoleAdd {
-                name: request.name,
-                ty: RoleType::User,
-                default_settings: convert_settings(request.default_settings),
-                permissions: convert_permissions(request.permissions),
+                name,
+                ty: ty.into(),
+                default_settings: convert_settings(default_settings),
+                permissions: convert_permissions(permissions),
             },
         )
         .await?;

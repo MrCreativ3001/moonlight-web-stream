@@ -1,6 +1,5 @@
-import { Api } from "../../api.js";
-import { PostRoleRequest } from "../../api_bindings.js";
-import { InputComponent } from "../input.js";
+import { PostRoleRequest, RoleType } from "../../api_bindings.js";
+import { InputComponent, SelectComponent } from "../input.js";
 import { FormModal } from "../modal/form.js";
 import { globalDefaultSettings, StreamSettingsComponent } from "../settings_menu.js";
 import { RolePermissionsMenu } from "./permissions.js";
@@ -12,6 +11,7 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
     private modalRoot: HTMLDivElement = document.createElement("div")
 
     private name: InputComponent
+    private ty: SelectComponent
 
     private permissionsHeader = document.createElement("h3")
     private permissions: RolePermissionsMenu
@@ -30,6 +30,16 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
             formRequired: true
         })
         this.name.mount(this.modalRoot)
+
+        // Ty
+        this.ty = new SelectComponent("roleTy", [
+            { value: "User", name: "User" },
+            { value: "Admin", name: "Admin" },
+        ], {
+            displayName: "Type",
+            preSelectedOption: "User",
+        })
+        this.ty.mount(this.modalRoot)
 
         // Permissions
         this.permissionsHeader.innerText = "Permissions"
@@ -55,9 +65,11 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
     }
     submit(): PostRoleRequest | null {
         const name = this.name.getValue()
+        const ty = this.ty.getValue() as RoleType
 
         return {
             name,
+            ty,
             default_settings: this.defaultSettings.getStreamSettings(),
             permissions: this.permissions.getPermissions()
         }

@@ -1,7 +1,7 @@
 import { Component, ComponentEvent } from "../index.js";
 import { Api, apiPatchRole } from "../../api.js";
-import { DetailedRole, PatchRoleRequest } from "../../api_bindings.js";
-import { InputComponent } from "../input.js";
+import { DetailedRole, PatchRoleRequest, RoleType } from "../../api_bindings.js";
+import { InputComponent, SelectComponent } from "../input.js";
 import { tryDeleteRole, RoleEventListener } from "./index.js";
 import { RolePermissionsMenu } from "./permissions.js";
 import { StreamSettingsComponent } from "../settings_menu.js";
@@ -17,6 +17,7 @@ export class DetailedRolePage implements Component {
 
     private idElement: InputComponent
     private name: InputComponent
+    private ty: SelectComponent
 
     // -- Permissions
     private permissionsHeader = document.createElement("h3")
@@ -47,6 +48,15 @@ export class DetailedRolePage implements Component {
             defaultValue: role.name,
         })
         this.name.mount(this.formRoot)
+
+        this.ty = new SelectComponent("roleTy", [
+            { value: "User", name: "User" },
+            { value: "Admin", name: "Admin" },
+        ], {
+            displayName: "Type",
+            preSelectedOption: role.ty,
+        })
+        this.ty.mount(this.formRoot)
 
         // Permissions
         this.permissionsHeader.innerText = "Permissions"
@@ -92,6 +102,7 @@ export class DetailedRolePage implements Component {
         const request: PatchRoleRequest = {
             id: this.id,
             name: this.name.getValue(),
+            ty: this.ty.getValue() as RoleType,
             default_settings: this.defaultSettings.getStreamSettings(),
             permissions: this.permissions.getPermissions()
         };

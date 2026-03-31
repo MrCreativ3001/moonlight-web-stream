@@ -109,6 +109,7 @@ impl Role {
         Ok(DetailedRole {
             id: self.id().0,
             name: self.name().await?,
+            ty: self.ty().await?.into(),
             default_settings: self.default_settings().await?,
             permissions: self.permissions().await?,
         })

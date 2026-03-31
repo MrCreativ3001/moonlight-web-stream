@@ -84,7 +84,7 @@ jobs:
     # Install rust
     - uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        toolchain: nightly
+        toolchain: nightly-2026-02-13
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: cross-${{ matrix.target }}

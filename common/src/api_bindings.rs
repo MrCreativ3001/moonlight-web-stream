@@ -299,7 +299,7 @@ pub struct UndetailedRole {
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct StreamSettings {
-    pub bitrate_kpbs: u32,
+    pub bitrate_kbps: u32,
     pub width: u32,
     pub height: u32,
     pub fps: u32,

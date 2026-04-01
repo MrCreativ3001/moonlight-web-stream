@@ -207,7 +207,7 @@ export class StreamSettingsComponent implements Component {
         this.divElement.appendChild(this.streamHeader)
 
         // Bitrate
-        this.bitrate = new InputComponent("bitrate", "number", "Bitrate (Kpbs)", {
+        this.bitrate = new InputComponent("bitrate", "number", "Bitrate (Kbps)", {
             defaultValue: defaultSettings_.bitrate.toString(),
             value: settings?.bitrate?.toString(),
             step: "100",

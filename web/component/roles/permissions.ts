@@ -39,7 +39,7 @@ export class RolePermissionsMenu implements Component {
         this.allowAddHosts.addChangeListener(this.onChange.bind(this))
 
         // Maximum Bitrate
-        this.maximumBitrateKbps = new InputComponent("maximumBitrateKpbs", "number", "Maximum Bitrate (Kpbs)", {
+        this.maximumBitrateKbps = new InputComponent("maximumBitrateKbps", "number", "Maximum Bitrate (Kbps)", {
             hasEnableCheckbox: true,
             defaultValue: `${permissions.maximum_bitrate_kbps ?? 10000}`,
             step: "100",

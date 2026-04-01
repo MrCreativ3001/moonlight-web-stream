@@ -27,9 +27,9 @@ pub fn apply_permissions_to_settings(
     } = permissions;
 
     if let Some(maximum_bitrate) = maximum_bitrate_kbps
-        && settings.bitrate_kpbs > *maximum_bitrate
+        && settings.bitrate_kbps > *maximum_bitrate
     {
-        settings.bitrate_kpbs = *maximum_bitrate;
+        settings.bitrate_kbps = *maximum_bitrate;
     }
 
     let mut supported_codecs = SupportedVideoFormats::from_bits_truncate(settings.supported_codecs);

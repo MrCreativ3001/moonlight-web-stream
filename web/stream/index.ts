@@ -653,7 +653,7 @@ export class Stream implements Component {
         const message: StreamClientMessage = {
             StartStream: {
                 settings: {
-                    bitrate_kpbs: this.settings.bitrate,
+                    bitrate_kbps: this.settings.bitrate,
                     fps: this.settings.fps,
                     width: this.streamerSize[0],
                     height: this.streamerSize[1],

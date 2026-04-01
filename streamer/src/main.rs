@@ -735,7 +735,7 @@ impl StreamConnection {
             fps: settings.fps,
             fps_x100: settings.fps * 100,
             hdr: settings.hdr,
-            bitrate: settings.bitrate_kpbs,
+            bitrate: settings.bitrate_kbps,
             packet_size: 1024,
             encryption_flags: EncryptionFlags::ALL,
             streaming_remotely: StreamingConfig::Auto,

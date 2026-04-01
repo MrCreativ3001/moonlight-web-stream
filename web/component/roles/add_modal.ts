@@ -47,12 +47,21 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
 
         this.permissions = new RolePermissionsMenu()
         this.permissions.mount(this.modalRoot)
+        this.permissions.addChangeListener(this.onPermissionsChange.bind(this))
 
         // Default Settings
         this.defaultSettingsHeader.innerText = "Default Settings"
         this.modalRoot.appendChild(this.defaultSettingsHeader)
 
         this.defaultSettings = new StreamSettingsComponent(this.permissions.getPermissions(), globalDefaultSettings())
+        this.defaultSettings.mount(this.modalRoot)
+    }
+
+    private onPermissionsChange() {
+        const settings = this.defaultSettings.getStreamSettings()
+        this.defaultSettings.unmount(this.modalRoot)
+
+        this.defaultSettings = new StreamSettingsComponent(this.permissions.getPermissions(), settings)
         this.defaultSettings.mount(this.modalRoot)
     }
 

@@ -27,6 +27,11 @@ const trueDefaultSettings: Settings =
     "audioSampleQueueSize": 20,
     // possible values: "highres", "normal"
     "mouseScrollMode": "highres",
+    // possible values: "relative", "follow", "pointAndDrag"
+    "mouseMode": "follow",
+    // possible values: "touch", "mouseRelative", "localCursor", "pointAndDrag"
+    "touchMode": "mouseRelative",
+    "localCursorSensitivity": 1,
     "controllerConfig": {
         "invertAB": false,
         "invertXY": false,
@@ -35,6 +40,8 @@ const trueDefaultSettings: Settings =
     },
     // possible values: "auto", "webrtc", "websocket"
     "dataTransport": "auto",
+    "language": "en",
+    "enterFullscreenOnStreamStart": false,
     "toggleFullscreenWithKeybind": false,
     // possible values: "standard", "old"
     "pageStyle": "standard",

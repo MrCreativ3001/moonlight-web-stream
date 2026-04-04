@@ -1,4 +1,5 @@
 import { PostHostRequest } from "../../api_bindings.js"
+import { getCurrentLanguage, getTranslations } from "../../i18n.js"
 import { InputComponent } from "../input.js"
 import { FormModal } from "../modal/form.js"
 
@@ -11,14 +12,15 @@ export class AddHostModal extends FormModal<PostHostRequest> {
 
     constructor() {
         super()
+        const i = getTranslations(getCurrentLanguage()).addHost
 
-        this.header.innerText = "Host"
+        this.header.innerText = i.header
 
-        this.address = new InputComponent("address", "text", "Address", {
+        this.address = new InputComponent("address", "text", i.address, {
             formRequired: true
         })
 
-        this.httpPort = new InputComponent("httpPort", "text", "Port", {
+        this.httpPort = new InputComponent("httpPort", "text", i.port, {
             inputMode: "numeric"
         })
     }

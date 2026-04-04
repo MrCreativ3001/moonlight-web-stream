@@ -6,19 +6,26 @@ import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { globalDefaultSettings, getLocalStreamSettings, Settings } from "./component/settings_menu.js";
+import { getLocalStreamSettings, Settings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
+import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
+import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
+
+let I = getTranslations(getCurrentLanguage())
 
 async function startApp() {
     const api = await getApi()
 
+    const bootstrapRole = await apiGetRole(api, { id: null })
+    adoptRoleDefaultLanguage(bootstrapRole.role.default_settings)
+    I = getTranslations(getCurrentLanguage())
+
     const rootElement = document.getElementById("root");
     if (rootElement == null) {
-        showErrorPopup("couldn't find root element", true)
+        showErrorPopup(I.stream.rootNotFound, true)
         return;
     }
 
@@ -28,7 +35,7 @@ async function startApp() {
     const hostIdStr = queryParams.get("hostId")
     const appIdStr = queryParams.get("appId")
     if (hostIdStr == null || appIdStr == null) {
-        await showMessage("No Host or no App Id found")
+        await showMessage(I.stream.missingHostOrApp)
 
         window.close()
         return
@@ -48,7 +55,7 @@ async function startApp() {
     }
 
     // Start and Mount App
-    const app = new ViewerApp(api, hostId, appId)
+    const app = new ViewerApp(api, hostId, appId, bootstrapRole.role)
     app.mount(rootElement);
 
     (window as any)["app"] = app
@@ -73,15 +80,28 @@ class ViewerApp implements Component {
     private div = document.createElement("div")
 
     private statsDiv = document.createElement("div")
+    private localTouchCursorDiv = document.createElement("div")
     private stream: Stream | null = null
 
     private inputConfig: StreamInputConfig = defaultStreamInputConfig()
     private previousMouseMode: MouseMode
+    private autoEnterFullscreenOnStart: boolean = false
+    private pendingAutoFullscreenPrompt: boolean = false
+    private fullscreenPromptShown: boolean = false
     private toggleFullscreenWithKeybind: boolean = false
     private hasShownFullscreenEscapeWarning = false
 
-    constructor(api: Api, hostId: number, appId: number) {
+    constructor(api: Api, hostId: number, appId: number, bootstrapRole: DetailedRole) {
         this.api = api
+
+        const settings = getLocalStreamSettings(bootstrapRole.default_settings)
+        Object.assign(this.inputConfig, {
+            mouseMode: settings.mouseMode,
+            mouseScrollMode: settings.mouseScrollMode,
+            touchMode: settings.touchMode,
+            localCursorSensitivity: settings.localCursorSensitivity,
+            controllerConfig: settings.controllerConfig
+        })
 
         // Configure sidebar
         this.sidebar = new ViewerSidebar(this)
@@ -90,6 +110,8 @@ class ViewerApp implements Component {
         // Configure stats element
         this.statsDiv.hidden = true
         this.statsDiv.classList.add("video-stats")
+        this.localTouchCursorDiv.hidden = true
+        this.localTouchCursorDiv.classList.add("local-touch-cursor")
 
         setInterval(() => {
             // Update stats display every 100ms
@@ -104,19 +126,17 @@ class ViewerApp implements Component {
             }
         }, 100)
         this.div.appendChild(this.statsDiv)
+        this.div.appendChild(this.localTouchCursorDiv)
 
         // Configure stream
         this.previousMouseMode = this.inputConfig.mouseMode
 
-        apiGetRole(this.api, { id: null }).then(response => {
-            const settings = getLocalStreamSettings(response.role.default_settings)
+        const browserWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
+        const browserHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
 
-            let browserWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
-            let browserHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
-
-            this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
-            this.startStream(hostId, appId, response.role.permissions, settings, [browserWidth, browserHeight])
-        })
+        this.autoEnterFullscreenOnStart = settings.enterFullscreenOnStreamStart
+        this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
+        this.startStream(hostId, appId, bootstrapRole.permissions, settings, [browserWidth, browserHeight])
 
         // Configure input
         this.addListeners(document)
@@ -172,8 +192,16 @@ class ViewerApp implements Component {
 
         // Create connection info modal
         const connectionInfo = new ConnectionInfoModal()
-        this.stream.addInfoListener(connectionInfo.onInfo.bind(connectionInfo))
-        showModal(connectionInfo)
+        const connectionInfoListener = connectionInfo.onInfo.bind(connectionInfo)
+        this.stream.addInfoListener(connectionInfoListener)
+        void showModal(connectionInfo).then(async () => {
+            this.stream?.removeInfoListener(connectionInfoListener)
+            if (this.autoEnterFullscreenOnStart && this.pendingAutoFullscreenPrompt && !this.fullscreenPromptShown && !this.isFullscreen()) {
+                this.fullscreenPromptShown = true
+                this.pendingAutoFullscreenPrompt = false
+                await this.promptAutoFullscreen()
+            }
+        })
 
         // Start animation frame loop
         this.onTouchUpdate()
@@ -182,6 +210,10 @@ class ViewerApp implements Component {
         this.stream.getInput().addScreenKeyboardVisibleEvent(this.onScreenKeyboardSetVisible.bind(this))
 
         this.stream.mount(this.div)
+
+        if (this.autoEnterFullscreenOnStart) {
+            this.pendingAutoFullscreenPrompt = true
+        }
     }
 
     private async onInfo(event: InfoEvent) {
@@ -231,6 +263,7 @@ class ViewerApp implements Component {
         Object.assign(this.inputConfig, config)
 
         this.stream?.getInput().setConfig(this.inputConfig)
+        this.renderLocalTouchCursor()
     }
 
     // Keyboard
@@ -348,6 +381,7 @@ class ViewerApp implements Component {
     }
     onTouchUpdate() {
         this.stream?.getInput().onTouchUpdate(this.getStreamRect())
+        this.renderLocalTouchCursor()
 
         window.requestAnimationFrame(this.onTouchUpdate.bind(this))
     }
@@ -375,11 +409,14 @@ class ViewerApp implements Component {
     }
 
     // Fullscreen
+    private async promptAutoFullscreen() {
+        await showModal(new AutoFullscreenModal(this.requestFullscreen.bind(this)))
+    }
     async requestFullscreen() {
         const body = document.body
         if (body) {
-            if (!("requestFullscreen" in body && typeof body.requestFullscreen == "function")) {
-                await showMessage("Fullscreen is not supported by your browser!")
+                if (!("requestFullscreen" in body && typeof body.requestFullscreen == "function")) {
+                await showMessage(I.stream.fullscreenUnsupported)
 
                 return
             }
@@ -400,7 +437,7 @@ class ViewerApp implements Component {
                 await navigator.keyboard.lock()
 
                 if (!this.hasShownFullscreenEscapeWarning) {
-                    await showMessage("To exit Fullscreen you'll have to hold ESC for a few seconds.")
+                    await showMessage(I.stream.fullscreenEscapeHint)
                 }
                 this.hasShownFullscreenEscapeWarning = true
             }
@@ -486,7 +523,7 @@ class ViewerApp implements Component {
             }
 
         } else if (errorIfNotFound) {
-            await showMessage("Pointer Lock not supported")
+            await showMessage(I.stream.pointerLockUnsupported)
         }
     }
     async exitPointerLock() {
@@ -512,6 +549,23 @@ class ViewerApp implements Component {
         } else {
             setSidebar(this.sidebar)
         }
+    }
+    private renderLocalTouchCursor() {
+        const localCursorState = this.stream?.getInput().getLocalCursorState()
+        if (!localCursorState?.visible) {
+            this.localTouchCursorDiv.hidden = true
+            return
+        }
+
+        const rect = this.getStreamRect()
+        if (rect.width <= 0 || rect.height <= 0) {
+            this.localTouchCursorDiv.hidden = true
+            return
+        }
+
+        this.localTouchCursorDiv.hidden = false
+        this.localTouchCursorDiv.style.left = `${rect.left + localCursorState.x * rect.width}px`
+        this.localTouchCursorDiv.style.top = `${rect.top + localCursorState.y * rect.height}px`
     }
 
     mount(parent: HTMLElement): void {
@@ -550,17 +604,17 @@ class ConnectionInfoModal implements Modal<void> {
     constructor() {
         this.root.classList.add("modal-video-connect")
 
-        this.text.innerText = "Connecting"
+        this.text.innerText = I.stream.connecting
         this.root.appendChild(this.text)
 
         this.root.appendChild(this.options)
         this.options.classList.add("modal-video-connect-options")
 
-        this.debugDetailButton.innerText = "Show Logs"
+        this.debugDetailButton.innerText = I.stream.showLogs
         this.debugDetailButton.addEventListener("click", this.onDebugDetailClick.bind(this))
         this.options.appendChild(this.debugDetailButton)
 
-        this.closeButton.innerText = "Close"
+        this.closeButton.innerText = I.stream.close
         this.closeButton.addEventListener("click", this.onClose.bind(this))
         this.options.appendChild(this.closeButton)
 
@@ -572,10 +626,10 @@ class ConnectionInfoModal implements Modal<void> {
         let debugDetailCurrentlyShown = this.root.contains(this.debugDetailDisplay)
 
         if (debugDetailCurrentlyShown) {
-            this.debugDetailButton.innerText = "Show Logs"
+            this.debugDetailButton.innerText = I.stream.showLogs
             this.root.removeChild(this.debugDetailDisplay)
         } else {
-            this.debugDetailButton.innerText = "Hide Logs"
+            this.debugDetailButton.innerText = I.stream.hideLogs
             this.root.appendChild(this.debugDetailDisplay)
             this.debugDetailDisplay.innerText = this.debugDetail
         }
@@ -591,7 +645,7 @@ class ConnectionInfoModal implements Modal<void> {
         const data = event.detail
 
         if (data.type == "connectionComplete") {
-            const text = `Connection Complete`
+            const text = I.stream.connectionComplete
             this.text.innerText = text
             this.debugLog(text)
 
@@ -622,7 +676,7 @@ class ConnectionInfoModal implements Modal<void> {
                 showErrorPopup(data.line)
             }
         } else if (data.type == "serverMessage") {
-            const text = `Server: ${data.message}`
+            const text = I.stream.serverMessage(data.message)
             this.text.innerText = text
             this.debugLog(text)
         }
@@ -643,6 +697,44 @@ class ConnectionInfoModal implements Modal<void> {
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.root)
+    }
+}
+
+class AutoFullscreenModal implements Component, Modal<void> {
+    private message = document.createElement("p")
+    private root = document.createElement("div")
+    private okButton = document.createElement("button")
+    private cancelButton = document.createElement("button")
+    private onConfirm: () => Promise<void>
+
+    constructor(onConfirm: () => Promise<void>) {
+        this.onConfirm = onConfirm
+        this.message.innerText = I.stream.autoFullscreenPrompt
+        this.okButton.innerText = I.modal.ok
+        this.cancelButton.innerText = I.modal.cancel
+    }
+
+    mount(parent: HTMLElement): void {
+        this.root.appendChild(this.message)
+        this.root.appendChild(this.okButton)
+        this.root.appendChild(this.cancelButton)
+        parent.appendChild(this.root)
+    }
+    unmount(parent: HTMLElement): void {
+        parent.removeChild(this.root)
+    }
+
+    onFinish(abort: AbortSignal): Promise<void> {
+        return new Promise((resolve) => {
+            this.okButton.addEventListener("click", async () => {
+                await this.onConfirm()
+                resolve()
+            }, { once: true, signal: abort })
+
+            this.cancelButton.addEventListener("click", () => {
+                resolve()
+            }, { once: true, signal: abort })
+        })
     }
 }
 
@@ -677,7 +769,7 @@ class ViewerSidebar implements Component, Sidebar {
         this.div.appendChild(this.buttonDiv)
 
         // Send keycode
-        this.sendKeycodeButton.innerText = "Send Keycode"
+        this.sendKeycodeButton.innerText = I.stream.sendKeycode
         this.sendKeycodeButton.addEventListener("click", async () => {
             const key = await showModal(new SendKeycodeModal())
 
@@ -691,14 +783,14 @@ class ViewerSidebar implements Component, Sidebar {
         this.buttonDiv.appendChild(this.sendKeycodeButton)
 
         // Pointer Lock
-        this.lockMouseButton.innerText = "Lock Mouse"
+        this.lockMouseButton.innerText = I.stream.lockMouse
         this.lockMouseButton.addEventListener("click", async () => {
             await this.app.requestPointerLock(true)
         })
         this.buttonDiv.appendChild(this.lockMouseButton)
 
         // Pop up keyboard
-        this.keyboardButton.innerText = "Keyboard"
+        this.keyboardButton.innerText = I.stream.keyboard
         this.keyboardButton.addEventListener("click", async () => {
             setSidebarExtended(false)
             this.screenKeyboard.show()
@@ -712,7 +804,7 @@ class ViewerSidebar implements Component, Sidebar {
 
 
         // Fullscreen
-        this.fullscreenButton.innerText = "Fullscreen"
+        this.fullscreenButton.innerText = I.stream.fullscreen
         this.fullscreenButton.addEventListener("click", async () => {
             if (this.app.isFullscreen()) {
                 await this.app.exitFullscreen()
@@ -723,7 +815,7 @@ class ViewerSidebar implements Component, Sidebar {
         this.buttonDiv.appendChild(this.fullscreenButton)
 
         // Stats
-        this.statsButton.innerText = "Stats"
+        this.statsButton.innerText = I.stream.stats
         this.statsButton.addEventListener("click", () => {
             const stats = this.app.getStream()?.getStats()
             if (stats) {
@@ -733,7 +825,7 @@ class ViewerSidebar implements Component, Sidebar {
         this.buttonDiv.appendChild(this.statsButton)
 
         // Close stream
-        this.exitStreamButton.innerText = "Exit"
+        this.exitStreamButton.innerText = I.stream.exit
         this.exitStreamButton.addEventListener("click", async () => {
             const stream = this.app.getStream()
             if (stream) {
@@ -754,11 +846,12 @@ class ViewerSidebar implements Component, Sidebar {
 
         // Select Mouse Mode
         this.mouseMode = new SelectComponent("mouseMode", [
-            { value: "relative", name: "Relative" },
-            { value: "follow", name: "Follow" },
-            { value: "pointAndDrag", name: "Point and Drag" }
+            { value: "relative", name: I.stream.relative },
+            { value: "follow", name: I.stream.follow },
+            { value: "localCursor", name: I.stream.localCursor },
+            { value: "pointAndDrag", name: I.stream.pointAndDrag }
         ], {
-            displayName: "Mouse Mode",
+            displayName: I.stream.mouseMode,
             preSelectedOption: this.app.getInputConfig().mouseMode
         })
         this.mouseMode.addChangeListener(this.onMouseModeChange.bind(this))
@@ -766,11 +859,12 @@ class ViewerSidebar implements Component, Sidebar {
 
         // Select Touch Mode
         this.touchMode = new SelectComponent("touchMode", [
-            { value: "touch", name: "Touch" },
-            { value: "mouseRelative", name: "Relative" },
-            { value: "pointAndDrag", name: "Point and Drag" }
+            { value: "touch", name: I.stream.touch },
+            { value: "mouseRelative", name: I.stream.relative },
+            { value: "localCursor", name: I.stream.localCursor },
+            { value: "pointAndDrag", name: I.stream.pointAndDrag }
         ], {
-            displayName: "Touch Mode",
+            displayName: I.stream.touchMode,
             preSelectedOption: this.app.getInputConfig().touchMode
         })
         this.touchMode.addChangeListener(this.onTouchModeChange.bind(this))
@@ -852,7 +946,7 @@ class SendKeycodeModal extends FormModal<number> {
 
         this.dropdownSearch = new SelectComponent("winKeycode", keyList, {
             hasSearch: true,
-            displayName: "Select Keycode"
+            displayName: I.stream.selectKeycode
         })
     }
 

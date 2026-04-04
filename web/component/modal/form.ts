@@ -1,4 +1,5 @@
 import { Component } from "../index.js"
+import { getCurrentLanguage, getTranslations } from "../../i18n.js"
 import { Modal, showModal } from "./index.js"
 
 export abstract class FormModal<Output> implements Component, Modal<Output | null> {
@@ -9,10 +10,11 @@ export abstract class FormModal<Output> implements Component, Modal<Output | nul
     private cancelButton: HTMLButtonElement = document.createElement("button")
 
     constructor() {
+        const i = getTranslations(getCurrentLanguage()).modal
         this.submitButton.type = "submit"
-        this.submitButton.innerText = "Ok"
+        this.submitButton.innerText = i.ok
 
-        this.cancelButton.innerText = "Cancel"
+        this.cancelButton.innerText = i.cancel
 
         this.formElement.addEventListener("submit", (event) => event.preventDefault())
     }

@@ -17,6 +17,8 @@ const TOUCH_AS_CLICK_MIN_TIME_MS = 100
 const TOUCH_AS_CLICK_MAX_TIME_MS = 350
 // How much to move to open up the screen keyboard when having three touches at the same time
 const TOUCHES_AS_KEYBOARD_DISTANCE = 100
+// Two-finger scroll only starts after one finger clearly commits to scrolling
+const TWO_TOUCH_SCROLL_TRIGGER_DISTANCE = 15
 // How long is the first tap allowed to be for it to maybe be a double tap
 const DOUBLE_TAP_FIRST_TAP_MAX_TIME_MS = 100
 // How much time is allowed after a touch release for a new tap to count both taps as a double tap
@@ -38,12 +40,14 @@ function trySendChannel(channel: DataTransportChannel | null, buffer: ByteBuffer
 }
 
 export type MouseScrollMode = "highres" | "normal"
-export type MouseMode = "relative" | "follow" | "pointAndDrag"
+export type MouseMode = "relative" | "follow" | "localCursor" | "pointAndDrag"
+export type TouchMode = "touch" | "mouseRelative" | "localCursor" | "pointAndDrag"
 
 export type StreamInputConfig = {
     mouseMode: MouseMode
     mouseScrollMode: MouseScrollMode
-    touchMode: "touch" | "mouseRelative" | "pointAndDrag"
+    touchMode: TouchMode
+    localCursorSensitivity: number
     controllerConfig: ControllerConfig
 }
 
@@ -52,6 +56,7 @@ export function defaultStreamInputConfig(): StreamInputConfig {
         mouseMode: "follow",
         mouseScrollMode: "highres",
         touchMode: "mouseRelative",
+        localCursorSensitivity: 1,
         controllerConfig: {
             invertAB: false,
             invertXY: false,
@@ -60,8 +65,9 @@ export function defaultStreamInputConfig(): StreamInputConfig {
     }
 }
 
-export type PredictedTouchAction = "default" | "drag" | "scroll" | "screenKeyboard"
+export type PredictedTouchAction = "default" | "drag" | "scroll" | "screenKeyboard" | "longPress"
 export type ScreenKeyboardSetVisibleEvent = CustomEvent<{ visible: boolean }>
+export type LocalCursorState = { visible: boolean, x: number, y: number }
 
 export class StreamInput {
 
@@ -84,6 +90,7 @@ export class StreamInput {
     private controllerInputs: Array<DataTransportChannel | null> = []
 
     private touchSupported: boolean | null = null
+    private localCursorPosition: [number, number] | null = null
 
     constructor(config?: StreamInputConfig) {
         this.config = defaultStreamInputConfig()
@@ -255,6 +262,10 @@ export class StreamInput {
 
         if (this.config.mouseMode == "relative" || this.config.mouseMode == "follow") {
             this.sendMouseButton(true, button)
+        } else if (this.config.mouseMode == "localCursor") {
+            this.initializeLocalCursor(rect, event.clientX, event.clientY)
+            this.sendLocalCursorPosition(true)
+            this.sendMouseButton(true, button)
         } else if (this.config.mouseMode == "pointAndDrag") {
             this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, true, button)
         }
@@ -265,7 +276,7 @@ export class StreamInput {
             return
         }
 
-        if (this.config.mouseMode == "relative" || this.config.mouseMode == "follow") {
+        if (this.config.mouseMode == "relative" || this.config.mouseMode == "follow" || this.config.mouseMode == "localCursor") {
             this.sendMouseButton(false, button)
         } else if (this.config.mouseMode == "pointAndDrag") {
             this.sendMouseButton(false, button)
@@ -276,6 +287,9 @@ export class StreamInput {
             this.sendMouseMoveClientCoordinates(event.movementX, event.movementY, rect)
         } else if (this.config.mouseMode == "follow") {
             this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, false)
+        } else if (this.config.mouseMode == "localCursor") {
+            this.initializeLocalCursor(rect, event.clientX, event.clientY)
+            this.moveLocalCursorClientCoordinates(event.movementX, event.movementY, rect, false)
         } else if (this.config.mouseMode == "pointAndDrag") {
             if (event.buttons) {
                 // some button pressed
@@ -338,6 +352,63 @@ export class StreamInput {
             }
         }
     }
+    private initializeLocalCursor(rect: DOMRect, clientX?: number, clientY?: number) {
+        if (this.localCursorPosition) {
+            return
+        }
+
+        if (clientX != null && clientY != null) {
+            const position = this.calcNormalizedPosition(clientX, clientY, rect)
+            if (position) {
+                this.localCursorPosition = [
+                    position[0] * this.streamerSize[0],
+                    position[1] * this.streamerSize[1],
+                ]
+                return
+            }
+        }
+
+        this.localCursorPosition = [
+            this.streamerSize[0] / 2,
+            this.streamerSize[1] / 2,
+        ]
+    }
+    private clampLocalCursorPosition() {
+        if (!this.localCursorPosition) {
+            return
+        }
+
+        this.localCursorPosition[0] = Math.min(Math.max(this.localCursorPosition[0], 0), this.streamerSize[0])
+        this.localCursorPosition[1] = Math.min(Math.max(this.localCursorPosition[1], 0), this.streamerSize[1])
+    }
+    private sendLocalCursorPosition(reliable: boolean) {
+        if (!this.localCursorPosition) {
+            return
+        }
+
+        this.sendMousePosition(
+            this.localCursorPosition[0],
+            this.localCursorPosition[1],
+            this.streamerSize[0],
+            this.streamerSize[1],
+            reliable
+        )
+    }
+    private moveLocalCursorClientCoordinates(movementX: number, movementY: number, rect: DOMRect, reliable: boolean) {
+        if (this.streamerSize[0] <= 0 || this.streamerSize[1] <= 0 || rect.width <= 0 || rect.height <= 0) {
+            return
+        }
+
+        this.initializeLocalCursor(rect)
+        if (!this.localCursorPosition) {
+            return
+        }
+
+        this.localCursorPosition[0] += movementX / rect.width * this.streamerSize[0] * this.config.localCursorSensitivity
+        this.localCursorPosition[1] += movementY / rect.height * this.streamerSize[1] * this.config.localCursorSensitivity
+        this.clampLocalCursorPosition()
+        this.sendLocalCursorPosition(reliable)
+    }
     // Note: button = StreamMouseButton.
     sendMouseButton(isDown: boolean, button: number) {
         this.buffer.reset()
@@ -382,9 +453,10 @@ export class StreamInput {
     }> = new Map()
     // The current action of all touches on screen
     // - default -> the default action for this touch mode / we're still trying to figure out what the user is trying to do
-    // - drag -> mouse is down and only relative movement is done
+    // - drag -> movement continues without click handling on release
     // - scroll -> we're currently scrolling using primary touch
     // - screenKeyboard -> this current action is trying to pull up the on screen keyboard
+    // - longPress -> single-finger long press is armed and will become a right click on release
     private touchMouseAction: PredictedTouchAction = "default"
     // The touch that is selected as the primary / controller of the action
     // Used in touch mode "relative" and "pointAndDrag"
@@ -396,6 +468,22 @@ export class StreamInput {
     private onTouchData(data: ArrayBuffer) {
         const buffer = new ByteBuffer(new Uint8Array(data))
         this.touchSupported = buffer.getBool()
+    }
+    getLocalCursorState(): LocalCursorState {
+        if (
+            (this.config.touchMode != "localCursor" && this.config.mouseMode != "localCursor") ||
+            !this.localCursorPosition ||
+            this.streamerSize[0] <= 0 ||
+            this.streamerSize[1] <= 0
+        ) {
+            return { visible: false, x: 0, y: 0 }
+        }
+
+        return {
+            visible: true,
+            x: this.localCursorPosition[0] / this.streamerSize[0],
+            y: this.localCursorPosition[1] / this.streamerSize[1],
+        }
     }
 
     private updateTouchTracker(touch: Touch) {
@@ -429,6 +517,23 @@ export class StreamInput {
             return Math.hypot(touch.x - oldTouch.originX, touch.y - oldTouch.originY)
         }
     }
+    private shouldStartTwoTouchScroll(activeTouch?: Touch): boolean {
+        if (this.touchTracker.size != 2) {
+            return false
+        }
+
+        for (const [id, trackedTouch] of this.touchTracker.entries()) {
+            const touchForDistance = activeTouch && activeTouch.identifier == id
+                ? activeTouch
+                : trackedTouch
+
+            if (this.calcTouchOriginDistance(touchForDistance, trackedTouch) > TWO_TOUCH_SCROLL_TRIGGER_DISTANCE) {
+                return true
+            }
+        }
+
+        return false
+    }
 
     onTouchStart(event: TouchEvent, rect: DOMRect) {
         for (const touch of event.changedTouches) {
@@ -439,19 +544,23 @@ export class StreamInput {
             for (const touch of event.changedTouches) {
                 this.sendTouch(0, touch, rect)
             }
-        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "pointAndDrag") {
+        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor" || this.config.touchMode == "pointAndDrag") {
             // Set primary touch if it doesn't exists currently
             for (const touch of event.changedTouches) {
                 if (this.primaryTouch == null) {
                     this.primaryTouch = touch.identifier
                     this.touchMouseAction = "default"
+
+                    if (this.config.touchMode == "localCursor") {
+                        this.initializeLocalCursor(rect, touch.clientX, touch.clientY)
+                    }
                 }
             }
 
             const primaryTouch = this.primaryTouch != null && this.touchTracker.get(this.primaryTouch)
 
             // Detect dragging in mouse relative
-            if (this.config.touchMode == "mouseRelative" && primaryTouch && this.nextTouchDoubleTap) {
+            if ((this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor") && primaryTouch && this.nextTouchDoubleTap) {
                 if (primaryTouch.mouseClicked == null) {
                     this.sendMouseButton(true, StreamMouseButton.LEFT)
                     primaryTouch.mouseClicked = StreamMouseButton.LEFT
@@ -463,50 +572,36 @@ export class StreamInput {
             }
 
             // Detect scrolling
-            if (this.primaryTouch != null && this.touchTracker.size == 2) {
-                if (primaryTouch && !primaryTouch.mouseMoved && primaryTouch.mouseClicked == null) {
-                    this.touchMouseAction = "scroll"
-
-                    // only on point and drag: set the pointer in the middle of the two touches
-                    if (this.config.touchMode == "pointAndDrag") {
-                        let middleX = 0;
-                        let middleY = 0;
-                        for (const touch of this.touchTracker.values()) {
-                            middleX += touch.x;
-                            middleY += touch.y;
-                        }
-                        // Tracker size = 2 so there will only be 2 elements
-                        middleX /= 2;
-                        middleY /= 2;
-
-                        primaryTouch.mouseMoved = true
-                        this.sendMousePositionClientCoordinates(middleX, middleY, rect, true)
-                    }
-                }
-            }
-            // Detect on screen keyboard
-            else if (this.touchTracker.size == 3) {
+            if (this.touchTracker.size == 3) {
                 this.touchMouseAction = "screenKeyboard"
             }
         }
     }
 
     onTouchUpdate(rect: DOMRect) {
-        if (this.config.touchMode == "pointAndDrag") {
-            if (this.primaryTouch == null) {
-                return
-            }
-            const touch = this.touchTracker.get(this.primaryTouch)
-            if (!touch) {
-                return
-            }
+        if (this.primaryTouch == null) {
+            return
+        }
+        const touch = this.touchTracker.get(this.primaryTouch)
+        if (!touch) {
+            return
+        }
 
-            const time = this.calcTouchTime(touch)
+        const time = this.calcTouchTime(touch)
+        if (this.config.touchMode == "pointAndDrag") {
             if (this.touchMouseAction == "default" && !touch.mouseMoved && time >= TOUCH_AS_CLICK_MIN_TIME_MS) {
                 this.sendMousePositionClientCoordinates(touch.originX, touch.originY, rect, true)
 
                 touch.mouseMoved = true
             }
+        } else if ((this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor") &&
+            this.touchTracker.size == 1 &&
+            this.touchMouseAction == "default" &&
+            !touch.mouseMoved &&
+            touch.mouseClicked == null &&
+            time >= TOUCH_AS_CLICK_MAX_TIME_MS) {
+            this.touchMouseAction = "longPress"
+            this.nextTouchDoubleTap = false
         }
     }
 
@@ -515,7 +610,7 @@ export class StreamInput {
             for (const touch of event.changedTouches) {
                 this.sendTouch(1, touch, rect)
             }
-        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "pointAndDrag") {
+        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor" || this.config.touchMode == "pointAndDrag") {
             for (const touch of event.changedTouches) {
                 if (this.primaryTouch != touch.identifier) {
                     continue
@@ -529,11 +624,47 @@ export class StreamInput {
                 const movementY = touch.clientY - oldTouch.y;
 
                 if (this.touchMouseAction == "default") {
+                    if (this.shouldStartTwoTouchScroll(touch)) {
+                        this.touchMouseAction = "scroll"
+
+                        if (oldTouch.mouseClicked != null) {
+                            this.sendMouseButton(false, oldTouch.mouseClicked)
+                            oldTouch.mouseClicked = null
+                        }
+
+                        if (this.config.touchMode == "pointAndDrag" && this.primaryTouch != null) {
+                            const primaryTouch = this.touchTracker.get(this.primaryTouch)
+                            if (primaryTouch) {
+                                let middleX = 0;
+                                let middleY = 0;
+                                for (const trackedTouch of this.touchTracker.values()) {
+                                    middleX += trackedTouch.x
+                                    middleY += trackedTouch.y
+                                }
+                                middleX += touch.clientX - oldTouch.x
+                                middleY += touch.clientY - oldTouch.y
+                                middleX /= 2
+                                middleY /= 2
+
+                                primaryTouch.mouseMoved = true
+                                this.sendMousePositionClientCoordinates(middleX, middleY, rect, true)
+                            }
+                        }
+                    }
+                }
+
+                if (this.touchMouseAction == "default") {
                     const touchOriginDistance = this.calcTouchOriginDistance(touch, oldTouch)
 
                     // Normal mouse relative movement
                     if (this.config.touchMode == "mouseRelative") {
                         this.sendMouseMoveClientCoordinates(movementX, movementY, rect)
+
+                        if (touchOriginDistance > TOUCH_AS_CLICK_MAX_DISTANCE) {
+                            oldTouch.mouseMoved = true
+                        }
+                    } else if (this.config.touchMode == "localCursor") {
+                        this.moveLocalCursorClientCoordinates(movementX, movementY, rect, false)
 
                         if (touchOriginDistance > TOUCH_AS_CLICK_MAX_DISTANCE) {
                             oldTouch.mouseMoved = true
@@ -554,9 +685,26 @@ export class StreamInput {
 
                         this.touchMouseAction = "drag"
                     }
+                } else if (this.touchMouseAction == "longPress") {
+                    if (movementX != 0 || movementY != 0) {
+                        this.touchMouseAction = "drag"
+                        oldTouch.mouseMoved = true
+                        oldTouch.mouseClicked = StreamMouseButton.LEFT
+                        this.sendMouseButton(true, StreamMouseButton.LEFT)
+
+                        if (this.config.touchMode == "localCursor") {
+                            this.moveLocalCursorClientCoordinates(movementX, movementY, rect, false)
+                        } else {
+                            this.sendMouseMoveClientCoordinates(movementX, movementY, rect)
+                        }
+                    }
                 } else if (this.touchMouseAction == "drag") {
                     // Do the dragging
-                    this.sendMouseMoveClientCoordinates(movementX, movementY, rect)
+                    if (this.config.touchMode == "localCursor") {
+                        this.moveLocalCursorClientCoordinates(movementX, movementY, rect, false)
+                    } else {
+                        this.sendMouseMoveClientCoordinates(movementX, movementY, rect)
+                    }
                 } else if (this.touchMouseAction == "scroll") {
                     // inverting horizontal scroll
                     if (this.config.mouseScrollMode == "highres") {
@@ -593,8 +741,35 @@ export class StreamInput {
             for (const touch of event.changedTouches) {
                 this.sendTouch(2, touch, rect)
             }
-        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "pointAndDrag") {
+        } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor" || this.config.touchMode == "pointAndDrag") {
+            const endingScroll = this.touchMouseAction == "scroll" && this.touchTracker.size == 2
+            const endingTwoTouchTap = this.touchMouseAction == "default" && this.touchTracker.size == 2
+            let endingTwoTouchTapShouldRightClick = false
+            let handledTwoTouchTap = false
+
+            if (endingTwoTouchTap) {
+                endingTwoTouchTapShouldRightClick = true
+                for (const trackedTouch of this.touchTracker.values()) {
+                    if (this.calcTouchTime(trackedTouch) > TOUCH_AS_CLICK_MAX_TIME_MS) {
+                        endingTwoTouchTapShouldRightClick = false
+                        break
+                    }
+                }
+            }
+
             for (const touch of event.changedTouches) {
+                if (endingTwoTouchTap) {
+                    if (!handledTwoTouchTap && endingTwoTouchTapShouldRightClick) {
+                        this.sendMouseButton(true, StreamMouseButton.RIGHT)
+                        this.sendMouseButton(false, StreamMouseButton.RIGHT)
+                    }
+                    handledTwoTouchTap = true
+
+                    this.primaryTouch = null
+                    this.nextTouchDoubleTap = false
+                    continue
+                }
+
                 if (this.primaryTouch != touch.identifier) {
                     continue
                 }
@@ -602,6 +777,26 @@ export class StreamInput {
                 this.primaryTouch = null
 
                 if (oldTouch) {
+                    if (endingScroll) {
+                        continue
+                    }
+
+                    if (this.touchMouseAction == "longPress") {
+                        this.sendMouseButton(true, StreamMouseButton.RIGHT)
+                        this.sendMouseButton(false, StreamMouseButton.RIGHT)
+                        this.nextTouchDoubleTap = false
+                        continue
+                    }
+
+                    if (this.touchMouseAction == "drag") {
+                        if (oldTouch.mouseClicked != null) {
+                            this.sendMouseButton(false, oldTouch.mouseClicked)
+                            oldTouch.mouseClicked = null
+                        }
+                        this.nextTouchDoubleTap = false
+                        continue
+                    }
+
                     const touchTime = this.calcTouchTime(oldTouch)
                     const touchOriginDistance = this.calcTouchOriginDistance(touch, oldTouch)
 
@@ -664,6 +859,10 @@ export class StreamInput {
 
         for (const touch of event.changedTouches) {
             this.touchTracker.delete(touch.identifier)
+        }
+
+        if (this.touchMouseAction == "scroll" && this.touchTracker.size < 2) {
+            this.touchMouseAction = "default"
         }
     }
 

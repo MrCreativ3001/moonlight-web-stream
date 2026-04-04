@@ -385,7 +385,7 @@ input[type=number] {
 .modal-background {
     display: block;
     position: fixed;
-    z-index: 2;
+    z-index: 5000;
     left: 0;
     top: 0;
     width: 100vw;
@@ -399,6 +399,8 @@ input[type=number] {
 }
 
 .modal-content {
+    position: relative;
+    z-index: 5001;
     background: linear-gradient(135deg, rgba(0, 30, 50, 0.95) 0%, rgba(0, 15, 30, 0.95) 100%);
     backdrop-filter: blur(15px);
     margin: 10% auto;
@@ -1244,6 +1246,18 @@ canvas.video-stream {
 
     position: relative;
     z-index: 1;
+}
+
+.local-touch-cursor {
+    position: fixed;
+    width: 10px;
+    height: 15px;
+    pointer-events: none;
+    z-index: 3;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 18'%3E%3Cpath fill='%23fff' d='M0 0L0 13L3.8 9.8L6.1 17L8.5 15.9L6.2 8.9L11 8.9Z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
 }
 
 .sidebar-stream {

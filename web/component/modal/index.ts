@@ -1,5 +1,6 @@
 import { Component } from "../index.js"
 import { showErrorPopup } from "../error.js"
+import { getCurrentLanguage, getTranslations } from "../../i18n.js"
 import { FormModal } from "./form.js"
 
 export interface Modal<Output> extends Component {
@@ -21,12 +22,13 @@ export function getModalBackground(): HTMLElement | null {
 }
 
 export async function showModal<Output>(modal: Modal<Output> | null): Promise<Output | null> {
+    const i = getTranslations(getCurrentLanguage()).common
     if (modalParent == null) {
-        showErrorPopup("cannot find modal parent")
+        showErrorPopup(i.missingModalParent)
         return null
     }
     if (modalBackground == null) {
-        showErrorPopup("the modal overlay cannot be found")
+        showErrorPopup(i.missingModalOverlay)
     }
 
     if (modalAbort != null) {
@@ -53,8 +55,10 @@ export async function showModal<Output>(modal: Modal<Output> | null): Promise<Ou
     const output = await modal.onFinish(abortController.signal)
 
     modalBackground?.classList.add("modal-disabled")
-    modalAbort.abort()
-    modalAbort = null
+    abortController.abort()
+    if (modalAbort === abortController) {
+        modalAbort = null
+    }
 
     return output
 }
@@ -123,9 +127,10 @@ class MessageModal implements Component, Modal<void> {
     private okButton: HTMLButtonElement = document.createElement("button")
 
     constructor(message: string, init?: MessageInit) {
+        const i = getTranslations(getCurrentLanguage()).modal
         this.textElement.innerText = message
 
-        this.okButton.innerText = "Ok"
+        this.okButton.innerText = i.ok
 
         this.signal = init?.signal
     }

@@ -15,17 +15,24 @@ import { Role, RoleEventListener } from "./component/roles/index.js";
 import { RoleList } from "./component/roles/list.js";
 import { DetailedRolePage } from "./component/roles/detailed_page.js";
 import { AddRoleModal } from "./component/roles/add_modal.js";
+import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
+
+let I = getTranslations(getCurrentLanguage())
 
 async function startApp() {
     setTouchContextMenuEnabled(true)
 
     const api = await getApi()
 
+    const bootstrapRole = await apiGetRole(api, { id: null })
+    adoptRoleDefaultLanguage(bootstrapRole.role.default_settings)
+    I = getTranslations(getCurrentLanguage())
+
     checkPermissions(api)
 
     const rootElement = document.getElementById("root")
     if (rootElement == null) {
-        showErrorPopup("couldn't find root element", true)
+        showErrorPopup(I.admin.rootNotFound, true)
         return;
     }
 
@@ -61,7 +68,7 @@ async function checkPermissions(api: Api) {
     const user = await apiGetUser(api)
 
     if (user.role != "Admin") {
-        await showMessage("You are not authorized to view this page!")
+        await showMessage(I.admin.unauthorized)
 
         window.location.href = buildUrl("/")
     }
@@ -148,14 +155,14 @@ class AdminApp implements Component {
         this.root.appendChild(this.tabs)
 
         // Users tab
-        this.userTabButton.innerText = "Users"
+        this.userTabButton.innerText = I.admin.users
         this.userTabButton.addEventListener("click", () => {
             this.setAppState({ tab: "users", user_id: null })
         })
         this.tabs.appendChild(this.userTabButton)
 
         // Roles tab
-        this.rolesTabButton.innerText = "Roles"
+        this.rolesTabButton.innerText = I.admin.roles
         this.rolesTabButton.addEventListener("click", () => {
             this.setAppState({ tab: "roles", role_id: null })
         })
@@ -251,7 +258,7 @@ class UserPanel implements Component {
         this.userPanel.classList.add("user-panel")
         this.rootDiv.appendChild(this.userPanel)
 
-        this.addUserButton.innerText = "Add User"
+        this.addUserButton.innerText = I.admin.addUser
         this.addUserButton.addEventListener("click", async () => {
             const addUserModal = new AddUserModal(api)
 
@@ -266,7 +273,7 @@ class UserPanel implements Component {
                     // 409 = Conflict
                     if (e instanceof FetchError && e.getResponse()?.status == 409) {
                         // Name already exists
-                        await showMessage(`A user with the name "${userRequest.name}" already exists!`)
+                        await showMessage(I.admin.userExists(userRequest.name))
                     } else {
                         throw e
                     }
@@ -275,7 +282,7 @@ class UserPanel implements Component {
         })
         this.userPanel.appendChild(this.addUserButton)
 
-        this.userSearch.placeholder = "Search User"
+        this.userSearch.placeholder = I.admin.searchUser
         this.userSearch.type = "text"
         this.userSearch.addEventListener("input", this.onUserSearchChange.bind(this))
         this.userPanel.appendChild(this.userSearch)
@@ -364,7 +371,7 @@ class RolePanel implements Component {
         this.rolePanel.classList.add("role-panel")
         this.rootDiv.appendChild(this.rolePanel)
 
-        this.addRoleButton.innerText = "Add Role"
+        this.addRoleButton.innerText = I.admin.addRole
         this.addRoleButton.addEventListener("click", async () => {
             const addRoleModal = new AddRoleModal()
 
@@ -379,7 +386,7 @@ class RolePanel implements Component {
                     // 409 = Conflict
                     if (e instanceof FetchError && e.getResponse()?.status == 409) {
                         // Name already exists
-                        await showMessage(`A role with the name "${roleRequest.name}" already exists!`)
+                        await showMessage(I.admin.roleExists(roleRequest.name))
                     } else {
                         throw e
                     }
@@ -388,7 +395,7 @@ class RolePanel implements Component {
         })
         this.rolePanel.appendChild(this.addRoleButton)
 
-        this.roleSearch.placeholder = "Search Role"
+        this.roleSearch.placeholder = I.admin.searchRole
         this.roleSearch.type = "text"
         this.roleSearch.addEventListener("input", this.onRoleSearchChange.bind(this))
         this.rolePanel.appendChild(this.roleSearch)

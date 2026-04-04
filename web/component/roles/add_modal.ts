@@ -1,4 +1,5 @@
 import { PostRoleRequest, RoleType } from "../../api_bindings.js";
+import { getCurrentLanguage, getTranslations } from "../../i18n.js";
 import { InputComponent, SelectComponent } from "../input.js";
 import { FormModal } from "../modal/form.js";
 import { globalDefaultSettings, StreamSettingsComponent } from "../settings_menu.js";
@@ -21,12 +22,13 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
 
     constructor() {
         super()
+        const i = getTranslations(getCurrentLanguage()).admin
 
-        this.header.innerText = "Role"
+        this.header.innerText = i.role
         this.modalRoot.appendChild(this.header)
 
         // Name
-        this.name = new InputComponent("roleName", "text", "Name", {
+        this.name = new InputComponent("roleName", "text", i.name, {
             formRequired: true
         })
         this.name.mount(this.modalRoot)
@@ -36,13 +38,13 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
             { value: "User", name: "User" },
             { value: "Admin", name: "Admin" },
         ], {
-            displayName: "Type",
+            displayName: i.roleType,
             preSelectedOption: "User",
         })
         this.ty.mount(this.modalRoot)
 
         // Permissions
-        this.permissionsHeader.innerText = "Permissions"
+        this.permissionsHeader.innerText = i.permissions
         this.modalRoot.appendChild(this.permissionsHeader)
 
         this.permissions = new RolePermissionsMenu()
@@ -50,7 +52,7 @@ export class AddRoleModal extends FormModal<PostRoleRequest> {
         this.permissions.addChangeListener(this.onPermissionsChange.bind(this))
 
         // Default Settings
-        this.defaultSettingsHeader.innerText = "Default Settings"
+        this.defaultSettingsHeader.innerText = i.defaultSettings
         this.modalRoot.appendChild(this.defaultSettingsHeader)
 
         this.defaultSettings = new StreamSettingsComponent(this.permissions.getPermissions(), globalDefaultSettings())

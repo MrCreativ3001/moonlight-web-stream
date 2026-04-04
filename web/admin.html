@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="notranslate">
 
 <head>
     <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
     <title>Moonlight</title>
     <link rel="icon" href="resources/moonlight.svg" sizes="any" type="image/svg+xml">
 
@@ -10,6 +11,19 @@
     <script type="module" src="styles/index.js"></script>
 
     <script type="module" src="admin.js" defer></script>
+
+    <script>
+        try {
+            const raw = localStorage.getItem("mlSettings");
+            const parsed = raw ? JSON.parse(raw) : null;
+            const language = parsed && (parsed.language === "zh-CN" || parsed.language === "zh" || parsed.language === "zh_CN")
+                ? "zh-CN"
+                : "en";
+            document.documentElement.lang = language;
+            document.documentElement.translate = false;
+            document.documentElement.classList.add("notranslate");
+        } catch (_err) { }
+    </script>
 </head>
 
 <body>

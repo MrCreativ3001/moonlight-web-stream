@@ -1,4 +1,5 @@
 import { Component } from "../component/index.js"
+import { getCurrentLanguage, getTranslations } from "../i18n.js"
 import { showErrorPopup } from "./error.js"
 import { ListComponent } from "./list.js"
 
@@ -20,11 +21,12 @@ const contextMenuList = new ListComponent<ContextMenuElementComponent>([], {
 })
 
 export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {
+    const i = getTranslations(getCurrentLanguage()).common
     event.preventDefault()
     event.stopPropagation()
 
     if (contextMenuElement == null) {
-        showErrorPopup("cannot find the context menu element")
+        showErrorPopup(i.missingContextMenu)
         return;
     }
 
@@ -42,8 +44,9 @@ export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {
 }
 
 export function removeContextMenu() {
+    const i = getTranslations(getCurrentLanguage()).common
     if (contextMenuElement == null) {
-        showErrorPopup("cannot find the context menu element")
+        showErrorPopup(i.missingContextMenu)
         return;
     }
 

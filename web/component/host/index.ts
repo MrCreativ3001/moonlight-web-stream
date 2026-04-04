@@ -1,6 +1,7 @@
 import { DetailedHost, DetailedUser, UndetailedHost } from "../../api_bindings.js"
 import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp, apiGetUser, apiPatchHost } from "../../api.js"
 import { Component, ComponentEvent } from "../index.js"
+import { getCurrentLanguage, getTranslations } from "../../i18n.js"
 import { setContextMenu } from "../context_menu.js"
 import { showErrorPopup } from "../error.js"
 import { showMessage } from "../modal/index.js"
@@ -86,33 +87,34 @@ export class Host implements Component {
     }
 
     private onContextMenu(event: MouseEvent) {
+        const i = getTranslations(getCurrentLanguage()).host
         const elements = []
 
         if (this.cache?.server_state != null) {
             elements.push({
-                name: "Show Details",
+                name: i.showDetails,
                 callback: this.showDetails.bind(this),
             })
 
             elements.push({
-                name: "Open",
+                name: i.open,
                 callback: this.onClick.bind(this)
             })
         } else if (this.cache?.paired == "Paired") {
             elements.push({
-                name: "Send Wake Up Packet",
+                name: i.sendWakeUpPacket,
                 callback: this.wakeUp.bind(this)
             })
         }
 
         elements.push({
-            name: "Reload",
+            name: i.reload,
             callback: async () => this.forceFetch()
         })
 
         if (this.cache?.server_state != null && this.cache?.paired == "NotPaired") {
             elements.push({
-                name: "Pair",
+                name: i.pair,
                 callback: this.pair.bind(this)
             })
         }
@@ -121,13 +123,13 @@ export class Host implements Component {
         if (this.userCache?.role == "Admin") {
             if (this.cache?.owner == "Global") {
                 elements.push({
-                    name: "Make Private",
+                    name: i.makePrivate,
                     callback: this.makePrivate.bind(this),
                     classes: ["context-menu-element-red"]
                 })
             } else if (this.cache?.owner == "ThisUser") {
                 elements.push({
-                    name: "Make Global",
+                    name: i.makeGlobal,
                     callback: this.makeGlobal.bind(this),
                     classes: ["context-menu-element-red"]
                 })
@@ -136,7 +138,7 @@ export class Host implements Component {
 
         if (this.cache?.owner == "ThisUser" || this.userCache?.role == "Admin") {
             elements.push({
-                name: "Remove Host",
+                name: i.removeHost,
                 callback: this.remove.bind(this)
             })
         }
@@ -147,6 +149,7 @@ export class Host implements Component {
     }
 
     private async showDetails() {
+        const i = getTranslations(getCurrentLanguage()).host
         let host = this.cache;
         if (!host || !isDetailedHost(host)) {
             host = await apiGetHost(this.api, {
@@ -154,29 +157,12 @@ export class Host implements Component {
             })
         }
         if (!host || !isDetailedHost(host)) {
-            showErrorPopup(`failed to get details for host ${this.hostId}`)
+            showErrorPopup(i.failedToGetDetails(this.hostId))
             return;
         }
         this.updateCache(host, this.userCache)
 
-        await showMessage(
-            `Web Id: ${host.host_id}\n` +
-            `Name: ${host.name}\n` +
-            `Pair Status: ${host.paired}\n` +
-            `State: ${host.server_state}\n` +
-            `Address: ${host.address}\n` +
-            `Http Port: ${host.http_port}\n` +
-            `Https Port: ${host.https_port}\n` +
-            `External Port: ${host.external_port}\n` +
-            `Version: ${host.version}\n` +
-            `Gfe Version: ${host.gfe_version}\n` +
-            `Unique ID: ${host.unique_id}\n` +
-            `MAC: ${host.mac}\n` +
-            `Local IP: ${host.local_ip}\n` +
-            `Current Game: ${host.current_game}\n` +
-            `Max Luma Pixels Hevc: ${host.max_luma_pixels_hevc}\n` +
-            `Server Codec Mode Support: ${host.server_codec_mode_support}`
-        )
+        await showMessage(i.details(host))
     }
 
     addHostRemoveListener(listener: HostEventListener, options?: EventListenerOptions) {
@@ -226,18 +212,20 @@ export class Host implements Component {
         this.divElement.dispatchEvent(new ComponentEvent("ml-hostremove", this))
     }
     private async wakeUp() {
+        const i = getTranslations(getCurrentLanguage()).host
         await apiWakeUp(this.api, {
             host_id: this.getHostId()
         })
 
-        await showMessage("Sent Wake Up packet. It might take a moment for your pc to start.")
+        await showMessage(i.wakeUpSent)
     }
     private async pair() {
+        const i = getTranslations(getCurrentLanguage()).host
         if (this.cache?.paired == "Paired") {
             await this.forceFetch()
 
             if (this.cache?.paired == "Paired") {
-                showMessage("This host is already paired!")
+                showMessage(i.alreadyPaired)
                 return;
             }
         }
@@ -251,7 +239,7 @@ export class Host implements Component {
         }
 
         const messageAbort = new AbortController()
-        showMessage(`Please pair your host ${this.getCache()?.name} with this pin:\nPin: ${responseStream.response.Pin}`, { signal: messageAbort.signal })
+        showMessage(i.pairPrompt(this.getCache()?.name ?? "", responseStream.response.Pin), { signal: messageAbort.signal })
 
         const resultResponse = await responseStream.next()
         messageAbort.abort()
@@ -274,8 +262,9 @@ export class Host implements Component {
     }
 
     updateCache(host: UndetailedHost | DetailedHost, user: DetailedUser | null) {
+        const i = getTranslations(getCurrentLanguage()).host
         if (this.getHostId() != host.host_id) {
-            showErrorPopup(`tried to overwrite host ${this.getHostId()} with data from ${host.host_id}`)
+            showErrorPopup(i.overwriteMismatch(this.getHostId(), host.host_id))
             return
         }
 

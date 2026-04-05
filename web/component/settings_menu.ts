@@ -1,6 +1,7 @@
 import { ControllerConfig } from "../stream/gamepad.js";
-import { MouseScrollMode } from "../stream/input.js";
+import { MouseMode, MouseScrollMode, TouchMode } from "../stream/input.js";
 import { PageStyle } from "../styles/index.js";
+import { getLanguageOptions, getTranslations, Language, normalizeLanguage } from "../i18n.js";
 import { Component, ComponentEvent } from "./index.js";
 import { InputComponent, SelectComponent } from "./input.js";
 import { SidebarEdge } from "./sidebar/index.js";
@@ -22,8 +23,13 @@ export type Settings = {
     playAudioLocal: boolean
     audioSampleQueueSize: number
     mouseScrollMode: MouseScrollMode
+    mouseMode: MouseMode
+    touchMode: TouchMode
+    localCursorSensitivity: number
     controllerConfig: ControllerConfig
     dataTransport: TransportType
+    language: Language
+    enterFullscreenOnStreamStart: boolean
     toggleFullscreenWithKeybind: boolean
     pageStyle: PageStyle
     hdr: boolean
@@ -46,7 +52,7 @@ function deepClone<T>(value: T): T {
     if (typeof structuredClone == "function") {
         return structuredClone(value)
     } else {
-        return JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
+        return JSON.parse(JSON.stringify(value))
     }
 }
 function deepMerge(target: any, source: any) {
@@ -127,6 +133,10 @@ function makeSettingsValid(permissions: StreamPermissions, settings: Settings) {
     if (!permissions.allow_transport_websockets && settings.dataTransport == "websocket") {
         settings.dataTransport = "auto"
     }
+
+    if (!Number.isFinite(settings.localCursorSensitivity) || settings.localCursorSensitivity <= 0) {
+        settings.localCursorSensitivity = globalDefaultSettings().localCursorSensitivity
+    }
 }
 
 export class StreamSettingsComponent implements Component {
@@ -159,6 +169,9 @@ export class StreamSettingsComponent implements Component {
 
     private mouseHeader: HTMLHeadingElement = document.createElement("h3")
     private mouseScrollMode: SelectComponent
+    private mouseMode: SelectComponent
+    private touchMode: SelectComponent
+    private localCursorSensitivity: InputComponent
 
     private controllerHeader: HTMLHeadingElement = document.createElement("h3")
     private controllerInvertAB: InputComponent
@@ -167,6 +180,8 @@ export class StreamSettingsComponent implements Component {
 
     private otherHeader: HTMLHeadingElement = document.createElement("h3")
     private dataTransport: SelectComponent
+    private language: SelectComponent
+    private enterFullscreenOnStreamStart: InputComponent
     private toggleFullscreenWithKeybind: InputComponent
 
     private pageStyle: SelectComponent
@@ -182,32 +197,36 @@ export class StreamSettingsComponent implements Component {
         makeSettingsValid(permissions, settings)
 
         this.permissions = permissions
+        const language = normalizeLanguage(settings?.language ?? defaultSettings_.language)
+        const translations = getTranslations(language)
+        const i = translations.settings
+        const streamI = translations.stream
 
         // Root div
         this.divElement.classList.add("settings")
 
         // Sidebar
-        this.sidebarHeader.innerText = "Sidebar"
+        this.sidebarHeader.innerText = i.sidebar
         this.divElement.appendChild(this.sidebarHeader)
 
         this.sidebarEdge = new SelectComponent("sidebarEdge", [
-            { value: "left", name: "Left" },
-            { value: "right", name: "Right" },
-            { value: "up", name: "Up" },
-            { value: "down", name: "Down" },
+            { value: "left", name: i.left },
+            { value: "right", name: i.right },
+            { value: "up", name: i.up },
+            { value: "down", name: i.down },
         ], {
-            displayName: "Sidebar Edge",
+            displayName: i.sidebarEdge,
             preSelectedOption: settings?.sidebarEdge ?? defaultSettings_.sidebarEdge,
         })
         this.sidebarEdge.addChangeListener(this.onSettingsChange.bind(this))
         this.sidebarEdge.mount(this.divElement)
 
         // Video
-        this.streamHeader.innerText = "Video"
+        this.streamHeader.innerText = i.video
         this.divElement.appendChild(this.streamHeader)
 
         // Bitrate
-        this.bitrate = new InputComponent("bitrate", "number", "Bitrate (Kbps)", {
+        this.bitrate = new InputComponent("bitrate", "number", i.bitrate, {
             defaultValue: defaultSettings_.bitrate.toString(),
             value: settings?.bitrate?.toString(),
             step: "100",
@@ -220,7 +239,7 @@ export class StreamSettingsComponent implements Component {
         this.bitrate.mount(this.divElement)
 
         // Fps
-        this.fps = new InputComponent("fps", "number", "Fps", {
+        this.fps = new InputComponent("fps", "number", i.fps, {
             defaultValue: defaultSettings_.fps.toString(),
             value: settings?.fps?.toString(),
             step: "100"
@@ -235,25 +254,25 @@ export class StreamSettingsComponent implements Component {
                 { value: "1080p", name: "1080p" },
                 { value: "1440p", name: "1440p" },
                 { value: "4k", name: "4k" },
-                { value: "native", name: "native" },
-                { value: "custom", name: "custom" }
+                { value: "native", name: i.native },
+                { value: "custom", name: i.custom }
             ],
             {
-                displayName: "Video Size",
+                displayName: i.videoSize,
                 preSelectedOption: settings?.videoSize || defaultSettings_.videoSize
             }
         )
         this.videoSize.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSize.mount(this.divElement)
 
-        this.videoSizeWidth = new InputComponent("videoSizeWidth", "number", "Video Width", {
+        this.videoSizeWidth = new InputComponent("videoSizeWidth", "number", i.videoWidth, {
             defaultValue: defaultSettings_.videoSizeCustom.width.toString(),
             value: settings?.videoSizeCustom?.width.toString()
         })
         this.videoSizeWidth.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeWidth.mount(this.divElement)
 
-        this.videoSizeHeight = new InputComponent("videoSizeHeight", "number", "Video Height", {
+        this.videoSizeHeight = new InputComponent("videoSizeHeight", "number", i.videoHeight, {
             defaultValue: defaultSettings_.videoSizeCustom.height.toString(),
             value: settings?.videoSizeCustom?.height.toString()
         })
@@ -261,7 +280,7 @@ export class StreamSettingsComponent implements Component {
         this.videoSizeHeight.mount(this.divElement)
 
         // Video Sample Queue Size
-        this.videoSampleQueueSize = new InputComponent("videoFrameQueueSize", "number", "Video Frame Queue Size", {
+        this.videoSampleQueueSize = new InputComponent("videoFrameQueueSize", "number", i.videoFrameQueueSize, {
             defaultValue: defaultSettings_.videoFrameQueueSize.toString(),
             value: settings?.videoFrameQueueSize?.toString()
         })
@@ -270,7 +289,7 @@ export class StreamSettingsComponent implements Component {
 
         // Codec
         const allowedVideoCodecs = [
-            { value: "auto", name: "Auto (Experimental)" },
+            { value: "auto", name: i.autoExperimental },
         ]
         if (this.permissions.allow_codec_h264) {
             allowedVideoCodecs.push(
@@ -284,26 +303,26 @@ export class StreamSettingsComponent implements Component {
         }
         if (this.permissions.allow_codec_av1) {
             allowedVideoCodecs.push(
-                { value: "av1", name: "AV1 (Experimental)" }
+                { value: "av1", name: i.av1Experimental }
             )
         }
 
         this.videoCodec = new SelectComponent("videoCodec", allowedVideoCodecs, {
-            displayName: "Video Codec",
+            displayName: i.videoCodec,
             preSelectedOption: settings?.videoCodec ?? defaultSettings_.videoCodec
         })
         this.videoCodec.addChangeListener(this.onSettingsChange.bind(this))
         this.videoCodec.mount(this.divElement)
 
         // Force Video Element renderer
-        this.forceVideoElementRenderer = new InputComponent("forceVideoElementRenderer", "checkbox", "Force Video Element Renderer (WebRTC only)", {
+        this.forceVideoElementRenderer = new InputComponent("forceVideoElementRenderer", "checkbox", i.forceVideoElementRenderer, {
             checked: settings?.forceVideoElementRenderer ?? defaultSettings_.forceVideoElementRenderer
         })
         this.forceVideoElementRenderer.addChangeListener(this.onSettingsChange.bind(this))
         this.forceVideoElementRenderer.mount(this.divElement)
 
         // Use Canvas Renderer
-        this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", "Use Canvas Renderer", {
+        this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", i.useCanvasRenderer, {
             defaultValue: defaultSettings_.canvasRenderer.toString(),
             checked: settings === null || settings === void 0 ? void 0 : settings.canvasRenderer
         })
@@ -311,14 +330,14 @@ export class StreamSettingsComponent implements Component {
         this.canvasRenderer.mount(this.divElement)
 
         // Canvas VSync (Canvas only: sync draw to display refresh to reduce tearing; off = lower latency)
-        this.canvasVsync = new InputComponent("canvasVsync", "checkbox", "Canvas VSync (reduce tearing)", {
+        this.canvasVsync = new InputComponent("canvasVsync", "checkbox", i.canvasVsync, {
             checked: settings?.canvasVsync ?? defaultSettings_.canvasVsync
         })
         this.canvasVsync.addChangeListener(this.onSettingsChange.bind(this))
         this.canvasVsync.mount(this.divElement)
 
         // HDR
-        this.hdr = new InputComponent("hdr", "checkbox", "Enable HDR", {
+        this.hdr = new InputComponent("hdr", "checkbox", i.enableHdr, {
             checked: settings?.hdr ?? defaultSettings_.hdr
         })
         this.hdr.addChangeListener(this.onSettingsChange.bind(this))
@@ -330,17 +349,17 @@ export class StreamSettingsComponent implements Component {
         }
 
         // Audio local
-        this.audioHeader.innerText = "Audio"
+        this.audioHeader.innerText = i.audio
         this.divElement.appendChild(this.audioHeader)
 
-        this.playAudioLocal = new InputComponent("playAudioLocal", "checkbox", "Play Audio Local", {
+        this.playAudioLocal = new InputComponent("playAudioLocal", "checkbox", i.playAudioLocal, {
             checked: settings?.playAudioLocal
         })
         this.playAudioLocal.addChangeListener(this.onSettingsChange.bind(this))
         this.playAudioLocal.mount(this.divElement)
 
         // Audio Sample Queue Size
-        this.audioSampleQueueSize = new InputComponent("audioSampleQueueSize", "number", "Audio Sample Queue Size", {
+        this.audioSampleQueueSize = new InputComponent("audioSampleQueueSize", "number", i.audioSampleQueueSize, {
             defaultValue: defaultSettings_.audioSampleQueueSize.toString(),
             value: settings?.audioSampleQueueSize?.toString()
         })
@@ -348,44 +367,86 @@ export class StreamSettingsComponent implements Component {
         this.audioSampleQueueSize.mount(this.divElement)
 
         // Mouse
-        this.mouseHeader.innerText = "Mouse"
+        this.mouseHeader.innerText = i.mouse
         this.divElement.appendChild(this.mouseHeader)
 
         this.mouseScrollMode = new SelectComponent("mouseScrollMode",
             [
-                { value: "highres", name: "High Res" },
-                { value: "normal", name: "Normal" }
+                { value: "highres", name: i.highRes },
+                { value: "normal", name: i.normal }
             ],
             {
-                displayName: "Scroll Mode",
+                displayName: i.scrollMode,
                 preSelectedOption: settings?.mouseScrollMode || defaultSettings_.mouseScrollMode
             }
         )
         this.mouseScrollMode.addChangeListener(this.onSettingsChange.bind(this))
         this.mouseScrollMode.mount(this.divElement)
 
+        this.mouseMode = new SelectComponent("mouseMode",
+            [
+                { value: "relative", name: streamI.relative },
+                { value: "follow", name: streamI.follow },
+                { value: "localCursor", name: streamI.localCursor },
+                { value: "pointAndDrag", name: streamI.pointAndDrag }
+            ],
+            {
+                displayName: i.startupMouseMode,
+                preSelectedOption: settings?.mouseMode ?? defaultSettings_.mouseMode
+            }
+        )
+        this.mouseMode.addChangeListener(this.onSettingsChange.bind(this))
+        this.mouseMode.mount(this.divElement)
+
+        this.touchMode = new SelectComponent("touchMode",
+            [
+                { value: "touch", name: streamI.touch },
+                { value: "mouseRelative", name: streamI.relative },
+                { value: "localCursor", name: streamI.localCursor },
+                { value: "pointAndDrag", name: streamI.pointAndDrag }
+            ],
+            {
+                displayName: i.startupTouchMode,
+                preSelectedOption: settings?.touchMode ?? defaultSettings_.touchMode
+            }
+        )
+        this.touchMode.addChangeListener(this.onSettingsChange.bind(this))
+        this.touchMode.mount(this.divElement)
+
+        this.localCursorSensitivity = new InputComponent("localCursorSensitivity", "number", i.localCursorSensitivity, {
+            defaultValue: defaultSettings_.localCursorSensitivity.toString(),
+            value: settings?.localCursorSensitivity?.toString(),
+            step: "0.1",
+            numberSlider: {
+                range_min: 0.1,
+                range_max: 3
+            }
+        })
+        this.localCursorSensitivity.addChangeListener(this.onSettingsChange.bind(this))
+        this.localCursorSensitivity.mount(this.divElement)
+
         // Controller
         if (window.isSecureContext) {
-            this.controllerHeader.innerText = "Controller"
+            this.controllerHeader.innerText = i.controller
         } else {
-            this.controllerHeader.innerText = "Controller (Disabled: Secure Context Required)"
+            this.controllerHeader.innerText = i.controllerDisabled
         }
         this.divElement.appendChild(this.controllerHeader)
 
-        this.controllerInvertAB = new InputComponent("controllerInvertAB", "checkbox", "Invert A and B", {
+        this.controllerInvertAB = new InputComponent("controllerInvertAB", "checkbox", i.invertAB, {
             checked: settings?.controllerConfig?.invertAB
         })
         this.controllerInvertAB.addChangeListener(this.onSettingsChange.bind(this))
         this.controllerInvertAB.mount(this.divElement)
 
-        this.controllerInvertXY = new InputComponent("controllerInvertXY", "checkbox", "Invert X and Y", {
+        this.controllerInvertXY = new InputComponent("controllerInvertXY", "checkbox", i.invertXY, {
             checked: settings?.controllerConfig?.invertXY
         })
         this.controllerInvertXY.addChangeListener(this.onSettingsChange.bind(this))
         this.controllerInvertXY.mount(this.divElement)
 
         // Controller Send Interval
-        this.controllerSendIntervalOverride = new InputComponent("controllerSendIntervalOverride", "number", "Override Controller State Send Interval", {
+        this.controllerSendIntervalOverride = new InputComponent("controllerSendIntervalOverride", "number", i.overrideControllerInterval, {
             hasEnableCheckbox: true,
             defaultValue: "20",
             value: settings?.controllerConfig?.sendIntervalOverride?.toString(),
@@ -404,12 +465,12 @@ export class StreamSettingsComponent implements Component {
         }
 
         // Other
-        this.otherHeader.innerText = "Other"
+        this.otherHeader.innerText = i.other
         this.divElement.appendChild(this.otherHeader)
 
         // Data Transport
         const allowedDataTransport = [
-            { value: "auto", name: "Auto" },
+            { value: "auto", name: i.auto },
         ]
         if (this.permissions.allow_transport_webrtc) {
             allowedDataTransport.push(
@@ -418,19 +479,32 @@ export class StreamSettingsComponent implements Component {
         }
         if (this.permissions.allow_transport_websockets) {
             allowedDataTransport.push(
-                { value: "websocket", name: "Web Socket" },
+                { value: "websocket", name: i.webSocket },
             )
         }
 
+        this.language = new SelectComponent("language", getLanguageOptions(), {
+            displayName: i.language,
+            preSelectedOption: language
+        })
+        this.language.addChangeListener(this.onSettingsChange.bind(this))
+        this.language.mount(this.divElement)
+
         this.dataTransport = new SelectComponent("transport", allowedDataTransport, {
-            displayName: "Data Transport",
+            displayName: i.dataTransport,
             preSelectedOption: settings?.dataTransport ?? defaultSettings_.dataTransport
         })
         this.dataTransport.addChangeListener(this.onSettingsChange.bind(this))
         this.dataTransport.mount(this.divElement)
 
+        this.enterFullscreenOnStreamStart = new InputComponent("enterFullscreenOnStreamStart", "checkbox", i.enterFullscreenOnStreamStart, {
+            checked: settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart
+        })
+        this.enterFullscreenOnStreamStart.addChangeListener(this.onSettingsChange.bind(this))
+        this.enterFullscreenOnStreamStart.mount(this.divElement)
+
         // Fullscreen Keybind
-        this.toggleFullscreenWithKeybind = new InputComponent("toggleFullscreenWithKeybind", "checkbox", "Toggle Fullscreen and Mouse Lock with Ctrl + Shift + I", {
+        this.toggleFullscreenWithKeybind = new InputComponent("toggleFullscreenWithKeybind", "checkbox", i.toggleFullscreenWithKeybind, {
             checked: settings?.toggleFullscreenWithKeybind
         })
         this.toggleFullscreenWithKeybind.addChangeListener(this.onSettingsChange.bind(this))
@@ -441,14 +515,14 @@ export class StreamSettingsComponent implements Component {
             { value: "standard", name: "Standard" },
             { value: "moonlight", name: "Moonlight" },
         ], {
-            displayName: "Style",
+            displayName: i.style,
             preSelectedOption: settings?.pageStyle ?? defaultSettings_.pageStyle
         })
         this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
         this.pageStyle.mount(this.divElement)
 
         // Custom Select Element
-        this.useSelectElementPolyfill = new InputComponent("useSelectElementPolyfill", "checkbox", "Use Custom Dropdown Implementation", {
+        this.useSelectElementPolyfill = new InputComponent("useSelectElementPolyfill", "checkbox", i.useCustomDropdown, {
             checked: settings?.useSelectElementPolyfill ?? defaultSettings_.useSelectElementPolyfill
         })
         this.useSelectElementPolyfill.addChangeListener(this.onSettingsChange.bind(this))
@@ -497,6 +571,9 @@ export class StreamSettingsComponent implements Component {
         settings.audioSampleQueueSize = parseInt(this.audioSampleQueueSize.getValue())
 
         settings.mouseScrollMode = this.mouseScrollMode.getValue() as any
+        settings.mouseMode = this.mouseMode.getValue() as MouseMode
+        settings.touchMode = this.touchMode.getValue() as TouchMode
+        settings.localCursorSensitivity = parseFloat(this.localCursorSensitivity.getValue())
 
         settings.controllerConfig.invertAB = this.controllerInvertAB.isChecked()
         settings.controllerConfig.invertXY = this.controllerInvertXY.isChecked()
@@ -507,7 +584,9 @@ export class StreamSettingsComponent implements Component {
         }
 
         settings.dataTransport = this.dataTransport.getValue() as any
+        settings.language = this.language.getValue() as Language
 
+        settings.enterFullscreenOnStreamStart = this.enterFullscreenOnStreamStart.isChecked()
         settings.toggleFullscreenWithKeybind = this.toggleFullscreenWithKeybind.isChecked()
 
         settings.pageStyle = this.pageStyle.getValue() as any

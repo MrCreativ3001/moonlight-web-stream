@@ -1,6 +1,7 @@
 import { Component, ComponentEvent } from "../index.js";
 import { Api, apiGetAppImage, apiHostCancel } from "../../api.js";
 import { App } from "../../api_bindings.js";
+import { getCurrentLanguage, getTranslations } from "../../i18n.js";
 import { setContextMenu } from "../context_menu.js";
 import { showMessage } from "../modal/index.js";
 import { APP_NO_IMAGE } from "../../resources/index.js";
@@ -92,12 +93,13 @@ export class Game implements Component {
     }
 
     private async onClick(event: MouseEvent) {
+        const i = getTranslations(getCurrentLanguage()).game
         if (this.cache.activeApp != null) {
             const elements = []
 
             if (this.isActive()) {
                 elements.push({
-                    name: "Resume Session",
+                    name: i.resumeSession,
                     callback: async () => {
                         this.startStream()
 
@@ -108,11 +110,11 @@ export class Game implements Component {
             }
 
             elements.push({
-                name: "Stop Current Session",
+                name: i.stopCurrentSession,
                 callback: async () => {
                     const response = await apiHostCancel(this.api, { host_id: this.hostId })
                     if (!response.success) {
-                        await showMessage("Failed to close app!")
+                        await showMessage(i.failedToCloseApp)
                     }
 
                     const event = new ComponentEvent("ml-gamereload", this)
@@ -148,15 +150,16 @@ export class Game implements Component {
     }
 
     private onContextMenu(event: MouseEvent) {
+        const i = getTranslations(getCurrentLanguage()).game
         const elements = []
 
         elements.push({
-            name: "Show Details",
+            name: i.showDetails,
             callback: this.showDetails.bind(this),
         })
 
         elements.push({
-            name: "Open",
+            name: i.open,
             callback: async () => {
                 this.startStream()
 
@@ -172,12 +175,8 @@ export class Game implements Component {
 
     private async showDetails() {
         const app = this.cache
-
-        await showMessage(
-            `Title: ${app.title}\n` +
-            `Id: ${app.app_id}\n` +
-            `HDR Supported: ${app.is_hdr_supported}\n`
-        )
+        const i = getTranslations(getCurrentLanguage()).game
+        await showMessage(i.details(app))
     }
 
     private isActive(): boolean {

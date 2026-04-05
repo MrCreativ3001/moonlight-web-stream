@@ -1,5 +1,6 @@
 import { Api, apiGetRoles } from "../../api.js";
 import { PostUserRequest, UndetailedRole } from "../../api_bindings.js";
+import { getCurrentLanguage, getTranslations } from "../../i18n.js";
 import { showErrorPopup } from "../error.js";
 import { InputComponent, SelectComponent } from "../input.js";
 import { FormModal } from "../modal/form.js";
@@ -18,16 +19,17 @@ export class AddUserModal extends FormModal<PostUserRequest> {
 
     constructor(api: Api) {
         super()
+        const i = getTranslations(getCurrentLanguage()).admin
 
-        this.header.innerText = "User"
+        this.header.innerText = i.user
         this.modalRoot.appendChild(this.header)
 
-        this.name = new InputComponent("userName", "text", "Name", {
+        this.name = new InputComponent("userName", "text", i.name, {
             formRequired: true
         })
         this.name.mount(this.modalRoot)
 
-        this.defaultPassword = new InputComponent("userPassword", "text", "Default Password", {
+        this.defaultPassword = new InputComponent("userPassword", "text", i.defaultPassword, {
             formRequired: true
         })
         this.defaultPassword.mount(this.modalRoot)
@@ -41,7 +43,7 @@ export class AddUserModal extends FormModal<PostUserRequest> {
             this.role.mountBefore(this.modalRoot, this.clientUniqueId)
         })
 
-        this.clientUniqueId = new InputComponent("userClientUniqueId", "text", "Moonlight Client Id", {
+        this.clientUniqueId = new InputComponent("userClientUniqueId", "text", i.moonlightClientId, {
             formRequired: true,
             hasEnableCheckbox: true
         })
@@ -63,12 +65,13 @@ export class AddUserModal extends FormModal<PostUserRequest> {
         this.role.reset()
     }
     submit(): PostUserRequest | null {
+        const i = getTranslations(getCurrentLanguage()).admin
         const name = this.name.getValue()
         const password = this.defaultPassword.getValue()
         const role = this.role.getValue()
 
         if (!role) {
-            showErrorPopup("Please select a role!")
+            showErrorPopup(i.pleaseSelectRole)
             return null
         }
 

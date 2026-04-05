@@ -1,5 +1,6 @@
 import { Api, apiDeleteRole, apiGetRole, apiGetUsers } from "../../api.js";
 import { DetailedRole, UndetailedRole } from "../../api_bindings.js";
+import { getCurrentLanguage, getTranslations } from "../../i18n.js";
 import { setContextMenu } from "../context_menu.js";
 import { Component, ComponentEvent } from "../index.js";
 import { showMessage } from "../modal/index.js";
@@ -11,11 +12,12 @@ export function formatRoleName(role: UndetailedRole | DetailedRole): string {
 }
 
 export async function tryDeleteRole(api: Api, id: number): Promise<boolean> {
+    const i = getTranslations(getCurrentLanguage()).admin
     // Check if any user still has this role and show error if they do
     const usersResponse = await apiGetUsers(api)
     const usersWithRole = usersResponse.users.filter(user => user.role_id == id)
     if (usersWithRole.length > 0) {
-        await showMessage(`To remove this role all users that are currently assigned this role either need to be deleted or assigned another role.\nCurrently these users still have the role:\n${JSON.stringify(usersWithRole.map(user => user.name))}`)
+        await showMessage(i.roleDeleteBlocked(usersWithRole.map(user => user.name)))
         return false
     }
 
@@ -67,10 +69,11 @@ export class Role implements Component {
     }
 
     private onContextMenu(event: MouseEvent) {
+        const i = getTranslations(getCurrentLanguage()).admin
         setContextMenu(event, {
             elements: [
                 {
-                    name: "Delete",
+                    name: i.delete,
                     callback: this.onDelete.bind(this)
                 }
             ]

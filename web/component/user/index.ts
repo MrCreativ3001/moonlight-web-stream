@@ -1,5 +1,6 @@
 import { Api, apiDeleteUser, apiGetUser } from "../../api.js";
 import { DetailedUser } from "../../api_bindings.js";
+import { getCurrentLanguage, getTranslations } from "../../i18n.js";
 import { setContextMenu } from "../context_menu.js";
 import { Component, ComponentEvent } from "../index.js";
 
@@ -52,10 +53,11 @@ export class User implements Component {
     }
 
     private onContextMenu(event: MouseEvent) {
+        const i = getTranslations(getCurrentLanguage()).admin
         setContextMenu(event, {
             elements: [
                 {
-                    name: "Delete",
+                    name: i.delete,
                     callback: this.onDelete.bind(this)
                 }
             ]

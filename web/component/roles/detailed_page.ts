@@ -1,6 +1,7 @@
 import { Component, ComponentEvent } from "../index.js";
 import { Api, apiPatchRole } from "../../api.js";
 import { DetailedRole, PatchRoleRequest, RoleType } from "../../api_bindings.js";
+import { getCurrentLanguage, getTranslations } from "../../i18n.js";
 import { InputComponent, SelectComponent } from "../input.js";
 import { tryDeleteRole, RoleEventListener } from "./index.js";
 import { RolePermissionsMenu } from "./permissions.js";
@@ -34,17 +35,18 @@ export class DetailedRolePage implements Component {
     constructor(api: Api, role: DetailedRole) {
         this.api = api
         this.id = role.id
+        const i = getTranslations(getCurrentLanguage()).admin
 
         this.formRoot.classList.add("role-info")
 
         // Role stuff
-        this.idElement = new InputComponent("roleId", "number", "Role Id", {
+        this.idElement = new InputComponent("roleId", "number", i.roleId, {
             defaultValue: `${role.id}`
         })
         this.idElement.setEnabled(false)
         this.idElement.mount(this.formRoot)
 
-        this.name = new InputComponent("roleName", "text", "Role Name", {
+        this.name = new InputComponent("roleName", "text", i.roleName, {
             defaultValue: role.name,
         })
         this.name.mount(this.formRoot)
@@ -53,13 +55,13 @@ export class DetailedRolePage implements Component {
             { value: "User", name: "User" },
             { value: "Admin", name: "Admin" },
         ], {
-            displayName: "Type",
+            displayName: i.roleType,
             preSelectedOption: role.ty,
         })
         this.ty.mount(this.formRoot)
 
         // Permissions
-        this.permissionsHeader.innerText = "Permissions"
+        this.permissionsHeader.innerText = i.permissions
         this.formRoot.appendChild(this.permissionsHeader)
 
         this.permissions = new RolePermissionsMenu(role.permissions)
@@ -67,20 +69,20 @@ export class DetailedRolePage implements Component {
         this.permissions.addChangeListener(this.onPermissionsChange.bind(this))
 
         // Default Settings
-        this.defaultSettingsHeader.innerText = "Default Settings"
+        this.defaultSettingsHeader.innerText = i.defaultSettings
         this.formRoot.appendChild(this.defaultSettingsHeader)
 
         this.defaultSettings = new StreamSettingsComponent(role.permissions, role.default_settings)
         this.defaultSettings.mount(this.formRoot)
 
         // Apply / Delete
-        this.applyButton.innerText = "Apply"
+        this.applyButton.innerText = i.apply
         this.applyButton.type = "submit"
         this.formRoot.appendChild(this.applyButton)
 
         this.deleteButton.addEventListener("click", this.delete.bind(this))
         this.deleteButton.classList.add("role-info-delete")
-        this.deleteButton.innerText = "Delete"
+        this.deleteButton.innerText = i.delete
         this.deleteButton.type = "button"
         this.formRoot.appendChild(this.deleteButton)
 

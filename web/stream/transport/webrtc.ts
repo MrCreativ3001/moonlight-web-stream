@@ -24,6 +24,7 @@ export class WebRTCTransport implements Transport {
         }
 
         // Configure web rtc
+        // TODO: use this for signaling instead and extend the protocol so that the client also requests a control channel with name: "control", protocol:"moonlight-control-v1": https://www.ietf.org/archive/id/draft-ietf-wish-whep-02.html
         this.peer = new RTCPeerConnection(configuration)
         this.peer.addEventListener("error", this.onError.bind(this))
 

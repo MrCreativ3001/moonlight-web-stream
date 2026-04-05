@@ -1,5 +1,5 @@
 import { Api } from "../api.js"
-import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamPermissions, StreamServerMessage, TransportChannelId } from "../api_bindings.js"
+import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamPermissions, StreamServerMessage, StreamSettings, TransportChannelId } from "../api_bindings.js"
 import { showErrorPopup } from "../component/error.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
@@ -717,10 +717,8 @@ export class Stream implements Component {
         return true
     }
     private async startStream(videoCodecSupport: VideoCodecSupport): Promise<void> {
-        const settings: any = {
+        const settings: StreamSettings = {
             bitrate_kbps: this.settings.bitrate,
-            // Keep compatibility with older deployed backends that still deserialize the typoed field.
-            bitrate_kpbs: this.settings.bitrate,
             fps: this.settings.fps,
             width: this.streamerSize[0],
             height: this.streamerSize[1],

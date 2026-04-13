@@ -1,8 +1,11 @@
-export type Language = "en" | "zh-CN"
+export type Language = "en" | "zh-CN" | "fr"
 
 export function normalizeLanguage(language: unknown): Language {
     if (language === "zh" || language === "zh-CN" || language === "zh_CN") {
         return "zh-CN"
+    }
+    elif (language === "fr" || language === "fr-FR") {
+	return "fr-FR"
     }
     return "en"
 }
@@ -49,6 +52,7 @@ export function getLanguageOptions(): Array<{ value: Language, name: string }> {
     return [
         { value: "en", name: "English" },
         { value: "zh-CN", name: "中文" }
+        { value: "fr-FR", name: "Français" }
     ]
 }
 
@@ -246,6 +250,202 @@ export function getTranslations(language: Language) {
             }
         }
     }
+    if (language === "fr-FR") {
+        return {
+  	   index: {
+            appTitle: "Moonlight Web",
+            back: "Retour",
+            reload: "Recharger",
+            addHostUnreachable: (address: string) => `L'hôte "${address}" est injoignable`,
+            saveSettingsFailed: "Echec de l'enregistrement des paramètres",
+            rootNotFound: "Elément racine introuvalbe",
+        },
+        stream: {
+            missingHostOrApp: "Aucun hôte ou identifiant d'application trouvé",
+            fullscreenUnsupported: "Mode plein écran non supporté par votre navigateur !",
+            fullscreenEscapeHint: "Pour quitter le mode plein écran, vous devrez maintenir latouche Echap appuyée quelques secondes.",
+            pointerLockUnsupported: "Verrouillage du pointeur non supporté",
+            connecting: "Connexion",
+            showLogs: "Afficher les journaux",
+            hideLogs: "Cacher les journaux",
+            close: "Fermer",
+            autoFullscreenPrompt: "Basculer en mode plein écran ?",
+            connectionComplete: "Connexion établie",
+            serverMessage: (message: string) => `Serveur: ${message}`,
+            sendKeycode: "Envoiyer le code clé",
+            lockMouse: "Verrouillage de la souris",
+            keyboard: "Clavier",
+            fullscreen: "Plein écran",
+            stats: "Stats",
+            exit: "Quitter",
+            mouseMode: "Mode souris",
+            touchMode: "Mode tactile",
+            relative: "Relative",
+            follow: "Suivre",
+            pointAndDrag: "Pointer et glisser",
+            touch: "Tactiel",
+            localCursor: "Curseur local",
+            selectKeycode: "Selection du code clé",
+            rootNotFound: "Elément racine introuvable",
+        },
+        settings: {
+            sidebar: "Barre latérale",
+            sidebarEdge: "Bord de la barre latérale",
+            left: "Gauche",
+            right: "Droite",
+            up: "Haut",
+            down: "Bas",
+            video: "Vidéo",
+            bitrate: "Débit (Kbps)",
+            fps: "Ips",
+            videoSize: "Taille vidéo",
+            native: "native",
+            custom: "personnalisée",
+            videoWidth: "Largeur vidéo",
+            videoHeight: "Hauteur vidéo",
+            videoFrameQueueSize: "Taille file d'attente des imagesVideo Frame Queue Size",
+            videoCodec: "Codec vidéo",
+            autoExperimental: "Auto (expérimental)",
+            av1Experimental: "AV1 (expérimental)",
+            forceVideoElementRenderer: "Forcer le rendu Video Element (uniquement WebRTC)",
+            useCanvasRenderer: "Utiliser le rendu Canvas",
+            canvasVsync: "VSync Canvas (réduit le déchirement)",
+            enableHdr: "Enable HDR",
+            audio: "Audio",
+            playAudioLocal: "Play Audio Local",
+            audioSampleQueueSize: "Audio Sample Queue Size",
+            mouse: "Mouse",
+            scrollMode: "Scroll Mode",
+            startupMouseMode: "Mouse Mode On Stream Start",
+            startupTouchMode: "Touch Mode On Stream Start",
+            localCursorSensitivity: "Local Cursor Sensitivity",
+            highRes: "High Res",
+            normal: "Normal",
+            controller: "Controller",
+            controllerDisabled: "Controller (Disabled: Secure Context Required)",
+            invertAB: "Invert A and B",
+            invertXY: "Invert X and Y",
+            overrideControllerInterval: "Override Controller State Send Interval",
+            other: "Other",
+            language: "Language",
+            dataTransport: "Data Transport",
+            auto: "Auto",
+            webSocket: "Web Socket",
+            enterFullscreenOnStreamStart: "Prompt Fullscreen On Stream Start",
+            saveRoleDefaults: "Save As Role Defaults",
+            saveRoleDefaultsSuccess: "Saved current settings as role defaults",
+            saveRoleDefaultsFailed: "Couldn't save role default settings",
+            toggleFullscreenWithKeybind: "Toggle Fullscreen and Mouse Lock with Ctrl + Shift + I",
+            style: "Style",
+            useCustomDropdown: "Use Custom Dropdown Implementation",
+        },
+        addHost: {
+            header: "Host",
+            address: "Address",
+            port: "Port",
+        },
+        admin: {
+            rootNotFound: "couldn't find root element",
+            unauthorized: "You are not authorized to view this page!",
+            users: "Users",
+            roles: "Roles",
+            addUser: "Add User",
+            addRole: "Add Role",
+            searchUser: "Search User",
+            searchRole: "Search Role",
+            delete: "Delete",
+            apply: "Apply",
+            user: "User",
+            role: "Role",
+            name: "Name",
+            defaultPassword: "Default Password",
+            moonlightClientId: "Moonlight Client Id",
+            pleaseSelectRole: "Please select a role!",
+            roleExists: (name: string) => `A role with the name "${name}" already exists!`,
+            userExists: (name: string) => `A user with the name "${name}" already exists!`,
+            roleType: "Type",
+            permissions: "Permissions",
+            defaultSettings: "Default Settings",
+            userId: "User Id",
+            userName: "User Name",
+            password: "Password",
+            newPassword: "New Password",
+            roleId: "Role Id",
+            roleName: "Role Name",
+            allowAddHosts: "Allow adding Hosts",
+            maximumBitrate: "Maximum Bitrate (Kbps)",
+            allowH264: "Allow H264",
+            allowH265: "Allow H265",
+            allowAv1: "Allow Av1",
+            allowHdr: "Allow HDR",
+            allowWebrtc: "Allow WebRTC",
+            allowWebSockets: "Allow Web Sockets",
+            roleDeleteBlocked: (users: string[]) => `To remove this role all users that are currently assigned this role either need to be deleted or assigned another role.\nCurrently these users still have the role:\n${JSON.stringify(users)}`,
+        },
+        host: {
+            showDetails: "Show Details",
+            open: "Open",
+            sendWakeUpPacket: "Send Wake Up Packet",
+            reload: "Reload",
+            pair: "Pair",
+            makePrivate: "Make Private",
+            makeGlobal: "Make Global",
+            removeHost: "Remove Host",
+            failedToGetDetails: (id: number) => `failed to get details for host ${id}`,
+            wakeUpSent: "Sent Wake Up packet. It might take a moment for your pc to start.",
+            alreadyPaired: "This host is already paired!",
+            pairPrompt: (name: string, pin: string) => `Please pair your host ${name} with this pin:\nPin: ${pin}`,
+            overwriteMismatch: (currentId: number, incomingId: number) => `tried to overwrite host ${currentId} with data from ${incomingId}`,
+            details: (host: any) =>
+                `Web Id: ${host.host_id}\n` +
+                `Name: ${host.name}\n` +
+                `Pair Status: ${host.paired}\n` +
+                `State: ${host.server_state}\n` +
+                `Address: ${host.address}\n` +
+                `Http Port: ${host.http_port}\n` +
+                `Https Port: ${host.https_port}\n` +
+                `External Port: ${host.external_port}\n` +
+                `Version: ${host.version}\n` +
+                `Gfe Version: ${host.gfe_version}\n` +
+                `Unique ID: ${host.unique_id}\n` +
+                `MAC: ${host.mac}\n` +
+                `Local IP: ${host.local_ip}\n` +
+                `Current Game: ${host.current_game}\n` +
+                `Max Luma Pixels Hevc: ${host.max_luma_pixels_hevc}\n` +
+                `Server Codec Mode Support: ${host.server_codec_mode_support}`,
+        },
+        game: {
+            resumeSession: "Resume Session",
+            stopCurrentSession: "Stop Current Session",
+            failedToCloseApp: "Failed to close app!",
+            showDetails: "Show Details",
+            open: "Open",
+            details: (app: any) =>
+                `Title: ${app.title}\n` +
+                `Id: ${app.app_id}\n` +
+                `HDR Supported: ${app.is_hdr_supported}\n`,
+        },
+        modal: {
+            ok: "Ok",
+            cancel: "Cancel",
+            login: "Login",
+            username: "Username",
+            password: "Password",
+            passwordAsFile: "Password as File",
+        },
+        common: {
+            openFile: "Open File",
+            notSelected: "(Not Selected)",
+            missingContextMenu: "cannot find the context menu element",
+            missingModalParent: "cannot find modal parent",
+            missingModalOverlay: "the modal overlay cannot be found",
+            missingSidebar: "failed to get sidebar",
+        }
+    }
+            }
+        }
+    }
+
 
     return {
         index: {

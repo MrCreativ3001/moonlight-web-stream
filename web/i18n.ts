@@ -1,4 +1,4 @@
-export type Language = "en" | "zh-CN" | "fr"
+export type Language = "en" | "zh-CN" | "fr-FR"
 
 export function normalizeLanguage(language: unknown): Language {
     if (language === "zh" || language === "zh-CN" || language === "zh_CN") {

@@ -395,7 +395,6 @@ export function getTranslations(language: Language) {
             wakeUpSent: "Signal de réveil envoyé. Le PC peut prendre un peu de temps pour démarrer.",
             alreadyPaired: "Hôte déjà appairé !",
             pairPrompt: (name: string, pin: string) => `Veuillez appairer votre hôte ${name} avec ce NIP :\nNIP: ${pin}`,
-            overwriteMismatch: (currentId: number, incomingId: number) => `tried to overwrite host ${currentId} with data from ${incomingId}`,
             overwriteMismatch: (currentId: number, incomingId: number) => `tentative d'écrasement de l'hôte ${currentId} avec les données de ${incomingId}`,
             details: (host: any) =>
                 `Identifiant Web : ${host.host_id}\n` +

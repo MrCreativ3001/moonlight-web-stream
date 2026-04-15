@@ -1,8 +1,11 @@
-export type Language = "en" | "zh-CN"
+export type Language = "en" | "zh-CN" | "fr-FR"
 
 export function normalizeLanguage(language: unknown): Language {
     if (language === "zh" || language === "zh-CN" || language === "zh_CN") {
         return "zh-CN"
+    }
+    else if (language === "fr" || language === "fr-FR") {
+        return "fr-FR"
     }
     return "en"
 }
@@ -48,7 +51,8 @@ export function adoptRoleDefaultLanguage(roleDefaultSettings: { language?: unkno
 export function getLanguageOptions(): Array<{ value: Language, name: string }> {
     return [
         { value: "en", name: "English" },
-        { value: "zh-CN", name: "中文" }
+        { value: "zh-CN", name: "中文" },
+        { value: "fr-FR", name: "Français" }
     ]
 }
 
@@ -243,6 +247,199 @@ export function getTranslations(language: Language) {
                 missingModalParent: "找不到弹窗父节点",
                 missingModalOverlay: "找不到弹窗遮罩层",
                 missingSidebar: "获取侧边栏失败",
+            }
+        }
+    }
+    if (language === "fr-FR") {
+        return {
+            index: {
+                appTitle: "Moonlight Web",
+                back: "Retour",
+                reload: "Recharger",
+                addHostUnreachable: (address: string) => `L'hôte "${address}" est injoignable`,
+                saveSettingsFailed: "Echec de l'enregistrement des paramètres",
+                rootNotFound: "Elément racine introuvalbe",
+            },
+            stream: {
+                missingHostOrApp: "Aucun hôte ou identifiant d'application trouvé",
+                fullscreenUnsupported: "Mode plein écran non supporté par votre navigateur !",
+                fullscreenEscapeHint: "Pour quitter le mode plein écran, vous devrez maintenir la touche Echap appuyée quelques secondes.",
+                pointerLockUnsupported: "Verrouillage du pointeur non supporté",
+                connecting: "Connexion",
+                showLogs: "Afficher les journaux",
+                hideLogs: "Cacher les journaux",
+                close: "Fermer",
+                autoFullscreenPrompt: "Basculer en mode plein écran ?",
+                connectionComplete: "Connexion établie",
+                serverMessage: (message: string) => `Serveur: ${message}`,
+                sendKeycode: "Envoiyer le code clé",
+                lockMouse: "Verrouillage de la souris",
+                keyboard: "Clavier",
+                fullscreen: "Plein écran",
+                stats: "Stats",
+                exit: "Quitter",
+                mouseMode: "Mode souris",
+                touchMode: "Mode tactile",
+                relative: "Relative",
+                follow: "Suivre",
+                pointAndDrag: "Pointer et glisser",
+                touch: "Tactiel",
+                localCursor: "Curseur local",
+                selectKeycode: "Selection du code clé",
+                rootNotFound: "Elément racine introuvable",
+            },
+            settings: {
+                sidebar: "Barre latérale",
+                sidebarEdge: "Bord de la barre latérale",
+                left: "Gauche",
+                right: "Droite",
+                up: "Haut",
+                down: "Bas",
+                video: "Vidéo",
+                bitrate: "Débit (Kbps)",
+                fps: "Ips",
+                videoSize: "Taille vidéo",
+                native: "native",
+                custom: "personnalisée",
+                videoWidth: "Largeur vidéo",
+                videoHeight: "Hauteur vidéo",
+                videoFrameQueueSize: "Taille file d'attente vidéo",
+                videoCodec: "Codec vidéo",
+                autoExperimental: "Auto (expérimental)",
+                av1Experimental: "AV1 (expérimental)",
+                forceVideoElementRenderer: "Forcer le rendu Video Element (uniquement WebRTC)",
+                useCanvasRenderer: "Utiliser le rendu Canvas",
+                canvasVsync: "VSync Canvas (réduit le déchirement)",
+                enableHdr: "Activer HDR",
+                audio: "Audio",
+                playAudioLocal: "Jouer l'auudio localement",
+                audioSampleQueueSize: "Taille de la file d'attente audio",
+                mouse: "Souris",
+                scrollMode: "Mode de défilement",
+                startupMouseMode: "Mode de la souris au démarrage",
+                startupTouchMode: "Mode tactile au démarrage",
+                localCursorSensitivity: "Sensibilité du curseur local",
+                highRes: "Haute résolution",
+                normal: "Normal",
+                controller: "Contrôleur",
+                controllerDisabled: "Contrôleur (Désactivé: Context sécurisé requis)",
+                invertAB: "Inverser A et B",
+                invertXY: "Inverser X et Y",
+                overrideControllerInterval: "Outrepasser l'intervalle d'envoi de l'état du contrôleur",
+                other: "Autre",
+                language: "Langue",
+                dataTransport: "Transport des données",
+                auto: "Auto",
+                webSocket: "Web Socket",
+                enterFullscreenOnStreamStart: "Invite de mise en plein écran au démarrage de la diffusion",
+                saveRoleDefaults: "Enregistrer par défaut pour le rôle",
+                saveRoleDefaultsSuccess: "Enregistré par défaut pour le rôle",
+                saveRoleDefaultsFailed: "Echec de l'enregistrement des paramètres par défaut pour le rôle",
+                toggleFullscreenWithKeybind: "Basculer entre le mode plein écran et le verrouillage de la souris avec Ctrl + Shift + I",
+                style: "Style",
+                useCustomDropdown: "Utiliser l'implémentation personnalisée du déroulement",
+            },
+            addHost: {
+                header: "Hôte",
+                address: "Adresse",
+                port: "Port",
+            },
+            admin: {
+                rootNotFound: "Elément racine introuvable",
+                unauthorized: "Vous n'êtes pas autorisé à visualiser cette page !",
+                users: "Utilisateurs",
+                roles: "Rôles",
+                addUser: "Ajout d'un utilisateur",
+                addRole: "Ajout d'un rôle",
+                searchUser: "Recherche Utilisateur",
+                searchRole: "Recherche Rôle",
+                delete: "Supprimer",
+                apply: "Appliquer",
+                user: "Utilisateur",
+                role: "Rôle",
+                name: "Nom",
+                defaultPassword: "Mot de passe par défaut",
+                moonlightClientId: "Identifiant du client Moonlight",
+                pleaseSelectRole: "Veuillez choisir un rôle !",
+                roleExists: (name: string) => `Nom du rôle "${name}" déjà pris !`,
+                userExists: (name: string) => `Nom de l'utilisateur "${name}" déjà pris !`,
+                roleType: "Type",
+                permissions: "Permissions",
+                defaultSettings: "Paramètres par défaut",
+                userId: "Identifiant de l'utilisateur",
+                userName: "Nom de l'utilisateur",
+                password: "Mot de passe",
+                newPassword: "Nouveau mot de passe",
+                roleId: "Identifiant du rôle",
+                roleName: "Nom du rôle",
+                allowAddHosts: "Autoriser l'ajout d'hôtes",
+                maximumBitrate: "Débit maximum (Kbps)",
+                allowH264: "Permettre H264",
+                allowH265: "Permettre H265",
+                allowAv1: "Permettre Av1",
+                allowHdr: "Permettre HDR",
+                allowWebrtc: "Permettre WebRTC",
+                allowWebSockets: "Permettre Web Sockets",
+                roleDeleteBlocked: (users: string[]) => `Pour supprimer ce rôle, tous les utilisateurs associés à ce rôle doivent être supprimés ou associés à un autre rôle.\nUtilisateurs actuellement associés à ce rôle:\n${JSON.stringify(users)}`,
+            },
+            host: {
+                showDetails: "Afficher les détails",
+                open: "Ouvrir",
+                sendWakeUpPacket: "Envoyer le signal de réveil",
+                reload: "Recharger",
+                pair: "Appairer",
+                makePrivate: "Rendre prvivé",
+                makeGlobal: "Rendre global",
+                removeHost: "Retirer l'hôte",
+                failedToGetDetails: (id: number) => `échec de la récupération des détails de l'hôte ${id}`,
+                wakeUpSent: "Signal de réveil envoyé. Le PC peut prendre un peu de temps pour démarrer.",
+                alreadyPaired: "Hôte déjà appairé !",
+                pairPrompt: (name: string, pin: string) => `Veuillez appairer votre hôte ${name} avec ce NIP :\nNIP: ${pin}`,
+                overwriteMismatch: (currentId: number, incomingId: number) => `tentative d'écrasement de l'hôte ${currentId} avec les données de ${incomingId}`,
+                details: (host: any) =>
+                    `Identifiant Web : ${host.host_id}\n` +
+                    `Nom : ${host.name}\n` +
+                    `Status d'appairage : ${host.paired}\n` +
+                    `Etat : ${host.server_state}\n` +
+                    `Adresse:  ${host.address}\n` +
+                    `Port HTTP : ${host.http_port}\n` +
+                    `Port HTTPS : ${host.https_port}\n` +
+                    `Port Externe : ${host.external_port}\n` +
+                    `Version: ${host.version}\n` +
+                    `Version GFE : ${host.gfe_version}\n` +
+                    `Identifiant unique : ${host.unique_id}\n` +
+                    `MAC: ${host.mac}\n` +
+                    `IP locale : ${host.local_ip}\n` +
+                    `Jeu actuel : ${host.current_game}\n` +
+                    `Max des Pixels Luma HEVC : ${host.max_luma_pixels_hevc}\n` +
+                    `Mode de support du codec serveur : ${host.server_codec_mode_support}`,
+            },
+            game: {
+                resumeSession: "Reprise de la session",
+                stopCurrentSession: "Arrêt de la session",
+                failedToCloseApp: "Echec de la fermeture de l'app !",
+                showDetails: "Afficher les détails",
+                open: "Ouvrir",
+                details: (app: any) =>
+                    `Titre : ${app.title}\n` +
+                    `Identifiant : ${app.app_id}\n` +
+                    `Support du HDR : ${app.is_hdr_supported}\n`,
+            },
+            modal: {
+                ok: "Ok",
+                cancel: "Annuler",
+                login: "Connecter",
+                username: "Nom d'utilisateur",
+                password: "Mot de passe",
+                passwordAsFile: "Fichier de mot de passe",
+            },
+            common: {
+                openFile: "Ouvrir un fichier",
+                notSelected: "(Non sélectionné)",
+                missingContextMenu: "élément de menu contextuel introuvable",
+                missingModalParent: "parent modal introuvable",
+                missingModalOverlay: "couverture modale introuvable",
+                missingSidebar: "echec de l'obtention de la barre latérale",
             }
         }
     }

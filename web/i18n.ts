@@ -2,8 +2,9 @@ import { en, type Translations } from "./locales/en.js"
 import { zhCN } from "./locales/zh-CN.js"
 import { ptBR } from "./locales/pt-BR.js"
 import { frFr } from "./locales/fr-FR.js"
+import { viVN } from "./locales/vi-VN.js"
 
-export type Language = "en" | "zh-CN" | "pt-BR" | "fr-FR"
+export type Language = "en" | "zh-CN" | "pt-BR" | "fr-FR" | "vi-VN"
 
 // Translations is defined in locales/en.ts (the canonical locale).
 // Adding a new locale requires: (1) create web/locales/<code>.ts implementing
@@ -15,6 +16,7 @@ const locales: Record<Language, Translations> = {
     "zh-CN": zhCN,
     "pt-BR": ptBR,
     "fr-FR": frFr,
+    "vi-VN": viVN,
 }
 
 export function getTranslations(language: Language): Translations {
@@ -27,6 +29,9 @@ export function normalizeLanguage(language: unknown): Language {
     }
     if (language === "pt" || language === "pt-BR" || language === "pt_BR") {
         return "pt-BR"
+    }
+    if (language === "vi" || language === "vi-VN" || language === "vi_VN") {
+        return "vi-VN"
     }
     return "en"
 }
@@ -75,5 +80,6 @@ export function getLanguageOptions(): Array<{ value: Language, name: string }> {
         { value: "zh-CN", name: "中文" },
         { value: "pt-BR", name: "Português (Brasil)" },
         { value: "fr-FR", name: "Français" },
+        { value: "vi-VN", name: "Tiếng Việt" },
     ]
 }

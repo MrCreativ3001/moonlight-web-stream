@@ -143,7 +143,7 @@ class MainApp implements Component {
 
         // Back button
         this.backButton.innerText = I.index.back
-        this.backButton.classList.add("button-fit-content")
+        this.backButton.classList.add("button-fit-content", "back-button")
         this.backButton.addEventListener("click", backAppState)
 
         // Host add button
@@ -159,7 +159,7 @@ class MainApp implements Component {
         this.settingsButton.addEventListener("click", () => this.setCurrentDisplay("settings"))
 
         this.saveRoleDefaultsButton.innerText = I.settings.saveRoleDefaults
-        this.saveRoleDefaultsButton.classList.add("button-fit-content")
+        this.saveRoleDefaultsButton.classList.add("button-fit-content", "save-role-defaults-button")
         this.saveRoleDefaultsButton.addEventListener("click", this.onSaveRoleDefaults.bind(this))
 
         // Settings
@@ -335,8 +335,8 @@ class MainApp implements Component {
             this.gameList?.unmount(this.divElement)
         } else if (this.currentDisplay == "settings") {
             this.actionElement.removeChild(this.backButton)
-            if (this.actionElement.contains(this.saveRoleDefaultsButton)) {
-                this.actionElement.removeChild(this.saveRoleDefaultsButton)
+            if (this.divElement.contains(this.saveRoleDefaultsButton)) {
+                this.divElement.removeChild(this.saveRoleDefaultsButton)
             }
 
             this.settings?.unmount(this.divElement)
@@ -366,11 +366,12 @@ class MainApp implements Component {
             setAppState({ display: "games", hostId: this.gameList?.getHostId() }, pushIntoHistory)
         } else if (display == "settings") {
             this.actionElement.appendChild(this.backButton)
-            if (this.user?.role == "Admin") {
-                this.actionElement.appendChild(this.saveRoleDefaultsButton)
-            }
 
             this.settings?.mount(this.divElement)
+
+            if (this.user?.role == "Admin") {
+                this.divElement.appendChild(this.saveRoleDefaultsButton)
+            }
 
             setAppState({ display: "settings" }, pushIntoHistory)
         }
@@ -421,11 +422,11 @@ class MainApp implements Component {
 
         if (this.user.role == "Admin") {
             this.topLineActions.appendChild(this.adminButton)
-            if (this.currentDisplay == "settings" && !this.actionElement.contains(this.saveRoleDefaultsButton)) {
-                this.actionElement.appendChild(this.saveRoleDefaultsButton)
+            if (this.currentDisplay == "settings" && !this.divElement.contains(this.saveRoleDefaultsButton)) {
+                this.divElement.appendChild(this.saveRoleDefaultsButton)
             }
-        } else if (this.actionElement.contains(this.saveRoleDefaultsButton)) {
-            this.actionElement.removeChild(this.saveRoleDefaultsButton)
+        } else if (this.divElement.contains(this.saveRoleDefaultsButton)) {
+            this.divElement.removeChild(this.saveRoleDefaultsButton)
         }
     }
     private async refreshUserPermissions() {

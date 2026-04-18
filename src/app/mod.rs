@@ -34,6 +34,17 @@ pub mod role;
 pub mod storage;
 pub mod user;
 
+fn resolve_path(path: &str) -> std::path::PathBuf {
+    use std::{env, path::Path};
+    let path = Path::new(path);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        let exe_dir = env::current_exe().unwrap().parent().unwrap().to_path_buf();
+        exe_dir.join(path)
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("the app got destroyed")]

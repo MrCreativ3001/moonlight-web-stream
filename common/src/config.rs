@@ -246,6 +246,8 @@ pub struct WebServerConfig {
     pub certificate: Option<ConfigSsl>,
     #[serde(default)]
     pub url_path_prefix: String,
+    #[serde(default)]
+    pub static_dir: Option<String>,
     #[serde(default = "default_session_cookie_secure")]
     pub session_cookie_secure: bool,
     #[serde(default = "default_session_cookie_expiration")]

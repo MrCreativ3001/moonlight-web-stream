@@ -26,7 +26,8 @@ pub async fn create_storage(
             path,
             session_expiration_check_interval,
         } => {
-            let storage = JsonStorage::load(path.into(), session_expiration_check_interval).await?;
+            let path = super::resolve_path(&path);
+            let storage = JsonStorage::load(path, session_expiration_check_interval).await?;
 
             Ok(storage)
         }

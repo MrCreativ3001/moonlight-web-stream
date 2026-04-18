@@ -1,9 +1,10 @@
 use common::config::Config;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{
+    env,
     fs::OpenOptions,
     io::{self, ErrorKind, IsTerminal},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 use tokio::fs::{self};
@@ -43,12 +44,22 @@ mod web;
 mod cli;
 mod human_json;
 
+fn resolve_path(path: &str) -> PathBuf {
+    let path = Path::new(path);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        let exe_dir = env::current_exe().unwrap().parent().unwrap().to_path_buf();
+        exe_dir.join(path)
+    }
+}
+
 #[actix_web::main]
 async fn main() {
     let cli = Cli::load();
 
     // Load Config
-    let config_path = PathBuf::from_str(&cli.config_path).expect("invalid config file path");
+    let config_path = resolve_path(&cli.config_path);
     let config = match fs::read_to_string(&config_path).await {
         Ok(mut value) => {
             value = preprocess_human_json(value);
@@ -239,14 +250,29 @@ impl RootSpanBuilder for ActixDebugSpan {
     }
 }
 
-async fn start(config: Config) -> Result<(), anyhow::Error> {
+async fn start(mut config: Config) -> Result<(), anyhow::Error> {
+    // Resolve paths relative to executable
+    config.streamer_path = resolve_path(&config.streamer_path).to_string_lossy().to_string();
+    if let Some(ref log_file) = config.log.file_path {
+        config.log.file_path = Some(resolve_path(log_file).to_string_lossy().to_string());
+    }
+    if let Some(ref ice_script) = config.webrtc.ice_server_script {
+        config.webrtc.ice_server_script = Some(resolve_path(ice_script).to_string_lossy().to_string());
+    }
+
     let app = App::new(config.clone()).await?;
     let app = Data::new(app);
+
+    let static_dir = config.web_server.static_dir.as_deref().unwrap_or_else(|| {
+        if cfg!(debug_assertions) { "dist" } else { "static" }
+    });
+    let static_dir = resolve_path(static_dir).to_string_lossy().to_string();
 
     let bind_address = app.config().web_server.bind_address;
     let server = HttpServer::new({
         let url_path_prefix = config.web_server.url_path_prefix.clone();
         let app = app.clone();
+        let static_dir = static_dir.clone();
 
         move || {
             ActixApp::new()
@@ -265,7 +291,7 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
                         )
                         .service(api_service())
                         .service(web_config_js_service())
-                        .service(web_service()),
+                        .service(web_service(&static_dir)),
                 )
         }
     });
@@ -273,13 +299,16 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
     if let Some(certificate) = app.config().web_server.certificate.as_ref() {
         info!("[Server]: Running Https Server with ssl tls");
 
+        let private_key_path = resolve_path(&certificate.private_key_pem);
+        let certificate_path = resolve_path(&certificate.certificate_pem);
+
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())
             .expect("failed to create ssl tls acceptor");
         builder
-            .set_private_key_file(&certificate.private_key_pem, SslFiletype::PEM)
+            .set_private_key_file(private_key_path, SslFiletype::PEM)
             .expect("failed to set private key");
         builder
-            .set_certificate_chain_file(&certificate.certificate_pem)
+            .set_certificate_chain_file(certificate_path)
             .expect("failed to set certificate");
 
         server.bind_openssl(bind_address, builder)?.run().await?;

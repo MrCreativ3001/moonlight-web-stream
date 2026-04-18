@@ -5,12 +5,8 @@ use log::warn;
 
 use crate::app::App;
 
-pub fn web_service() -> impl HttpServiceFactory {
-    #[cfg(debug_assertions)]
-    let files = Files::new("/", "dist").index_file("index.html");
-
-    #[cfg(not(debug_assertions))]
-    let files = Files::new("/", "static").index_file("index.html");
+pub fn web_service(static_dir: &str) -> impl HttpServiceFactory {
+    let files = Files::new("/", static_dir).index_file("index.html");
 
     files
 }

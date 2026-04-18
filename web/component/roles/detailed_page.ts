@@ -37,7 +37,12 @@ export class DetailedRolePage implements Component {
         this.id = role.id
         const i = getTranslations(getCurrentLanguage()).admin
 
-        this.formRoot.classList.add("role-info")
+        this.formRoot.classList.add("role-info", "settings-group")
+
+        const header = document.createElement("div")
+        header.classList.add("settings-group-header", "color-yellow")
+        header.innerText = role.name
+        this.formRoot.appendChild(header)
 
         // Role stuff
         this.idElement = new InputComponent("roleId", "number", i.roleId, {

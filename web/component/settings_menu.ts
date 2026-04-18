@@ -139,17 +139,35 @@ function makeSettingsValid(permissions: StreamPermissions, settings: Settings) {
     }
 }
 
+/** Helper: create a settings group container with a colored header */
+function createSettingsGroup(title: string): { group: HTMLDivElement, content: HTMLDivElement } {
+    const group = document.createElement("div")
+    group.classList.add("settings-group")
+
+    const header = document.createElement("h3")
+    header.classList.add("settings-group-header")
+    header.innerText = title
+    group.appendChild(header)
+
+    const content = document.createElement("div")
+    content.classList.add("settings-group-content")
+    group.appendChild(content)
+
+    return { group, content }
+}
+
 export class StreamSettingsComponent implements Component {
 
     private permissions: StreamPermissions
 
     private divElement: HTMLDivElement = document.createElement("div")
 
-    private sidebarHeader: HTMLHeadingElement = document.createElement("h3")
     private sidebarEdge: SelectComponent
 
-    private streamHeader: HTMLHeadingElement = document.createElement("h3")
-    private bitrate: InputComponent
+    private bitrateValue: number = 10000
+    private bitrateSlider: HTMLInputElement = document.createElement("input")
+    private bitrateLabel: HTMLParagraphElement = document.createElement("p")
+    private bitrateDisplayFn: (mbps: string) => string
     private fps: InputComponent
     private videoCodec: SelectComponent
     private forceVideoElementRenderer: InputComponent
@@ -163,22 +181,18 @@ export class StreamSettingsComponent implements Component {
 
     private videoSampleQueueSize: InputComponent
 
-    private audioHeader: HTMLHeadingElement = document.createElement("h3")
     private playAudioLocal: InputComponent
     private audioSampleQueueSize: InputComponent
 
-    private mouseHeader: HTMLHeadingElement = document.createElement("h3")
     private mouseScrollMode: SelectComponent
     private mouseMode: SelectComponent
     private touchMode: SelectComponent
     private localCursorSensitivity: InputComponent
 
-    private controllerHeader: HTMLHeadingElement = document.createElement("h3")
     private controllerInvertAB: InputComponent
     private controllerInvertXY: InputComponent
     private controllerSendIntervalOverride: InputComponent
 
-    private otherHeader: HTMLHeadingElement = document.createElement("h3")
     private dataTransport: SelectComponent
     private language: SelectComponent
     private enterFullscreenOnStreamStart: InputComponent
@@ -205,47 +219,28 @@ export class StreamSettingsComponent implements Component {
         // Root div
         this.divElement.classList.add("settings")
 
-        // Sidebar
-        this.sidebarHeader.innerText = i.sidebar
-        this.divElement.appendChild(this.sidebarHeader)
+        // ============================
+        // Create two-column layout
+        // ============================
+        const columnsContainer = document.createElement("div")
+        columnsContainer.classList.add("settings-columns")
+        this.divElement.appendChild(columnsContainer)
 
-        this.sidebarEdge = new SelectComponent("sidebarEdge", [
-            { value: "left", name: i.left },
-            { value: "right", name: i.right },
-            { value: "up", name: i.up },
-            { value: "down", name: i.down },
-        ], {
-            displayName: i.sidebarEdge,
-            preSelectedOption: settings?.sidebarEdge ?? defaultSettings_.sidebarEdge,
-        })
-        this.sidebarEdge.addChangeListener(this.onSettingsChange.bind(this))
-        this.sidebarEdge.mount(this.divElement)
+        const leftColumn = document.createElement("div")
+        leftColumn.classList.add("settings-column")
+        columnsContainer.appendChild(leftColumn)
 
-        // Video
-        this.streamHeader.innerText = i.video
-        this.divElement.appendChild(this.streamHeader)
+        const rightColumn = document.createElement("div")
+        rightColumn.classList.add("settings-column")
+        columnsContainer.appendChild(rightColumn)
 
-        // Bitrate
-        this.bitrate = new InputComponent("bitrate", "number", i.bitrate, {
-            defaultValue: defaultSettings_.bitrate.toString(),
-            value: settings?.bitrate?.toString(),
-            step: "100",
-            numberSlider: {
-                range_min: Math.min(this.permissions.maximum_bitrate_kbps ?? 1000, 1000),
-                range_max: this.permissions.maximum_bitrate_kbps ?? 10000,
-            }
-        })
-        this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
-        this.bitrate.mount(this.divElement)
+        // ============================
+        // LEFT COLUMN
+        // ============================
 
-        // Fps
-        this.fps = new InputComponent("fps", "number", i.fps, {
-            defaultValue: defaultSettings_.fps.toString(),
-            value: settings?.fps?.toString(),
-            step: "100"
-        })
-        this.fps.addChangeListener(this.onSettingsChange.bind(this))
-        this.fps.mount(this.divElement)
+        // ---- Resolution and FPS Group ----
+        const resFpsGroup = createSettingsGroup(i.resolutionAndFps)
+        leftColumn.appendChild(resFpsGroup.group)
 
         // Video Size
         this.videoSize = new SelectComponent("videoSize",
@@ -263,29 +258,242 @@ export class StreamSettingsComponent implements Component {
             }
         )
         this.videoSize.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoSize.mount(this.divElement)
+        this.videoSize.mount(resFpsGroup.content)
 
+        // Fps
+        this.fps = new InputComponent("fps", "number", i.fps, {
+            defaultValue: defaultSettings_.fps.toString(),
+            value: settings?.fps?.toString(),
+            step: "100"
+        })
+        this.fps.addChangeListener(this.onSettingsChange.bind(this))
+        this.fps.mount(resFpsGroup.content)
+
+        // Bitrate — custom desktop-style slider widget
+        this.bitrateDisplayFn = i.bitrateDisplay
+        this.bitrateValue = settings?.bitrate ?? defaultSettings_.bitrate
+
+        const bitrateWidget = document.createElement("div")
+        bitrateWidget.classList.add("settings-bitrate-widget")
+
+        this.bitrateLabel.classList.add("settings-bitrate-label")
+        this.updateBitrateLabel()
+        bitrateWidget.appendChild(this.bitrateLabel)
+
+        const bitrateHint = document.createElement("p")
+        bitrateHint.classList.add("settings-bitrate-hint")
+        bitrateHint.innerText = i.bitrateHint
+        bitrateWidget.appendChild(bitrateHint)
+
+        this.bitrateSlider.type = "range"
+        this.bitrateSlider.min = `${Math.min(this.permissions.maximum_bitrate_kbps ?? 1000, 1000)}`
+        this.bitrateSlider.max = `${this.permissions.maximum_bitrate_kbps ?? 150000}`
+        this.bitrateSlider.step = "500"
+        this.bitrateSlider.value = this.bitrateValue.toString()
+        this.bitrateSlider.classList.add("settings-bitrate-slider")
+        this.bitrateSlider.addEventListener("input", () => {
+            this.bitrateValue = parseInt(this.bitrateSlider.value)
+            this.updateBitrateLabel()
+            this.onSettingsChange()
+        })
+        bitrateWidget.appendChild(this.bitrateSlider)
+
+        resFpsGroup.content.appendChild(bitrateWidget)
+
+        // Video Size Custom Width
         this.videoSizeWidth = new InputComponent("videoSizeWidth", "number", i.videoWidth, {
             defaultValue: defaultSettings_.videoSizeCustom.width.toString(),
             value: settings?.videoSizeCustom?.width.toString()
         })
         this.videoSizeWidth.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoSizeWidth.mount(this.divElement)
+        this.videoSizeWidth.mount(resFpsGroup.content)
 
+        // Video Size Custom Height
         this.videoSizeHeight = new InputComponent("videoSizeHeight", "number", i.videoHeight, {
             defaultValue: defaultSettings_.videoSizeCustom.height.toString(),
             value: settings?.videoSizeCustom?.height.toString()
         })
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoSizeHeight.mount(this.divElement)
+        this.videoSizeHeight.mount(resFpsGroup.content)
 
-        // Video Sample Queue Size
-        this.videoSampleQueueSize = new InputComponent("videoFrameQueueSize", "number", i.videoFrameQueueSize, {
-            defaultValue: defaultSettings_.videoFrameQueueSize.toString(),
-            value: settings?.videoFrameQueueSize?.toString()
+        // Canvas VSync
+        this.canvasVsync = new InputComponent("canvasVsync", "checkbox", i.canvasVsync, {
+            checked: settings?.canvasVsync ?? defaultSettings_.canvasVsync
         })
-        this.videoSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoSampleQueueSize.mount(this.divElement)
+        this.canvasVsync.addChangeListener(this.onSettingsChange.bind(this))
+        this.canvasVsync.mount(resFpsGroup.content)
+
+        // ---- Audio Settings Group ----
+        const audioGroup = createSettingsGroup(i.audioSettings)
+        leftColumn.appendChild(audioGroup.group)
+
+        this.playAudioLocal = new InputComponent("playAudioLocal", "checkbox", i.playAudioLocal, {
+            checked: settings?.playAudioLocal
+        })
+        this.playAudioLocal.addChangeListener(this.onSettingsChange.bind(this))
+        this.playAudioLocal.mount(audioGroup.content)
+
+        // ---- Host Settings Group ----
+        const hostGroup = createSettingsGroup(i.hostSettings)
+        leftColumn.appendChild(hostGroup.group)
+
+        this.enterFullscreenOnStreamStart = new InputComponent("enterFullscreenOnStreamStart", "checkbox", i.enterFullscreenOnStreamStart, {
+            checked: settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart
+        })
+        this.enterFullscreenOnStreamStart.addChangeListener(this.onSettingsChange.bind(this))
+        this.enterFullscreenOnStreamStart.mount(hostGroup.content)
+
+        // Fullscreen Keybind
+        this.toggleFullscreenWithKeybind = new InputComponent("toggleFullscreenWithKeybind", "checkbox", i.toggleFullscreenWithKeybind, {
+            checked: settings?.toggleFullscreenWithKeybind
+        })
+        this.toggleFullscreenWithKeybind.addChangeListener(this.onSettingsChange.bind(this))
+        this.toggleFullscreenWithKeybind.mount(hostGroup.content)
+
+        // ---- UI Settings Group ----
+        const uiGroup = createSettingsGroup(i.uiSettings)
+        leftColumn.appendChild(uiGroup.group)
+
+        this.language = new SelectComponent("language", getLanguageOptions(), {
+            displayName: i.language,
+            preSelectedOption: language
+        })
+        this.language.addChangeListener(this.onSettingsChange.bind(this))
+        this.language.mount(uiGroup.content)
+
+        // Page Style
+        this.pageStyle = new SelectComponent("pageStyle", [
+            { value: "standard", name: "Standard" },
+            { value: "moonlight", name: "Moonlight" },
+        ], {
+            displayName: i.style,
+            preSelectedOption: settings?.pageStyle ?? defaultSettings_.pageStyle
+        })
+        this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
+        this.pageStyle.mount(uiGroup.content)
+
+        // Sidebar Edge
+        this.sidebarEdge = new SelectComponent("sidebarEdge", [
+            { value: "left", name: i.left },
+            { value: "right", name: i.right },
+            { value: "up", name: i.up },
+            { value: "down", name: i.down },
+        ], {
+            displayName: i.sidebarEdge,
+            preSelectedOption: settings?.sidebarEdge ?? defaultSettings_.sidebarEdge,
+        })
+        this.sidebarEdge.addChangeListener(this.onSettingsChange.bind(this))
+        this.sidebarEdge.mount(uiGroup.content)
+
+        // ============================
+        // RIGHT COLUMN
+        // ============================
+
+        // ---- Input Settings Group ----
+        const inputGroup = createSettingsGroup(i.inputSettings)
+        rightColumn.appendChild(inputGroup.group)
+
+        this.mouseMode = new SelectComponent("mouseMode",
+            [
+                { value: "relative", name: streamI.relative },
+                { value: "follow", name: streamI.follow },
+                { value: "localCursor", name: streamI.localCursor },
+                { value: "pointAndDrag", name: streamI.pointAndDrag }
+            ],
+            {
+                displayName: i.startupMouseMode,
+                preSelectedOption: settings?.mouseMode ?? defaultSettings_.mouseMode
+            }
+        )
+        this.mouseMode.addChangeListener(this.onSettingsChange.bind(this))
+        this.mouseMode.mount(inputGroup.content)
+
+        this.touchMode = new SelectComponent("touchMode",
+            [
+                { value: "touch", name: streamI.touch },
+                { value: "mouseRelative", name: streamI.relative },
+                { value: "localCursor", name: streamI.localCursor },
+                { value: "pointAndDrag", name: streamI.pointAndDrag }
+            ],
+            {
+                displayName: i.startupTouchMode,
+                preSelectedOption: settings?.touchMode ?? defaultSettings_.touchMode
+            }
+        )
+        this.touchMode.addChangeListener(this.onSettingsChange.bind(this))
+        this.touchMode.mount(inputGroup.content)
+
+        this.mouseScrollMode = new SelectComponent("mouseScrollMode",
+            [
+                { value: "highres", name: i.highRes },
+                { value: "normal", name: i.normal }
+            ],
+            {
+                displayName: i.scrollMode,
+                preSelectedOption: settings?.mouseScrollMode || defaultSettings_.mouseScrollMode
+            }
+        )
+        this.mouseScrollMode.addChangeListener(this.onSettingsChange.bind(this))
+        this.mouseScrollMode.mount(inputGroup.content)
+
+        this.localCursorSensitivity = new InputComponent("localCursorSensitivity", "number", i.localCursorSensitivity, {
+            defaultValue: defaultSettings_.localCursorSensitivity.toString(),
+            value: settings?.localCursorSensitivity?.toString(),
+            step: "0.1",
+            numberSlider: {
+                range_min: 0.1,
+                range_max: 3
+            }
+        })
+        this.localCursorSensitivity.addChangeListener(this.onSettingsChange.bind(this))
+        this.localCursorSensitivity.mount(inputGroup.content)
+
+        // ---- Gamepad Settings Group ----
+        const gamepadGroup = createSettingsGroup(i.gamepadSettings)
+        rightColumn.appendChild(gamepadGroup.group)
+
+        if (!window.isSecureContext) {
+            // Add a note about secure context requirement
+            const note = document.createElement("p")
+            note.classList.add("settings-group-note")
+            note.innerText = i.controllerDisabled
+            gamepadGroup.content.appendChild(note)
+        }
+
+        this.controllerInvertAB = new InputComponent("controllerInvertAB", "checkbox", i.invertAB, {
+            checked: settings?.controllerConfig?.invertAB
+        })
+        this.controllerInvertAB.addChangeListener(this.onSettingsChange.bind(this))
+        this.controllerInvertAB.mount(gamepadGroup.content)
+
+        this.controllerInvertXY = new InputComponent("controllerInvertXY", "checkbox", i.invertXY, {
+            checked: settings?.controllerConfig?.invertXY
+        })
+        this.controllerInvertXY.addChangeListener(this.onSettingsChange.bind(this))
+        this.controllerInvertXY.mount(gamepadGroup.content)
+
+        // Controller Send Interval
+        this.controllerSendIntervalOverride = new InputComponent("controllerSendIntervalOverride", "number", i.overrideControllerInterval, {
+            hasEnableCheckbox: true,
+            defaultValue: "20",
+            value: settings?.controllerConfig?.sendIntervalOverride?.toString(),
+            numberSlider: {
+                range_min: 10,
+                range_max: 120
+            }
+        })
+        this.controllerSendIntervalOverride.setEnabled(settings?.controllerConfig?.sendIntervalOverride != null)
+        this.controllerSendIntervalOverride.addChangeListener(this.onSettingsChange.bind(this))
+        this.controllerSendIntervalOverride.mount(gamepadGroup.content)
+
+        if (!window.isSecureContext) {
+            this.controllerInvertAB.setEnabled(false)
+            this.controllerInvertXY.setEnabled(false)
+        }
+
+        // ---- Advanced Settings Group ----
+        const advancedGroup = createSettingsGroup(i.advancedSettings)
+        rightColumn.appendChild(advancedGroup.group)
 
         // Codec
         const allowedVideoCodecs = [
@@ -312,161 +520,7 @@ export class StreamSettingsComponent implements Component {
             preSelectedOption: settings?.videoCodec ?? defaultSettings_.videoCodec
         })
         this.videoCodec.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoCodec.mount(this.divElement)
-
-        // Force Video Element renderer
-        this.forceVideoElementRenderer = new InputComponent("forceVideoElementRenderer", "checkbox", i.forceVideoElementRenderer, {
-            checked: settings?.forceVideoElementRenderer ?? defaultSettings_.forceVideoElementRenderer
-        })
-        this.forceVideoElementRenderer.addChangeListener(this.onSettingsChange.bind(this))
-        this.forceVideoElementRenderer.mount(this.divElement)
-
-        // Use Canvas Renderer
-        this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", i.useCanvasRenderer, {
-            defaultValue: defaultSettings_.canvasRenderer.toString(),
-            checked: settings === null || settings === void 0 ? void 0 : settings.canvasRenderer
-        })
-        this.canvasRenderer.addChangeListener(this.onSettingsChange.bind(this))
-        this.canvasRenderer.mount(this.divElement)
-
-        // Canvas VSync (Canvas only: sync draw to display refresh to reduce tearing; off = lower latency)
-        this.canvasVsync = new InputComponent("canvasVsync", "checkbox", i.canvasVsync, {
-            checked: settings?.canvasVsync ?? defaultSettings_.canvasVsync
-        })
-        this.canvasVsync.addChangeListener(this.onSettingsChange.bind(this))
-        this.canvasVsync.mount(this.divElement)
-
-        // HDR
-        this.hdr = new InputComponent("hdr", "checkbox", i.enableHdr, {
-            checked: settings?.hdr ?? defaultSettings_.hdr
-        })
-        this.hdr.addChangeListener(this.onSettingsChange.bind(this))
-        this.hdr.mount(this.divElement)
-
-        if (!this.permissions.allow_hdr) {
-            this.hdr.setChecked(false)
-            this.hdr.setEnabled(false)
-        }
-
-        // Audio local
-        this.audioHeader.innerText = i.audio
-        this.divElement.appendChild(this.audioHeader)
-
-        this.playAudioLocal = new InputComponent("playAudioLocal", "checkbox", i.playAudioLocal, {
-            checked: settings?.playAudioLocal
-        })
-        this.playAudioLocal.addChangeListener(this.onSettingsChange.bind(this))
-        this.playAudioLocal.mount(this.divElement)
-
-        // Audio Sample Queue Size
-        this.audioSampleQueueSize = new InputComponent("audioSampleQueueSize", "number", i.audioSampleQueueSize, {
-            defaultValue: defaultSettings_.audioSampleQueueSize.toString(),
-            value: settings?.audioSampleQueueSize?.toString()
-        })
-        this.audioSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
-        this.audioSampleQueueSize.mount(this.divElement)
-
-        // Mouse
-        this.mouseHeader.innerText = i.mouse
-        this.divElement.appendChild(this.mouseHeader)
-
-        this.mouseScrollMode = new SelectComponent("mouseScrollMode",
-            [
-                { value: "highres", name: i.highRes },
-                { value: "normal", name: i.normal }
-            ],
-            {
-                displayName: i.scrollMode,
-                preSelectedOption: settings?.mouseScrollMode || defaultSettings_.mouseScrollMode
-            }
-        )
-        this.mouseScrollMode.addChangeListener(this.onSettingsChange.bind(this))
-        this.mouseScrollMode.mount(this.divElement)
-
-        this.mouseMode = new SelectComponent("mouseMode",
-            [
-                { value: "relative", name: streamI.relative },
-                { value: "follow", name: streamI.follow },
-                { value: "localCursor", name: streamI.localCursor },
-                { value: "pointAndDrag", name: streamI.pointAndDrag }
-            ],
-            {
-                displayName: i.startupMouseMode,
-                preSelectedOption: settings?.mouseMode ?? defaultSettings_.mouseMode
-            }
-        )
-        this.mouseMode.addChangeListener(this.onSettingsChange.bind(this))
-        this.mouseMode.mount(this.divElement)
-
-        this.touchMode = new SelectComponent("touchMode",
-            [
-                { value: "touch", name: streamI.touch },
-                { value: "mouseRelative", name: streamI.relative },
-                { value: "localCursor", name: streamI.localCursor },
-                { value: "pointAndDrag", name: streamI.pointAndDrag }
-            ],
-            {
-                displayName: i.startupTouchMode,
-                preSelectedOption: settings?.touchMode ?? defaultSettings_.touchMode
-            }
-        )
-        this.touchMode.addChangeListener(this.onSettingsChange.bind(this))
-        this.touchMode.mount(this.divElement)
-
-        this.localCursorSensitivity = new InputComponent("localCursorSensitivity", "number", i.localCursorSensitivity, {
-            defaultValue: defaultSettings_.localCursorSensitivity.toString(),
-            value: settings?.localCursorSensitivity?.toString(),
-            step: "0.1",
-            numberSlider: {
-                range_min: 0.1,
-                range_max: 3
-            }
-        })
-        this.localCursorSensitivity.addChangeListener(this.onSettingsChange.bind(this))
-        this.localCursorSensitivity.mount(this.divElement)
-
-        // Controller
-        if (window.isSecureContext) {
-            this.controllerHeader.innerText = i.controller
-        } else {
-            this.controllerHeader.innerText = i.controllerDisabled
-        }
-        this.divElement.appendChild(this.controllerHeader)
-
-        this.controllerInvertAB = new InputComponent("controllerInvertAB", "checkbox", i.invertAB, {
-            checked: settings?.controllerConfig?.invertAB
-        })
-        this.controllerInvertAB.addChangeListener(this.onSettingsChange.bind(this))
-        this.controllerInvertAB.mount(this.divElement)
-
-        this.controllerInvertXY = new InputComponent("controllerInvertXY", "checkbox", i.invertXY, {
-            checked: settings?.controllerConfig?.invertXY
-        })
-        this.controllerInvertXY.addChangeListener(this.onSettingsChange.bind(this))
-        this.controllerInvertXY.mount(this.divElement)
-
-        // Controller Send Interval
-        this.controllerSendIntervalOverride = new InputComponent("controllerSendIntervalOverride", "number", i.overrideControllerInterval, {
-            hasEnableCheckbox: true,
-            defaultValue: "20",
-            value: settings?.controllerConfig?.sendIntervalOverride?.toString(),
-            numberSlider: {
-                range_min: 10,
-                range_max: 120
-            }
-        })
-        this.controllerSendIntervalOverride.setEnabled(settings?.controllerConfig?.sendIntervalOverride != null)
-        this.controllerSendIntervalOverride.addChangeListener(this.onSettingsChange.bind(this))
-        this.controllerSendIntervalOverride.mount(this.divElement)
-
-        if (!window.isSecureContext) {
-            this.controllerInvertAB.setEnabled(false)
-            this.controllerInvertXY.setEnabled(false)
-        }
-
-        // Other
-        this.otherHeader.innerText = i.other
-        this.divElement.appendChild(this.otherHeader)
+        this.videoCodec.mount(advancedGroup.content)
 
         // Data Transport
         const allowedDataTransport = [
@@ -483,52 +537,70 @@ export class StreamSettingsComponent implements Component {
             )
         }
 
-        this.language = new SelectComponent("language", getLanguageOptions(), {
-            displayName: i.language,
-            preSelectedOption: language
-        })
-        this.language.addChangeListener(this.onSettingsChange.bind(this))
-        this.language.mount(this.divElement)
-
         this.dataTransport = new SelectComponent("transport", allowedDataTransport, {
             displayName: i.dataTransport,
             preSelectedOption: settings?.dataTransport ?? defaultSettings_.dataTransport
         })
         this.dataTransport.addChangeListener(this.onSettingsChange.bind(this))
-        this.dataTransport.mount(this.divElement)
+        this.dataTransport.mount(advancedGroup.content)
 
-        this.enterFullscreenOnStreamStart = new InputComponent("enterFullscreenOnStreamStart", "checkbox", i.enterFullscreenOnStreamStart, {
-            checked: settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart
+        // Video Frame Queue Size
+        this.videoSampleQueueSize = new InputComponent("videoFrameQueueSize", "number", i.videoFrameQueueSize, {
+            defaultValue: defaultSettings_.videoFrameQueueSize.toString(),
+            value: settings?.videoFrameQueueSize?.toString()
         })
-        this.enterFullscreenOnStreamStart.addChangeListener(this.onSettingsChange.bind(this))
-        this.enterFullscreenOnStreamStart.mount(this.divElement)
+        this.videoSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
+        this.videoSampleQueueSize.mount(advancedGroup.content)
 
-        // Fullscreen Keybind
-        this.toggleFullscreenWithKeybind = new InputComponent("toggleFullscreenWithKeybind", "checkbox", i.toggleFullscreenWithKeybind, {
-            checked: settings?.toggleFullscreenWithKeybind
+        // Audio Sample Queue Size
+        this.audioSampleQueueSize = new InputComponent("audioSampleQueueSize", "number", i.audioSampleQueueSize, {
+            defaultValue: defaultSettings_.audioSampleQueueSize.toString(),
+            value: settings?.audioSampleQueueSize?.toString()
         })
-        this.toggleFullscreenWithKeybind.addChangeListener(this.onSettingsChange.bind(this))
-        this.toggleFullscreenWithKeybind.mount(this.divElement)
+        this.audioSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
+        this.audioSampleQueueSize.mount(advancedGroup.content)
 
-        // Page Style
-        this.pageStyle = new SelectComponent("pageStyle", [
-            { value: "standard", name: "Standard" },
-            { value: "moonlight", name: "Moonlight" },
-        ], {
-            displayName: i.style,
-            preSelectedOption: settings?.pageStyle ?? defaultSettings_.pageStyle
+        // Force Video Element renderer
+        this.forceVideoElementRenderer = new InputComponent("forceVideoElementRenderer", "checkbox", i.forceVideoElementRenderer, {
+            checked: settings?.forceVideoElementRenderer ?? defaultSettings_.forceVideoElementRenderer
         })
-        this.pageStyle.addChangeListener(this.onSettingsChange.bind(this))
-        this.pageStyle.mount(this.divElement)
+        this.forceVideoElementRenderer.addChangeListener(this.onSettingsChange.bind(this))
+        this.forceVideoElementRenderer.mount(advancedGroup.content)
+
+        // Use Canvas Renderer
+        this.canvasRenderer = new InputComponent("canvasRenderer", "checkbox", i.useCanvasRenderer, {
+            defaultValue: defaultSettings_.canvasRenderer.toString(),
+            checked: settings === null || settings === void 0 ? void 0 : settings.canvasRenderer
+        })
+        this.canvasRenderer.addChangeListener(this.onSettingsChange.bind(this))
+        this.canvasRenderer.mount(advancedGroup.content)
+
+        // HDR
+        this.hdr = new InputComponent("hdr", "checkbox", i.enableHdr, {
+            checked: settings?.hdr ?? defaultSettings_.hdr
+        })
+        this.hdr.addChangeListener(this.onSettingsChange.bind(this))
+        this.hdr.mount(advancedGroup.content)
+
+        if (!this.permissions.allow_hdr) {
+            this.hdr.setChecked(false)
+            this.hdr.setEnabled(false)
+        }
 
         // Custom Select Element
         this.useSelectElementPolyfill = new InputComponent("useSelectElementPolyfill", "checkbox", i.useCustomDropdown, {
             checked: settings?.useSelectElementPolyfill ?? defaultSettings_.useSelectElementPolyfill
         })
         this.useSelectElementPolyfill.addChangeListener(this.onSettingsChange.bind(this))
-        this.useSelectElementPolyfill.mount(this.divElement)
+        this.useSelectElementPolyfill.mount(advancedGroup.content)
 
         this.onSettingsChange()
+    }
+
+    private updateBitrateLabel() {
+        const mbps = this.bitrateValue / 1000
+        const display = mbps % 1 === 0 ? mbps.toFixed(0) : mbps.toFixed(1)
+        this.bitrateLabel.innerText = this.bitrateDisplayFn(display)
     }
 
     private onSettingsChange() {
@@ -554,7 +626,7 @@ export class StreamSettingsComponent implements Component {
         const settings = globalDefaultSettings()
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
-        settings.bitrate = parseInt(this.bitrate.getValue())
+        settings.bitrate = this.bitrateValue
         settings.fps = parseInt(this.fps.getValue())
         settings.videoSize = this.videoSize.getValue() as any
         settings.videoSizeCustom = {

@@ -1,4 +1,6 @@
-export const ko: Translations = {
+import type { Translations } from "./en.js"
+
+export const koKR: Translations = {
     index: {
         appTitle: "Moonlight Web",
         back: "뒤로",
@@ -189,7 +191,3 @@ export const ko: Translations = {
         missingSidebar: "사이드바를 가져오지 못했습니다.",
     },
 }
-
-// 영문 로캘을 기준으로 한 표준 타입 정의입니다.
-// 다른 모든 로캘 파일은 이 타입을 구현해야 하며, TypeScript가 누락된 항목을 체크합니다.
-export type Translations = typeof en

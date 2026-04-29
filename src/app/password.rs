@@ -2,7 +2,7 @@ use openssl::{hash::MessageDigest, pkcs5, rand::rand_bytes};
 
 use crate::app::AppError;
 
-const HASH_ITERATIONS: usize = 150_000;
+const HASH_ITERATIONS: usize = 600_000;
 
 #[derive(Clone)]
 pub struct StoragePassword {

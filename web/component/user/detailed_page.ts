@@ -29,7 +29,12 @@ export class DetailedUserPage implements Component {
         this.id = user.id
         const i = getTranslations(getCurrentLanguage()).admin
 
-        this.formRoot.classList.add("user-info")
+        this.formRoot.classList.add("user-info", "settings-group")
+
+        const header = document.createElement("div")
+        header.classList.add("settings-group-header", "color-green")
+        header.innerText = user.name
+        this.formRoot.appendChild(header)
 
         this.idElement = new InputComponent("userId", "number", i.userId, {
             defaultValue: `${user.id}`

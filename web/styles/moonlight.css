@@ -632,7 +632,7 @@ input[type=number] {
     box-sizing: border-box;
 }
 
-.actions-list .button-fit-content {
+.actions-list .back-button {
     position: fixed;
     left: var(--ml-topbar-padding-x);
     top: 0;
@@ -663,6 +663,99 @@ input[type=number] {
 
 .settings {
     color: white;
+    padding: 16px 24px;
+}
+
+.settings-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+@media (max-width: 800px) {
+    .settings-columns {
+        grid-template-columns: 1fr;
+    }
+}
+
+.settings-column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.settings-group {
+    background-color: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.settings-group-header {
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Color-coded headers matching desktop Moonlight */
+.settings-group:nth-child(1) > .settings-group-header {
+    color: #81d4fa; /* Resolution & FPS - light blue */
+}
+.settings-group:nth-child(2) > .settings-group-header {
+    color: #ce93d8; /* Audio / Input - purple */
+}
+.settings-group:nth-child(3) > .settings-group-header {
+    color: #a5d6a7; /* Host / Gamepad - green */
+}
+.settings-group:nth-child(4) > .settings-group-header {
+    color: #fff176; /* UI / Advanced - yellow */
+}
+
+.settings-group-content {
+    padding: 6px 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.settings-group-content .input-div {
+    min-height: 32px;
+}
+
+.settings-group-note {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.85rem;
+    margin: 4px 0;
+    font-style: italic;
+}
+
+.settings-bitrate-widget {
+    padding: 4px 0;
+}
+
+.settings-bitrate-label {
+    margin: 0 0 2px 0;
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: #ffffff;
+}
+
+.settings-bitrate-hint {
+    margin: 0 0 6px 0;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.45);
+    line-height: 1.3;
+}
+
+.settings-bitrate-slider {
+    width: 100%;
+    margin: 4px 0 8px 0;
+    accent-color: rgb(206, 147, 216);
 }
 
 /** Hosts */
@@ -901,7 +994,6 @@ canvas.video-stream {
 .role-panel {
     display: flex;
     flex-direction: column;
-    max-width: 225px;
 }
 
 .user-list,
@@ -940,11 +1032,127 @@ canvas.video-stream {
 
 .admin-panel-users,
 .admin-panel-roles {
-    display: flex;
-    flex-direction: row;
+    /* Layout is now handled by .settings-menu */
 }
 
 .user-info-delete,
 .role-info-delete {
     background-color: red;
+}
+
+/* Responsive Overrides for Mobile */
+@media (max-width: 600px) {
+    .host-list {
+        padding: 16px;
+        gap: 16px 20px;
+    }
+
+    .app-image {
+        width: 140px;
+        height: 186px;
+    }
+
+    .top-line h1 {
+        display: none;
+    }
+
+    .modal-content {
+        width: 95%;
+        max-width: 500px;
+        margin: 5% auto;
+    }
+
+    .settings-menu {
+        padding: 10px;
+    }
+
+    .input-div {
+        flex-wrap: wrap;
+    }
+
+    .input-div input:not([type=checkbox]):not([type=radio]):not([type=range]),
+    .input-div select {
+        flex: 1 1 100px;
+        min-width: 100px;
+        box-sizing: border-box;
+    }
+
+    /* ---- Stream page responsive ---- */
+
+    /* Sidebar: constrain size so it doesn't cover the whole screen */
+    .sidebar-content {
+        max-width: 90vw;
+        max-height: 80vh;
+        overflow-y: auto;
+        padding: 8px;
+    }
+
+    /* Stack sidebar buttons vertically on very narrow screens */
+    .sidebar-stream-buttons {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .sidebar-stream-buttons button {
+        font-size: 0.85rem;
+        padding: 8px 10px;
+        min-height: 40px;
+    }
+
+    /* Sidebar select dropdowns should wrap */
+    .sidebar-stream .input-div {
+        flex-wrap: wrap;
+    }
+
+    .sidebar-stream .input-div label {
+        flex: 1 1 100%;
+        font-size: 0.85rem;
+    }
+
+    .sidebar-stream .input-div select,
+    .sidebar-stream .input-div .select-polyfill-display {
+        flex: 1 1 100%;
+        max-width: 100%;
+    }
+
+    /* Connection modal: better fit on mobile */
+    .modal-video-connect {
+        max-width: 100%;
+        word-break: break-word;
+    }
+
+    .modal-video-connect .modal-video-connect-options {
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .modal-video-connect .modal-video-connect-options button {
+        width: 100%;
+    }
+
+    .modal-video-connect .modal-video-connect-debug {
+        max-width: 100%;
+        max-height: 35vh;
+        font-size: 0.75rem;
+    }
+
+    /* Video stream: prevent overflow on portrait mobile */
+    .video-stream {
+        min-width: 100vw;
+        min-height: auto;
+    }
+
+    /* Stats overlay: smaller text on mobile */
+    .video-stats {
+        font-size: 0.7rem;
+    }
+}
+
+.save-role-defaults-button {
+    display: block;
+    margin: 20px auto;
+    padding: 12px 24px;
+    font-size: 1.1rem;
+    font-weight: 500;
 }

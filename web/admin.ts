@@ -106,7 +106,9 @@ class AdminApp implements Component {
 
     private topLineActions = document.createElement("div")
     private logoutButton = document.createElement("button")
-    private userButton = document.createElement("button")
+
+    private actionElement = document.createElement("div")
+    private backButton = document.createElement("button")
 
     // Different tabs
     private tabs = document.createElement("div")
@@ -142,13 +144,13 @@ class AdminApp implements Component {
         this.logoutButton.classList.add("logout-button")
         this.topLineActions.appendChild(this.logoutButton)
 
-        this.userButton.addEventListener("click", async () => {
-            window.location.href = buildUrl("/")
-        })
-        this.userButton.classList.add("user-button")
-        this.topLineActions.appendChild(this.userButton)
-
         this.root.appendChild(this.topLine)
+
+        this.actionElement.classList.add("actions-list")
+        this.backButton.classList.add("button-fit-content", "back-button")
+        this.backButton.addEventListener("click", () => window.location.href = buildUrl("/"))
+        this.actionElement.appendChild(this.backButton)
+        this.root.appendChild(this.actionElement)
 
         // Tab div
         this.tabs.classList.add("admin-panel-tabs")
@@ -252,11 +254,16 @@ class UserPanel implements Component {
     constructor(api: Api) {
         this.api = api
 
-        this.rootDiv.classList.add("admin-panel-users")
+        this.rootDiv.classList.add("admin-panel-users", "settings-menu")
 
         // Select User Panel
-        this.userPanel.classList.add("user-panel")
+        this.userPanel.classList.add("user-panel", "settings-group")
         this.rootDiv.appendChild(this.userPanel)
+
+        const header = document.createElement("div")
+        header.classList.add("settings-group-header", "color-blue")
+        header.innerText = I.admin.users
+        this.userPanel.appendChild(header)
 
         this.addUserButton.innerText = I.admin.addUser
         this.addUserButton.addEventListener("click", async () => {
@@ -365,11 +372,16 @@ class RolePanel implements Component {
     constructor(api: Api) {
         this.api = api
 
-        this.rootDiv.classList.add("admin-panel-roles")
+        this.rootDiv.classList.add("admin-panel-roles", "settings-menu")
 
         // Select Role Panel
-        this.rolePanel.classList.add("role-panel")
+        this.rolePanel.classList.add("role-panel", "settings-group")
         this.rootDiv.appendChild(this.rolePanel)
+
+        const header = document.createElement("div")
+        header.classList.add("settings-group-header", "color-purple")
+        header.innerText = I.admin.roles
+        this.rolePanel.appendChild(header)
 
         this.addRoleButton.innerText = I.admin.addRole
         this.addRoleButton.addEventListener("click", async () => {

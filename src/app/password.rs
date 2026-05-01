@@ -2,16 +2,22 @@ use openssl::{hash::MessageDigest, pkcs5, rand::rand_bytes};
 
 use crate::app::AppError;
 
-const HASH_ITERATIONS: usize = 150_000;
+pub const HASH_ITERATIONS: u32 = 600_000;
 
 #[derive(Clone)]
 pub struct StoragePassword {
     pub salt: [u8; 16],
     pub hash: [u8; 32],
+    pub iterations: u32,
 }
 
 impl StoragePassword {
-    fn hash(salt: &[u8; 16], password: &str, out: &mut [u8; 32]) -> Result<(), AppError> {
+    fn hash(
+        salt: &[u8; 16],
+        iterations: u32,
+        password: &str,
+        out: &mut [u8; 32],
+    ) -> Result<(), AppError> {
         if password.is_empty() {
             return Err(AppError::PasswordEmpty);
         }
@@ -19,7 +25,7 @@ impl StoragePassword {
         pkcs5::pbkdf2_hmac(
             password.as_bytes(),
             salt,
-            HASH_ITERATIONS,
+            iterations as usize,
             MessageDigest::sha256(),
             out,
         )?;
@@ -34,15 +40,23 @@ impl StoragePassword {
 
         let mut hash = [0u8; 32];
 
-        Self::hash(&salt, password, &mut hash)?;
+        Self::hash(&salt, HASH_ITERATIONS, password, &mut hash)?;
 
-        Ok(Self { salt, hash })
+        Ok(Self {
+            salt,
+            hash,
+            iterations: HASH_ITERATIONS,
+        })
     }
 
     pub fn verify(&self, password: &str) -> Result<bool, AppError> {
         let mut hash = [0u8; 32];
-        Self::hash(&self.salt, password, &mut hash)?;
+        Self::hash(&self.salt, self.iterations, password, &mut hash)?;
 
         Ok(self.hash == hash)
+    }
+
+    pub fn needs_rehash(&self) -> bool {
+        self.iterations < HASH_ITERATIONS
     }
 }

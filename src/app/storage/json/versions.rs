@@ -116,6 +116,15 @@ pub struct V2UserPassword {
     pub salt: [u8; 16],
     #[serde(with = "hex_array")]
     pub hash: [u8; 32],
+    // Older storage files predate per-hash iteration tracking; default to the
+    // value that was used at the time those hashes were created so they keep
+    // verifying after the global iteration count is increased.
+    #[serde(default = "default_legacy_iterations")]
+    pub iterations: u32,
+}
+
+fn default_legacy_iterations() -> u32 {
+    150_000
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

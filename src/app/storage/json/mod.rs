@@ -292,6 +292,7 @@ fn user_from_json(user_id: UserId, user: &V3User) -> StorageUser {
         password: user.password.as_ref().map(|password| StoragePassword {
             salt: password.salt,
             hash: password.hash,
+            iterations: password.iterations,
         }),
         role_id: RoleId(user.role_id),
         client_unique_id: user.client_unique_id.clone(),
@@ -484,6 +485,7 @@ impl Storage for JsonStorage {
             password: user.password.map(|password| V2UserPassword {
                 salt: password.salt,
                 hash: password.hash,
+                iterations: password.iterations,
             }),
             client_unique_id: user.client_unique_id,
         };
@@ -520,6 +522,7 @@ impl Storage for JsonStorage {
             password: user.password.map(|password| StoragePassword {
                 salt: password.salt,
                 hash: password.hash,
+                iterations: password.iterations,
             }),
             role_id: RoleId(user.role_id),
             client_unique_id: user.client_unique_id,
@@ -539,6 +542,7 @@ impl Storage for JsonStorage {
             user.password = password.map(|password| V2UserPassword {
                 salt: password.salt,
                 hash: password.hash,
+                iterations: password.iterations,
             });
         }
         if let Some(role_id) = modify.role_id {

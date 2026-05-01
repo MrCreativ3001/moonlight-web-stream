@@ -175,7 +175,13 @@ impl User {
                 if let Some(storage_password) = storage.password.as_ref()
                     && storage_password.verify(password)?
                 {
-                    Ok(AuthenticatedUser { inner: self })
+                    let needs_rehash = storage_password.needs_rehash();
+                    let mut authenticated = AuthenticatedUser { inner: self };
+                    if needs_rehash {
+                        let rehashed = StoragePassword::new(password)?;
+                        authenticated.set_password(rehashed).await?;
+                    }
+                    Ok(authenticated)
                 } else {
                     Err(AppError::CredentialsWrong)
                 }

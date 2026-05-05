@@ -15,6 +15,8 @@ import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
 import { buildUrl } from "./config_.js";
 import { setStyle as setPageStyle } from "./styles/index.js";
 
+// TODO: look at this? https://developer.mozilla.org/en-US/docs/Web/API/Web_components
+
 let I = getTranslations(getCurrentLanguage())
 
 async function startApp() {

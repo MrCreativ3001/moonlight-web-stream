@@ -9,7 +9,10 @@ use actix_web::{ResponseError, http::StatusCode, web::Bytes};
 use common::config::Config;
 use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
-use moonlight_common::{high::MoonlightClientError, http::client::tokio_hyper::TokioHyperClient};
+use moonlight_common::{
+    crypto::rustcrypto::RustCryptoError, high::MoonlightClientError,
+    http::client::tokio_hyper::TokioHyperClient,
+};
 use openssl::error::ErrorStack;
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -54,6 +57,8 @@ pub enum AppError {
     HostPaired,
     #[error("the host must be paired for this action")]
     HostNotPaired,
+    #[error("the client doesn't support the required codecs")]
+    WebRtcClientCodecNotSupported,
     // -- Unauthorized
     #[error("the credentials don't exists")]
     CredentialsWrong,
@@ -80,8 +85,11 @@ pub enum AppError {
     #[error("the authorization header is not a bearer")]
     BadRequest,
     // --
+    // TODO: remove openssl
     #[error("openssl error occured: {0}")]
     OpenSSL(#[from] ErrorStack),
+    #[error("rustcrypto error occured: {0}")]
+    RustCrypto(#[from] RustCryptoError),
     #[error("hex error occured: {0}")]
     Hex(#[from] FromHexError),
     #[error("io error: {0}")]
@@ -99,6 +107,7 @@ impl ResponseError for AppError {
             Self::HostNotFound => StatusCode::NOT_FOUND,
             Self::HostNotPaired => StatusCode::FORBIDDEN,
             Self::HostPaired => StatusCode::NOT_MODIFIED,
+            Self::WebRtcClientCodecNotSupported => StatusCode::BAD_REQUEST,
             Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::RoleNotFound => StatusCode::NOT_FOUND,
             Self::UserAlreadyExists => StatusCode::CONFLICT,
@@ -107,6 +116,7 @@ impl ResponseError for AppError {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::RustCrypto(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::HeaderAuthDisabled => StatusCode::UNAUTHORIZED,
             Self::Hex(_) => StatusCode::BAD_REQUEST,
             Self::AuthorizationNotBearer => StatusCode::BAD_REQUEST,
@@ -138,7 +148,7 @@ struct AppInner {
     app_image_cache: RwLock<HashMap<(UserId, HostId, AppId), Bytes>>,
 }
 
-pub type MoonlightClient = TokioHyperClient;
+pub type RequestClient = TokioHyperClient;
 
 pub struct App {
     inner: Arc<AppInner>,

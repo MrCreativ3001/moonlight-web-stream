@@ -1,16 +1,20 @@
 use actix_web::{
-    dev::HttpServiceFactory,
+    dev::{HttpServiceFactory, Service, ServiceResponse},
+    http::header::{self, HeaderValue},
     middleware::from_fn,
     services,
-    web::{self},
+    web::{self, Header},
 };
 
 use crate::api::{
     app::{get_app_image, get_apps},
     auth::auth_middleware,
-    host::{delete_host, get_host, list_hosts, pair_host, patch_host, post_host, wake_host},
+    host::{
+        cancel_host, delete_host, get_host, list_hosts, pair_host, patch_host, post_host, wake_host,
+    },
     role::{add_role, delete_role, get_role, list_roles, patch_role},
     settings::{get_default_settings, get_permissions},
+    stream::whep::{whep_delete, whep_get, whep_options, whep_patch, whep_post},
     user::{add_user, delete_user, get_user, list_users, patch_user},
 };
 
@@ -42,6 +46,7 @@ pub fn api_service() -> impl HttpServiceFactory {
             wake_host,
             delete_host,
             pair_host,
+            cancel_host,
         ])
         .service(services![
             // -- Apps
@@ -69,9 +74,28 @@ pub fn api_service() -> impl HttpServiceFactory {
             get_default_settings,
             get_permissions
         ])
-        .service(services![
+        .service(
             // -- Stream
-            stream::start_host,
-            stream::cancel_host,
-        ])
+            web::scope("/host/stream/whep")
+                .wrap_fn(|req, service| {
+                    // Allow access for other browser based services to call the whep apis
+                    let fut = service.call(req);
+                    async {
+                        let mut res = fut.await?;
+
+                        let headers = res.response_mut().headers_mut();
+                        headers.append(
+                            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                            HeaderValue::from_static("*"),
+                        );
+
+                        Ok(res)
+                    }
+                })
+                .service(whep_options)
+                .service(whep_get)
+                .service(whep_post)
+                .service(whep_patch)
+                .service(whep_delete),
+        )
 }

@@ -129,6 +129,11 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
             "mio::poll=off"
                 .parse()
                 .expect("failed to add mio tracing directive"),
+        )
+        .add_directive(
+            "rtc::peer_connection::handler=off"
+                .parse()
+                .expect("failed to add rtc tracing directive"),
         );
 
     #[cfg(windows)]

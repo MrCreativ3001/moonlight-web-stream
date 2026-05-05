@@ -9,14 +9,14 @@ pub async fn load_dynamic_ice_servers(config: &WebRtcConfig) -> Vec<RtcIceServer
         return vec![];
     };
 
-    debug!(script = script_command, "Running WebRTC ice server script");
+    debug!(script = script_command, "running WebRTC ice server script");
 
     let mut script = Command::new(script_command);
 
     let output = match script.output().await {
         Ok(value) => value,
         Err(err) => {
-            error!("Failed to run WebRTC ice server script: {err}");
+            error!("failed to run WebRTC ice server script: {err}");
             return vec![];
         }
     };
@@ -36,7 +36,7 @@ pub async fn load_dynamic_ice_servers(config: &WebRtcConfig) -> Vec<RtcIceServer
     let json: Vec<RtcIceServer> = match serde_json::from_slice(&output.stdout) {
         Ok(value) => value,
         Err(err) => {
-            error!("Failed to deserialize WebRTC ice server script output: {err}");
+            error!("failed to deserialize WebRTC ice server script output: {err}");
             return vec![];
         }
     };

@@ -2,8 +2,10 @@ use std::fmt::{Display, Formatter};
 
 use moonlight_common::{
     ServerState,
-    stream::control::{ControllerButtons, ControllerCapabilities, KeyModifiers, MouseButton},
-    stream::video::{ColorSpace, SupportedVideoFormats},
+    stream::{
+        control::{ControllerButtons, ControllerCapabilities, KeyModifiers, MouseButton},
+        video::{ColorSpace, VideoFormats},
+    },
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -569,16 +571,6 @@ pub enum GeneralClientMessage {
 pub enum ConnectionStatus {
     Ok,
     Poor,
-}
-
-impl From<moonlight_common::stream::c::bindings::ConnectionStatus> for ConnectionStatus {
-    fn from(value: moonlight_common::stream::c::bindings::ConnectionStatus) -> Self {
-        use moonlight_common::stream::c::bindings::ConnectionStatus;
-        match value {
-            ConnectionStatus::Ok => Self::Ok,
-            ConnectionStatus::Poor => Self::Poor,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -1148,14 +1140,14 @@ impl From<StreamColorspace> for ColorSpace {
 ts_consts!(
     pub StreamSupportedVideoCodecs(export_bindings_supported_video_codecs: EXPORT_PATH):
 
-    pub const H264: u32 = SupportedVideoFormats::H264.bits();
-    pub const H264_HIGH8_444: u32 = SupportedVideoFormats::H264_HIGH8_444.bits();
-    pub const H265: u32 = SupportedVideoFormats::H265.bits();
-    pub const H265_MAIN10: u32 = SupportedVideoFormats::H265_MAIN10.bits();
-    pub const H265_REXT8_444: u32 = SupportedVideoFormats::H265_REXT8_444.bits();
-    pub const H265_REXT10_444: u32 = SupportedVideoFormats::H265_REXT10_444.bits();
-    pub const AV1_MAIN8: u32 = SupportedVideoFormats::AV1_MAIN8.bits();
-    pub const AV1_MAIN10: u32 = SupportedVideoFormats::AV1_MAIN10.bits();
-    pub const AV1_HIGH8_444: u32 = SupportedVideoFormats::AV1_HIGH8_444.bits();
-    pub const AV1_HIGH10_444: u32 = SupportedVideoFormats::AV1_HIGH10_444.bits();
+    pub const H264: u32 = VideoFormats::H264.bits();
+    pub const H264_HIGH8_444: u32 = VideoFormats::H264_HIGH8_444.bits();
+    pub const H265: u32 = VideoFormats::H265.bits();
+    pub const H265_MAIN10: u32 = VideoFormats::H265_MAIN10.bits();
+    pub const H265_REXT8_444: u32 = VideoFormats::H265_REXT8_444.bits();
+    pub const H265_REXT10_444: u32 = VideoFormats::H265_REXT10_444.bits();
+    pub const AV1_MAIN8: u32 = VideoFormats::AV1_MAIN8.bits();
+    pub const AV1_MAIN10: u32 = VideoFormats::AV1_MAIN10.bits();
+    pub const AV1_HIGH8_444: u32 = VideoFormats::AV1_HIGH8_444.bits();
+    pub const AV1_HIGH10_444: u32 = VideoFormats::AV1_HIGH10_444.bits();
 );

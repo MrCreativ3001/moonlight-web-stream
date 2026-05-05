@@ -1,9 +1,11 @@
 cargo-features = ["profile-rustflags"]
 
+# TODO: choose stable rust instead of nightly
+
 [workspace]
 resolver = "3"
-members = ["common", "streamer", "./"]
-default-members = ["streamer", "./"]
+members = ["common", "./"]
+default-members = ["./"]
 
 [profile.release]
 # strip release information
@@ -14,11 +16,12 @@ version = "2.6.0"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
-moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-rust.git", rev = "7ab3e3f5ab50e21b64153bec2104ed2bac1f4313", features = [
+# TODO: change this to the repo url
+moonlight-common = { path = "../moonlight-common-rust", features = [
     "tokio",
     "tokio-hyper",
-    "openssl",
-    "stream-c",
+    "rustcrypto",
+    "stream-proto",
     "serde",
 ], default-features = false }
 common = { path = "./common" }
@@ -48,7 +51,7 @@ uuid = { version = "0.8.2" }
 hex = { version = "0.4.3" }
 
 # WebRTC
-webrtc = "0.17.1"
+webrtc = "0.20.0-alpha.1"
 
 # Actix
 actix-web = { version = "4.11.0" }
@@ -85,7 +88,6 @@ license = { workspace = true }
 default-run = "web-server"
 
 [dependencies]
-moonlight-common = { workspace = true }
 common = { workspace = true }
 
 tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
@@ -97,6 +99,10 @@ actix-web = { workspace = true, features = ["openssl"] }
 openssl = { workspace = true }
 actix-files = { workspace = true }
 actix-ws = { workspace = true }
+
+moonlight-common = { workspace = true }
+webrtc = { workspace = true }
+rtc = "0.20.0-alpha.1"
 
 log = { workspace = true }
 tracing = { workspace = true }

@@ -1,5 +1,5 @@
 use log::warn;
-use moonlight_common::stream::video::SupportedVideoFormats;
+use moonlight_common::stream::video::VideoFormats;
 use serde::Serialize;
 
 use crate::api_bindings::{StreamPermissions, StreamSettings};
@@ -32,15 +32,15 @@ pub fn apply_permissions_to_settings(
         settings.bitrate_kbps = *maximum_bitrate;
     }
 
-    let mut supported_codecs = SupportedVideoFormats::from_bits_truncate(settings.supported_codecs);
+    let mut supported_codecs = VideoFormats::from_bits_truncate(settings.supported_codecs);
     if !allow_codec_h264 {
-        supported_codecs &= !SupportedVideoFormats::MASK_H264;
+        supported_codecs &= !VideoFormats::MASK_H264;
     }
     if !allow_codec_h265 {
-        supported_codecs &= !SupportedVideoFormats::MASK_H265;
+        supported_codecs &= !VideoFormats::MASK_H265;
     }
     if !allow_codec_av1 {
-        supported_codecs &= !SupportedVideoFormats::MASK_AV1;
+        supported_codecs &= !VideoFormats::MASK_AV1;
     }
     settings.supported_codecs = supported_codecs.bits();
 

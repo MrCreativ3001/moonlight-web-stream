@@ -1,4 +1,5 @@
-use openssl::{hash::MessageDigest, pkcs5, rand::rand_bytes};
+use moonlight_common::{crypto::rustcrypto::RustCryptoBackend, http::pair::PairingCryptoBackend};
+use openssl::{hash::MessageDigest, pkcs5};
 
 use crate::app::AppError;
 
@@ -30,7 +31,7 @@ impl StoragePassword {
     pub fn new(password: &str) -> Result<Self, AppError> {
         let mut salt = [0u8; 16];
 
-        rand_bytes(&mut salt)?;
+        RustCryptoBackend.random_bytes(&mut salt)?;
 
         let mut hash = [0u8; 32];
 

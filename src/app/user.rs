@@ -10,7 +10,7 @@ use moonlight_common::{
     high::MoonlightClientError,
     http::{
         ClientInfo,
-        client::{RequestError, async_client::RequestClient},
+        client::{RequestError, async_client::RequestClient as _},
         server_info::{ServerInfoEndpoint, ServerInfoRequest},
     },
 };
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app::{
-    AppError, AppRef, MoonlightClient,
+    AppError, AppRef, RequestClient,
     auth::{SessionToken, UserAuth},
     host::{Host, HostId},
     password::StoragePassword,
@@ -314,14 +314,14 @@ impl AuthenticatedUser {
 
         let unique_id = self.host_unique_id().await?;
 
-        let client = MoonlightClient::with_defaults()
+        let client = RequestClient::with_defaults()
             .map_err(|err| MoonlightClientError::Backend(Box::new(err)))?;
 
         let info = match client
             .send_http::<ServerInfoEndpoint>(
                 ClientInfo {
                     uuid: Uuid::new_v4(),
-                    unique_id: &unique_id,
+                    unique_id,
                 },
                 &format!("{}:{}", address, http_port),
                 &ServerInfoRequest {},

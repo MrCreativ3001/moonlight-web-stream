@@ -5,11 +5,11 @@ use actix_web::{
 };
 use common::api_bindings::{
     DeleteHostQuery, GetHostQuery, GetHostResponse, GetHostsResponse, PatchHostRequest,
-    PostHostRequest, PostHostResponse, PostPairRequest, PostPairResponse1, PostPairResponse2,
-    PostWakeUpRequest, UndetailedHost,
+    PostCancelRequest, PostCancelResponse, PostHostRequest, PostHostResponse, PostPairRequest,
+    PostPairResponse1, PostPairResponse2, PostWakeUpRequest, UndetailedHost,
 };
 use futures::future::try_join_all;
-use moonlight_common::{crypto::openssl::OpenSSLCryptoBackend, http::pair::PairPin};
+use moonlight_common::{crypto::rustcrypto::RustCryptoBackend, http::pair::PairPin};
 use tracing::warn;
 
 use crate::{
@@ -154,7 +154,7 @@ async fn pair_host(
 
     let mut host = user.host(host_id).await?;
 
-    let pin = PairPin::new_random(&OpenSSLCryptoBackend)?;
+    let pin = PairPin::new_random(&RustCryptoBackend)?;
 
     let (stream_response, stream_sender) =
         StreamedResponse::new(PostPairResponse1::Pin(pin.to_string()));
@@ -200,4 +200,18 @@ async fn wake_host(
     host.wake(&mut user).await?;
 
     Ok(HttpResponse::Ok().finish())
+}
+
+#[post("/host/cancel")]
+pub async fn cancel_host(
+    mut user: AuthenticatedUser,
+    Json(request): Json<PostCancelRequest>,
+) -> Result<Json<PostCancelResponse>, AppError> {
+    let host_id = HostId(request.host_id);
+
+    let mut host = user.host(host_id).await?;
+
+    host.cancel_app(&mut user).await?;
+
+    Ok(Json(PostCancelResponse { success: true }))
 }

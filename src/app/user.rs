@@ -327,7 +327,7 @@ impl AuthenticatedUser {
             .send_http::<ServerInfoEndpoint>(
                 ClientInfo {
                     uuid: Uuid::new_v4(),
-                    unique_id: &unique_id,
+                    unique_id,
                 },
                 &format!("{}:{}", address, http_port),
                 &ServerInfoRequest {},

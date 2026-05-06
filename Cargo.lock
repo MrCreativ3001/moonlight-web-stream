@@ -534,6 +534,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -820,6 +829,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-deque"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-epoch"
+version = "0.9.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1072,10 +1100,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "fec-rs"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a86d2bb0db9647ee5dece2ea54a808c14428db009ad751f95b091598835cd0b"
+dependencies = [
+ "rayon",
+]
 
 [[package]]
 name = "ff"
@@ -1283,8 +1326,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1891,11 +1936,15 @@ dependencies = [
 [[package]]
 name = "moonlight-common"
 version = "0.1.0"
-source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=7ab3e3f5ab50e21b64153bec2104ed2bac1f4313#7ab3e3f5ab50e21b64153bec2104ed2bac1f4313"
+source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=df9f1e3003fb4834dbb17a4bd4d3cf25d2fea3d9#df9f1e3003fb4834dbb17a4bd4d3cf25d2fea3d9"
 dependencies = [
+ "async-trait",
  "bitflags 2.11.0",
  "bytes",
+ "fec-rs",
  "form_urlencoded",
+ "futures",
+ "getrandom 0.2.17",
  "hex",
  "http 1.4.0",
  "http-body-util",
@@ -1910,7 +1959,10 @@ dependencies = [
  "pem",
  "roxmltree",
  "rustls",
+ "rusty_enet",
+ "sdp-types",
  "serde",
+ "smallvec",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -1920,7 +1972,7 @@ dependencies = [
 [[package]]
 name = "moonlight-common-sys"
 version = "0.1.0"
-source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=7ab3e3f5ab50e21b64153bec2104ed2bac1f4313#7ab3e3f5ab50e21b64153bec2104ed2bac1f4313"
+source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=df9f1e3003fb4834dbb17a4bd4d3cf25d2fea3d9#df9f1e3003fb4834dbb17a4bd4d3cf25d2fea3d9"
 dependencies = [
  "bindgen",
  "cmake",
@@ -2457,6 +2509,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rayon"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "rcgen"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2677,6 +2749,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
+name = "rusty_enet"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1c0b43e27d8d86bb3a15b9eac232b6d78a06afee258a9861deb5a0d15b65c33"
+dependencies = [
+ "js-sys",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2698,6 +2779,16 @@ dependencies = [
  "substring",
  "thiserror 1.0.69",
  "url",
+]
+
+[[package]]
+name = "sdp-types"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bb6c636ace20de73fb9536017f9ef069b258308a6c341a4aaf3d2fd11afc570"
+dependencies = [
+ "bstr",
+ "fallible-iterator",
 ]
 
 [[package]]

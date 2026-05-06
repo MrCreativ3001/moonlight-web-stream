@@ -626,7 +626,7 @@ pub trait TransportSender {
     async fn setup_video(&self, setup: VideoSetup) -> i32;
     async fn send_video_unit<'a>(
         &'a self,
-        unit: &'a VideoDecodeUnit<'a>,
+        unit: VideoDecodeUnit<&'a [u8]>,
     ) -> Result<DecodeResult, TransportError>;
 
     async fn setup_audio(

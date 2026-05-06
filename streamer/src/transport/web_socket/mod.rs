@@ -162,7 +162,7 @@ impl TransportSender for WebSocketTransportSender {
     }
     async fn send_video_unit<'a>(
         &'a self,
-        unit: &'a VideoDecodeUnit<'a>,
+        unit: VideoDecodeUnit<&'a [u8]>,
     ) -> Result<DecodeResult, TransportError> {
         let mut new_buffer = vec![0; 5];
 
@@ -175,7 +175,7 @@ impl TransportSender for WebSocketTransportSender {
         byte_buffer.put_u8(0);
         byte_buffer.put_u32(unit.timestamp.as_micros() as u32);
 
-        for buffer in unit.buffers {
+        for buffer in &unit.buffers {
             new_buffer.extend_from_slice(buffer.data);
         }
         // TODO: ignore h264/h265 fillerdata?

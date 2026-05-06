@@ -17,7 +17,7 @@ use common::{
 };
 use moonlight_common::stream::{
     audio::{AudioConfig, OpusMultistreamConfig},
-    video::{DecodeResult, SupportedVideoFormats, VideoDecodeUnit, VideoSetup},
+    video::{DecodeResult, VideoDecodeUnit, VideoFormats, VideoSetup},
 };
 use tokio::{
     runtime::Handle,
@@ -387,10 +387,14 @@ impl WebRtcInner {
     async fn on_ws_message(&self, message: StreamClientMessage) {
         match message {
             StreamClientMessage::StartStream { settings } => {
-                let video_supported_formats = SupportedVideoFormats::from_bits(settings.supported_codecs).unwrap_or_else(|| {
-                    warn!("Failed to deserialize SupportedVideoFormats: {}, falling back to only H264", SupportedVideoFormats::from_bits_retain(settings.supported_codecs));
-                    SupportedVideoFormats::H264
-                });
+                let video_supported_formats = VideoFormats::from_bits(settings.supported_codecs)
+                    .unwrap_or_else(|| {
+                        warn!(
+                            "Failed to deserialize VideoFormats: {}, falling back to only H264",
+                            VideoFormats::from_bits_retain(settings.supported_codecs)
+                        );
+                        VideoFormats::H264
+                    });
                 {
                     let mut video = self.video.lock().await;
                     video.set_codecs(video_supported_formats).await;
@@ -604,10 +608,10 @@ impl TransportSender for WebRTCTransportSender {
     }
     async fn send_video_unit<'a>(
         &'a self,
-        unit: &'a VideoDecodeUnit<'a>,
+        unit: VideoDecodeUnit<&'a [u8]>,
     ) -> Result<DecodeResult, TransportError> {
         let mut video = self.inner.video.lock().await;
-        Ok(video.send_decode_unit(unit).await)
+        Ok(video.send_decode_unit(&unit).await)
     }
 
     async fn setup_audio(

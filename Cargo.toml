@@ -14,7 +14,7 @@ version = "2.6.0"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
-moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-rust.git", rev = "7ab3e3f5ab50e21b64153bec2104ed2bac1f4313", features = [
+moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-rust.git", rev = "df9f1e3003fb4834dbb17a4bd4d3cf25d2fea3d9", features = [
     "tokio",
     "tokio-hyper",
     "openssl",

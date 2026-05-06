@@ -8,8 +8,7 @@ use log::{debug, error, warn};
 use moonlight_common::stream::{
     c::bindings::EstimatedRttInfo,
     video::{
-        DecodeResult, SupportedVideoFormats, VideoCapabilities, VideoDecodeUnit, VideoDecoder,
-        VideoSetup,
+        DecodeResult, VideoCapabilities, VideoDecodeUnit, VideoDecoder, VideoFormats, VideoSetup,
     },
 };
 
@@ -17,7 +16,7 @@ use crate::{StreamConnection, transport::OutboundPacket};
 
 pub(crate) struct StreamVideoDecoder {
     pub(crate) stream: Weak<StreamConnection>,
-    pub(crate) supported_formats: SupportedVideoFormats,
+    pub(crate) supported_formats: VideoFormats,
     pub(crate) stats: VideoStats,
 }
 
@@ -50,38 +49,39 @@ impl VideoDecoder for StreamVideoDecoder {
     fn start(&mut self) {}
     fn stop(&mut self) {}
 
-    fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<'_>) -> DecodeResult {
+    fn submit_decode_unit(&mut self, unit: VideoDecodeUnit<&[u8]>) -> DecodeResult {
         let Some(stream) = self.stream.upgrade() else {
             warn!("Failed to send video decode unit because stream is deallocated");
             return DecodeResult::Ok;
         };
 
-        stream.runtime.clone().block_on(async {
-            let mut sender = stream.transport_sender.lock().await;
+        let mut sender_guard = stream.transport_sender.blocking_lock();
 
-            if let Some(sender) = sender.as_mut() {
-                let start = Instant::now();
-                let result = match sender.send_video_unit(&unit).await {
+        let start = Instant::now();
+
+        let result = stream.runtime.block_on(async {
+            if let Some(sender) = sender_guard.as_mut() {
+                match sender.send_video_unit(unit.as_ref()).await {
                     Err(err) => {
                         warn!("Failed to send video decode unit: {err}");
                         DecodeResult::Ok
                     }
                     Ok(value) => value,
-                };
-
-                let frame_processing_time = Instant::now() - start;
-                self.stats.analyze(&stream, &unit, frame_processing_time);
-
-                result
+                }
             } else {
                 debug!("Dropping video packet because of missing transport");
 
                 DecodeResult::Ok
             }
-        })
+        });
+
+        let frame_processing_time = Instant::now() - start;
+        self.stats.analyze(&stream, &unit, frame_processing_time);
+
+        result
     }
 
-    fn supported_formats(&self) -> SupportedVideoFormats {
+    fn supported_formats(&self) -> VideoFormats {
         self.supported_formats
     }
 
@@ -107,7 +107,7 @@ impl VideoStats {
     fn analyze(
         &mut self,
         stream: &Arc<StreamConnection>,
-        unit: &VideoDecodeUnit,
+        unit: &VideoDecodeUnit<&[u8]>,
         frame_processing_time: Duration,
     ) {
         if let Some(host_processing_latency) = unit.frame_processing_latency {

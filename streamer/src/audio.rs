@@ -2,7 +2,7 @@ use std::sync::Weak;
 
 use log::{debug, error, warn};
 use moonlight_common::stream::audio::{
-    AudioConfig, AudioDecoder, AudioSample, OpusMultistreamConfig,
+    AudioConfig, AudioDecoder, AudioFrame, OpusMultistreamConfig,
 };
 
 use crate::StreamConnection;
@@ -37,7 +37,7 @@ impl AudioDecoder for StreamAudioDecoder {
     fn start(&mut self) {}
     fn stop(&mut self) {}
 
-    fn decode_and_play_sample(&mut self, sample: AudioSample) {
+    fn decode_and_play_sample(&mut self, sample: AudioFrame<&[u8]>) {
         let Some(stream) = self.stream.upgrade() else {
             warn!("Failed to send audio sample because stream is deallocated");
             return;
@@ -47,7 +47,7 @@ impl AudioDecoder for StreamAudioDecoder {
             let mut stream = stream.transport_sender.lock().await;
 
             if let Some(stream) = stream.as_mut() {
-                if let Err(err) = stream.send_audio_sample(&sample.buffer).await {
+                if let Err(err) = stream.send_audio_sample(sample.buffer).await {
                     warn!("Failed to send audio sample: {err}");
                 }
             } else {

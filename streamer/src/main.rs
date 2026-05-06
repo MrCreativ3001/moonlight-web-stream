@@ -38,7 +38,9 @@ use moonlight_common::{
         },
         connection::ConnectionListener,
         control::{ActiveGamepads, ControllerButtons},
-        video::{ColorRange, ColorSpace, SupportedVideoFormats, VideoFormat, VideoSetup},
+        video::{
+            ColorRange, ColorSpace, SunshineHdrMetadata, VideoFormat, VideoFormats, VideoSetup,
+        },
     },
 };
 use tokio::{
@@ -714,7 +716,7 @@ impl StreamConnection {
 
         let video_decoder = StreamVideoDecoder {
             stream: Arc::downgrade(self),
-            supported_formats: SupportedVideoFormats::from_bits_retain(settings.supported_codecs),
+            supported_formats: VideoFormats::from_bits_retain(settings.supported_codecs),
             stats: Default::default(),
         };
 
@@ -740,15 +742,14 @@ impl StreamConnection {
             encryption_flags: EncryptionFlags::ALL,
             streaming_remotely: StreamingConfig::Auto,
             sops: true,
-            supported_video_formats: SupportedVideoFormats::from_bits_truncate(
-                settings.supported_codecs,
-            ),
+            supported_video_formats: VideoFormats::from_bits_truncate(settings.supported_codecs),
             color_space: ColorSpace::Rec709,
             color_range: ColorRange::Limited,
             local_audio_play_mode: settings.play_audio_local,
             audio_config: AudioConfig::STEREO,
             gamepads_attached: ActiveGamepads::empty(),
             gamepads_persist_after_disconnect: false,
+            enable_mic: false,
         };
 
         let server_version = host.version().await?;
@@ -825,11 +826,11 @@ impl StreamConnection {
 
         let host_features = stream.host_features().unwrap_or_else(|err| {
             warn!("[Stream]: failed to get host features: {err:?}");
-            HostFeatures::empty()
+            HostFeatures::default()
         });
 
         let capabilities = StreamCapabilities {
-            touch: host_features.contains(HostFeatures::PEN_TOUCH_EVENTS),
+            touch: host_features.controller_touch,
         };
 
         let (video_setup, audio_setup) = {
@@ -964,7 +965,7 @@ struct StreamConnectionListener {
 }
 
 impl ConnectionListener for StreamConnectionListener {
-    fn set_hdr_mode(&mut self, hdr_enabled: bool) {
+    fn set_hdr_mode(&mut self, hdr_enabled: bool, _sunshine: Option<SunshineHdrMetadata>) {
         info!(
             "[HDR] Host called set_hdr_mode with enabled={}",
             hdr_enabled

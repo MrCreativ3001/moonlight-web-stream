@@ -10,7 +10,7 @@ on:
       branch:
         description: 'Branch to release from'
         required: true
-        default: 'main'
+        default: 'master'
         type: string
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.inputs.branch }}
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,4 +1,5 @@
 import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton, TransportChannelId } from "../api_bindings.js"
+import { showErrorPopup } from "../component/error.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
@@ -28,6 +29,7 @@ const CONTROLLER_RUMBLE_INTERVAL_MS = 60
 
 function trySendChannel(channel: DataTransportChannel | null, buffer: ByteBuffer) {
     if (!channel) {
+        console.info(`dropping packet on channel ${channel} because the channel is not present.`)
         return
     }
 
@@ -131,6 +133,9 @@ export class StreamInput {
 
             this.controllerInputs[i] = this.getDataChannel(transport, channelId)
         }
+
+        // Register all controllers, because the missing channel could've dropped controller connect events
+        this.registerBufferedControllers()
     }
 
     setConfig(config: StreamInputConfig) {
@@ -332,12 +337,6 @@ export class StreamInput {
         if (reliable) {
             trySendChannel(this.mouseReliable, this.buffer)
         } else {
-            const PACKET_SIZE = 1 + 2 + 2 + 2 + 2;
-
-            const estimatedBufferedBytes = this.mouseAbsolute?.estimatedBufferedBytes()
-            if (this.mouseAbsolute && estimatedBufferedBytes != null && estimatedBufferedBytes > PACKET_SIZE) {
-                return
-            }
             trySendChannel(this.mouseAbsolute, this.buffer)
         }
     }
@@ -942,7 +941,7 @@ export class StreamInput {
     private gamepadRumbleInterval: number | null = null
 
     onGamepadConnect(gamepad: Gamepad) {
-        if (!this.connected) {
+        if (!this.connected || !this.controllers) {
             this.bufferedControllers.push(gamepad.index)
             return
         }
@@ -1180,6 +1179,9 @@ export class StreamInput {
         this.buffer.putU32(supportedButtons)
         this.buffer.putU16(capabilities)
 
+        if (!this.controllers) {
+            showErrorPopup("controller channel is not yet present, controller connect event is dropped")
+        }
         trySendChannel(this.controllers, this.buffer)
     }
     sendControllerRemove(id: number) {
@@ -1194,17 +1196,6 @@ export class StreamInput {
     // - Trigger: range 0..1
     // - Stick: range -1..1
     sendController(id: number, state: GamepadState) {
-        const PACKET_SIZE_BYTES = 1 + 4 + 1 + 1 + 2 + 2 + 2 + 2;
-
-        const controllerChannel = this.controllerInputs[id]
-
-        const estimatedBufferedBytes = controllerChannel?.estimatedBufferedBytes()
-        if (controllerChannel && estimatedBufferedBytes != null && estimatedBufferedBytes > PACKET_SIZE_BYTES) {
-            // Only send packets when we can handle them
-            console.debug(`dropping controller packet for ${id} because the buffer amount is large enough: ${controllerChannel.estimatedBufferedBytes()}`)
-            return
-        }
-
         this.buffer.reset()
 
         this.buffer.putU8(0)

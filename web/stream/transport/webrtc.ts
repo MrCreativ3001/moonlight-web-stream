@@ -513,13 +513,14 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
 
     private label: string
     private channel: RTCDataChannel | null
-    private reportedMissing: boolean = false
+    private boundTryDequeueSendQueue: () => void
     private boundOnMessage: (event: MessageEvent) => void
 
     constructor(label: string, channel: RTCDataChannel | null, logger?: Logger) {
         this.label = label
         this.channel = channel
         this.boundOnMessage = this.onMessage.bind(this)
+        this.boundTryDequeueSendQueue = this.tryDequeueSendQueue.bind(this)
 
         this.logger = logger ?? null
 
@@ -531,9 +532,11 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
     // replace our locally created one for receiving messages
     replaceChannel(newChannel: RTCDataChannel): void {
         // Remove listener from old channel
+        this.channel?.removeEventListener("open", this.boundTryDequeueSendQueue)
         this.channel?.removeEventListener("message", this.boundOnMessage)
         // Add listener to new channel
         this.channel = newChannel
+        this.channel.addEventListener("open", this.boundTryDequeueSendQueue)
         this.channel.addEventListener("message", this.boundOnMessage)
     }
 
@@ -541,29 +544,22 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
     send(message: ArrayBuffer): void {
         console.debug(this.label, message)
 
-        if (!this.channel) {
-            console.debug(`Failed to send message on channel ${this.label}`)
-
-            if (!this.reportedMissing) {
-                this.logger?.debug(`Failed to send message on channel ${this.label}`)
-                this.reportedMissing = true
-            }
-            return
-        }
-
-        if (this.channel.readyState != "open") {
-            console.debug(`Tried sending packet to ${this.label} with readyState ${this.channel.readyState}. Buffering it for the future.`)
-            this.sendQueue.push(message)
+        if (!this.channel || this.channel.readyState != "open") {
+            console.debug(`Tried sending packet to ${this.label} with readyState ${this.channel?.readyState}. Buffering it for the future.`)
+            // Make sure to copy the message
+            this.sendQueue.push(message.slice(0))
         } else {
-            this.tryDequeueSendQueue()
             this.channel.send(message)
         }
     }
     private tryDequeueSendQueue() {
-        for (const message of this.sendQueue) {
-            this.channel?.send(message)
+        if (!this.channel || this.channel.readyState != "open") {
+            return
         }
-        this.sendQueue.length = 0
+
+        for (const message of this.sendQueue.splice(0)) {
+            this.channel.send(message)
+        }
     }
 
     private onMessage(event: MessageEvent) {

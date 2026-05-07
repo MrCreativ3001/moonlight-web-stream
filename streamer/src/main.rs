@@ -442,6 +442,8 @@ impl StreamConnection {
     }
 
     async fn on_packet(&self, packet: InboundPacket) {
+        trace!(packet = ?packet, "received packet from client");
+
         let stream_lock = self.stream.read().await;
         let Some(stream) = stream_lock.as_ref() else {
             warn!("Failed to send packet {packet:?} because of missing stream");

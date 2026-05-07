@@ -81,7 +81,7 @@ class ViewerApp implements Component {
 
     private statsDiv = document.createElement("div")
     private localTouchCursorDiv = document.createElement("div")
-    private stream: Stream | null = null
+    private stream: Stream
 
     private inputConfig: StreamInputConfig = defaultStreamInputConfig()
     private previousMouseMode: MouseMode
@@ -136,6 +136,8 @@ class ViewerApp implements Component {
 
         this.autoEnterFullscreenOnStart = settings.enterFullscreenOnStreamStart
         this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
+
+        this.stream = new Stream(this.api, hostId, appId, settings, [browserWidth, browserHeight], bootstrapRole.permissions)
         this.startStream(hostId, appId, bootstrapRole.permissions, settings, [browserWidth, browserHeight])
 
         // Configure input
@@ -143,11 +145,11 @@ class ViewerApp implements Component {
         this.addListeners(document.getElementById("input") as HTMLDivElement)
 
         window.addEventListener("blur", () => {
-            this.stream?.getInput().raiseAllKeys()
+            this.stream.getInput().raiseAllKeys()
         })
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState !== "visible") {
-                this.stream?.getInput().raiseAllKeys()
+                this.stream.getInput().raiseAllKeys()
             }
         })
 
@@ -185,8 +187,6 @@ class ViewerApp implements Component {
             edge: settings.sidebarEdge,
         })
 
-        this.stream = new Stream(this.api, hostId, appId, settings, browserSize, permissions)
-
         // Add app info listener
         this.stream.addInfoListener(this.onInfo.bind(this))
 
@@ -195,7 +195,7 @@ class ViewerApp implements Component {
         const connectionInfoListener = connectionInfo.onInfo.bind(connectionInfo)
         this.stream.addInfoListener(connectionInfoListener)
         void showModal(connectionInfo).then(async () => {
-            this.stream?.removeInfoListener(connectionInfoListener)
+            this.stream.removeInfoListener(connectionInfoListener)
             if (this.autoEnterFullscreenOnStart && this.pendingAutoFullscreenPrompt && !this.fullscreenPromptShown && !this.isFullscreen()) {
                 this.fullscreenPromptShown = true
                 this.pendingAutoFullscreenPrompt = false
@@ -229,7 +229,7 @@ class ViewerApp implements Component {
     }
 
     private focusInput() {
-        if (this.stream?.getInput().getCurrentPredictedTouchAction() != "screenKeyboard" && !this.sidebar.getScreenKeyboard().isVisible()) {
+        if (this.stream.getInput().getCurrentPredictedTouchAction() != "screenKeyboard" && !this.sidebar.getScreenKeyboard().isVisible()) {
             const inputElement = document.getElementById("input") as HTMLDivElement
             inputElement.focus()
         }
@@ -238,8 +238,8 @@ class ViewerApp implements Component {
     onUserInteraction() {
         this.focusInput()
 
-        this.stream?.getVideoRenderer()?.onUserInteraction()
-        this.stream?.getAudioPlayer()?.onUserInteraction()
+        this.stream.getVideoRenderer()?.onUserInteraction()
+        this.stream.getAudioPlayer()?.onUserInteraction()
     }
     private onScreenKeyboardSetVisible(event: ScreenKeyboardSetVisibleEvent) {
         console.info(event.detail)
@@ -262,7 +262,7 @@ class ViewerApp implements Component {
     setInputConfig(config: StreamInputConfig) {
         Object.assign(this.inputConfig, config)
 
-        this.stream?.getInput().setConfig(this.inputConfig)
+        this.stream.getInput().setConfig(this.inputConfig)
         this.renderLocalTouchCursor()
     }
 
@@ -277,7 +277,7 @@ class ViewerApp implements Component {
             // Allow manual fullscreen
         } else {
             event.preventDefault()
-            this.stream?.getInput().onKeyDown(event)
+            this.stream.getInput().onKeyDown(event)
         }
 
         event.stopPropagation()
@@ -288,7 +288,7 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onKeyUp(event)
+        this.stream.getInput().onKeyUp(event)
         event.stopPropagation()
 
         if (this.toggleFullscreenWithKeybind && this.isTogglingFullscreenWithKeybind == "none" && event.ctrlKey && event.shiftKey && event.code == "KeyI") {
@@ -314,7 +314,7 @@ class ViewerApp implements Component {
     onPaste(event: ClipboardEvent) {
         this.onUserInteraction()
 
-        this.stream?.getInput().onPaste(event)
+        this.stream.getInput().onPaste(event)
 
         event.stopPropagation()
     }
@@ -324,7 +324,7 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onMouseDown(event, this.getStreamRect());
+        this.stream.getInput().onMouseDown(event, this.getStreamRect());
 
         event.stopPropagation()
     }
@@ -332,19 +332,19 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onMouseUp(event)
+        this.stream.getInput().onMouseUp(event)
 
         event.stopPropagation()
     }
     onMouseMove(event: MouseEvent) {
         event.preventDefault()
-        this.stream?.getInput().onMouseMove(event, this.getStreamRect())
+        this.stream.getInput().onMouseMove(event, this.getStreamRect())
 
         event.stopPropagation()
     }
     onMouseWheel(event: WheelEvent) {
         event.preventDefault()
-        this.stream?.getInput().onMouseWheel(event)
+        this.stream.getInput().onMouseWheel(event)
 
         event.stopPropagation()
     }
@@ -359,7 +359,7 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onTouchStart(event, this.getStreamRect())
+        this.stream.getInput().onTouchStart(event, this.getStreamRect())
 
         event.stopPropagation()
     }
@@ -367,7 +367,7 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event.preventDefault()
-        this.stream?.getInput().onTouchEnd(event, this.getStreamRect())
+        this.stream.getInput().onTouchEnd(event, this.getStreamRect())
 
         event.stopPropagation()
     }
@@ -375,19 +375,19 @@ class ViewerApp implements Component {
         this.onUserInteraction()
 
         event?.preventDefault()
-        this.stream?.getInput().onTouchCancel(event, this.getStreamRect())
+        this.stream.getInput().onTouchCancel(event, this.getStreamRect())
 
         event.stopPropagation()
     }
     onTouchUpdate() {
-        this.stream?.getInput().onTouchUpdate(this.getStreamRect())
+        this.stream.getInput().onTouchUpdate(this.getStreamRect())
         this.renderLocalTouchCursor()
 
         window.requestAnimationFrame(this.onTouchUpdate.bind(this))
     }
     onTouchMove(event: TouchEvent) {
         event.preventDefault()
-        this.stream?.getInput().onTouchMove(event, this.getStreamRect())
+        this.stream.getInput().onTouchMove(event, this.getStreamRect())
 
         event.stopPropagation()
     }
@@ -397,13 +397,13 @@ class ViewerApp implements Component {
         this.onGamepadAdd(event.gamepad)
     }
     onGamepadAdd(gamepad: Gamepad) {
-        this.stream?.getInput().onGamepadConnect(gamepad)
+        this.stream.getInput().onGamepadConnect(gamepad)
     }
     onGamepadDisconnect(event: GamepadEvent) {
-        this.stream?.getInput().onGamepadDisconnect(event)
+        this.stream.getInput().onGamepadDisconnect(event)
     }
     onGamepadUpdate() {
-        this.stream?.getInput().onGamepadUpdate()
+        this.stream.getInput().onGamepadUpdate()
 
         window.requestAnimationFrame(this.onGamepadUpdate.bind(this))
     }
@@ -415,7 +415,7 @@ class ViewerApp implements Component {
     async requestFullscreen() {
         const body = document.body
         if (body) {
-                if (!("requestFullscreen" in body && typeof body.requestFullscreen == "function")) {
+            if (!("requestFullscreen" in body && typeof body.requestFullscreen == "function")) {
                 await showMessage(I.stream.fullscreenUnsupported)
 
                 return
@@ -551,7 +551,7 @@ class ViewerApp implements Component {
         }
     }
     private renderLocalTouchCursor() {
-        const localCursorState = this.stream?.getInput().getLocalCursorState()
+        const localCursorState = this.stream.getInput().getLocalCursorState()
         if (!localCursorState?.visible) {
             this.localTouchCursorDiv.hidden = true
             return
@@ -578,7 +578,7 @@ class ViewerApp implements Component {
     getStreamRect(): DOMRect {
         // The bounding rect of the videoElement or canvasElement can be bigger than the actual video
         // -> We need to correct for this when sending positions, else positions are wrong
-        return this.stream?.getVideoRenderer()?.getStreamRect() ?? new DOMRect()
+        return this.stream.getVideoRenderer()?.getStreamRect() ?? new DOMRect()
     }
     getStream(): Stream | null {
         return this.stream

@@ -14,3 +14,5 @@ web/api_bindings.ts
 
 # Server
 server
+
+/.idea

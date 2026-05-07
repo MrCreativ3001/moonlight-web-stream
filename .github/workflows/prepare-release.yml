@@ -1,0 +1,48 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Target version (e.g., 2.9.0)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to release from'
+        required: true
+        default: 'master'
+        type: string
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0 # Fetch all history so we can push back to branches
+
+      - name: Update version and Tag
+        run: |
+          # 1. Get raw input
+          RAW_VERSION=${{ github.event.inputs.version }}
+          
+          # 2. Normalize: Remove 'v' prefix if user accidentally included it to get the pure version number (e.g., v1.2.3 -> 1.2.3)
+          VERSION=${RAW_VERSION#v}
+          
+          # 3. Update version in Cargo.toml
+          sed -i "0,/^version = .*/s//version = \"$VERSION\"/" Cargo.toml
+          
+          # 4. Commit and Push changes
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml
+          git commit -m "chore: bump version to $VERSION"
+          git push origin ${{ github.event.inputs.branch }}
+          
+          # 5. Create Tag (Ensure it starts with 'v') and Push
+          NEW_TAG="v$VERSION"
+          git tag $NEW_TAG
+          git push origin $NEW_TAG

@@ -66,15 +66,24 @@ function getVideoCodecHint(settings: Settings): VideoCodecSupport {
         videoCodecHint.H265_REXT8_444 = true
         videoCodecHint.H265_REXT10_444 = true
     } else if (settings.videoCodec == "av1") {
-        videoCodecHint.AV1 = true
         videoCodecHint.AV1_MAIN8 = true
         videoCodecHint.AV1_MAIN10 = true
-        videoCodecHint.AV1_REXT8_444 = true
-        videoCodecHint.AV1_REXT10_444 = true
+        videoCodecHint.AV1_HIGH8_444 = true
+        videoCodecHint.AV1_HIGH10_444 = true
     } else if (settings.videoCodec == "auto") {
         videoCodecHint = allVideoCodecs()
     }
+
+    if (isFirefox()) {
+        videoCodecHint.AV1_MAIN10 = false
+        videoCodecHint.AV1_HIGH10_444 = false
+    }
+
     return videoCodecHint
+}
+
+function isFirefox(): boolean {
+    return navigator.userAgent.includes("Firefox/")
 }
 
 const WEBRTC_CONNECT_TIMEOUT_MS = 15000

@@ -1,33 +1,38 @@
 use std::sync::Arc;
 
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
-use actix_ws::{Message, Session};
+use actix_ws::{Message, MessageStream, Session};
 use async_trait::async_trait;
 use moonlight_common::{
     ServerVersion,
     crypto::rustcrypto::RustCryptoBackend,
+    high::tokio::MoonlightHost,
     http::Request,
     stream::{
         AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
         audio::{AudioConfig, AudioFrame, OpusMultistreamConfig},
+        control::ActiveGamepads,
         proto::control::packet::{ControlPacket, ControlPacketConfig, PacketDirection},
         tokio::{MoonlightStream, MoonlightStreamError, MoonlightStreamHandler},
-        video::{ColorRange, ColorSpace, DecodeResult, VideoDecodeUnit, VideoSetup},
+        video::{ColorRange, ColorSpace, DecodeResult, VideoDecodeUnit, VideoFormats, VideoSetup},
     },
     webrtc::launch::WebRtcLaunchRequest,
 };
 use tracing::{instrument, warn};
 
-use crate::app::{
-    AppError,
-    host::{AppId, HostId},
-    user::AuthenticatedUser,
+use crate::{
+    api::stream::create_control_packet_config,
+    app::{
+        AppError, RequestClient,
+        host::{AppId, HostId},
+        user::AuthenticatedUser,
+    },
 };
 
 // TODO: on new major make this web socket a different path, e.g. "/host/stream/web_socket"
 
 #[get("/host/stream")]
-#[instrument(skip(user), fields(user = %user.id()))]
+#[instrument(skip(user, body_stream), fields(user = %user.id()))]
 pub async fn web_socket_stream(
     mut user: AuthenticatedUser,
     req: HttpRequest,
@@ -60,78 +65,10 @@ pub async fn web_socket_stream(
     let (res, mut ws_sender, ws_receiver) = actix_ws::handle(&req, body_stream)?;
 
     spawn(async move {
-        let control_config = ControlPacketConfig::new(ServerVersion::new(7, 0, 0, 0), true)
-            .expect("control packet config");
-
-        // create moonlight stream handler, will handle sending over the web socket
-        let handler = Arc::new(WsStreamHandler { ws_sender });
-
-        // get settings
-        let settings = MoonlightStreamSettings {
-            width: query.mode_width,
-            height: query.mode_height,
-            fps: query.mode_fps,
-            fps_x100: query.mode_fps * 100,
-            bitrate: query.bitrate_kbps,
-            packet_size: 2048,
-            encryption_flags: EncryptionFlags::AUDIO | EncryptionFlags::FOUNDATION_MICROPHONE,
-            streaming_remotely: StreamingConfig::Auto,
-            sops: true,
-            hdr: query.hdr,
-            supported_video_formats: query.supported_codecs,
-            // TODO: color range?
-            color_space: ColorSpace::Rec709,
-            color_range: ColorRange::Limited,
-            local_audio_play_mode: query.local_audio_play_mode,
-            audio_config: query.surround_audio_info,
-            gamepads_attached: query.gamepads_attached,
-            gamepads_persist_after_disconnect: query.gamepads_persist_after_disconnect,
-            // TODO: mic?
-            enable_mic: false,
-        };
-
-        // encryption
-        let aes_key = AesKey::new_random(&RustCryptoBackend)?;
-        let aes_iv = AesIv::new_random(&RustCryptoBackend)?;
-
-        // start stream
-        let config = host
-            .start_stream(
-                query.app_id,
-                &settings,
-                aes_key,
-                aes_iv,
-                MoonlightStream::launch_query_parameters(),
-            )
-            .await?;
-
-        let stream = MoonlightStream::connect(config, settings, RustCryptoBackend, handler).await?;
-
-        // handle incoming ws messages
-        while let Some(Ok(message)) = ws_receiver.recv().await {
-            match message {
-                Message::Binary(message) => {
-                    if message.len() < 1 {
-                        continue;
-                    }
-
-                    // TODO: put the channel id into a const
-                    if message[0] == 0 {
-                        let Some(packet) = ControlPacket::deserialize(
-                            PacketDirection::ServerBound,
-                            &control_config,
-                            &message[1..],
-                        ) else {
-                            warn!(message = ?message, "received unknown control packet");
-                            continue;
-                        };
-
-                        if let Err(err) = stream.send_input_raw(packet).await {
-                            warn!(error = %err, "failed to send control packet");
-                        }
-                    }
-                }
-                _ => {}
+        match handle_ws(query, &host, ws_sender, ws_receiver).await {
+            Ok(_) => {}
+            Err(err) => {
+                // TODO
             }
         }
     });
@@ -139,7 +76,94 @@ pub async fn web_socket_stream(
     Ok(res)
 }
 
+async fn handle_ws(
+    query: WebRtcLaunchRequest,
+    host: &MoonlightHost<RequestClient>,
+    mut ws_sender: Session,
+    ws_receiver: MessageStream,
+) -> Result<(), AppError> {
+    let control_config = create_control_packet_config();
+
+    // create moonlight stream handler, will handle sending over the web socket
+    let handler = Arc::new(WsStreamHandler {
+        control_config,
+        ws_sender,
+    });
+
+    // get settings
+    let settings = MoonlightStreamSettings {
+        width: query.mode_width,
+        height: query.mode_height,
+        fps: query.mode_fps,
+        fps_x100: query.mode_fps * 100,
+        bitrate: query.bitrate_kbps,
+        packet_size: 2048,
+        encryption_flags: EncryptionFlags::AUDIO | EncryptionFlags::FOUNDATION_MICROPHONE,
+        streaming_remotely: StreamingConfig::Auto,
+        sops: true,
+        hdr: query.hdr,
+        supported_video_formats: query.web_supported_codecs.unwrap_or(VideoFormats::H264),
+        // TODO: color range?
+        color_space: ColorSpace::Rec709,
+        color_range: ColorRange::Limited,
+        local_audio_play_mode: query.local_audio_play_mode,
+        audio_config: query.preferred_audio,
+        gamepads_attached: ActiveGamepads::empty(),
+        gamepads_persist_after_disconnect: false,
+        // TODO: mic?
+        enable_mic: false,
+    };
+
+    // encryption
+    let aes_key = AesKey::new_random(&RustCryptoBackend)?;
+    let aes_iv = AesIv::new_random(&RustCryptoBackend)?;
+
+    // start stream
+    let config = host
+        .start_stream(
+            query.app_id,
+            &settings,
+            aes_key,
+            aes_iv,
+            MoonlightStream::launch_query_parameters(),
+        )
+        .await?;
+
+    let stream = MoonlightStream::connect(config, settings, RustCryptoBackend, handler).await?;
+
+    // handle incoming ws messages
+    while let Some(Ok(message)) = ws_receiver.recv().await {
+        match message {
+            Message::Binary(message) => {
+                if message.len() < 1 {
+                    continue;
+                }
+
+                // TODO: put the channel id into a const
+                if message[0] == 0 {
+                    let Some(packet) = ControlPacket::deserialize(
+                        PacketDirection::ServerBound,
+                        &control_config,
+                        &message[1..],
+                    ) else {
+                        warn!(message = ?message, "received unknown control packet");
+                        continue;
+                    };
+
+                    if let Err(err) = stream.send_input_raw(packet).await {
+                        warn!(error = %err, "failed to send control packet");
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
 struct WsStreamHandler {
+    control_config: ControlPacketConfig,
     ws_sender: Session,
 }
 
@@ -160,28 +184,31 @@ impl MoonlightStreamHandler for WsStreamHandler {
         todo!()
     }
     async fn on_audio_frame(&self, frame: AudioFrame<&[u8]>) {
-        let mut bytes = vec![0; 1 + frame.buffer.len()];
-        bytes[1..].copy_from_slice(frame.buffer);
+        let mut buffer = vec![0; 1 + frame.buffer.len()];
+        buffer[1..].copy_from_slice(frame.buffer);
 
-        bytes[0] = 2;
+        buffer[0] = 2;
 
-        let _ = self.ws_sender.binary(bytes).await;
+        let _ = self.ws_sender.clone().binary(buffer).await;
     }
 
     async fn on_control_packet(&self, packet: ControlPacket) {
-        let mut bytes = [0; ControlPacket::MAX_SIZE + 1];
+        let mut buffer = [0; ControlPacket::MAX_SIZE + 1];
 
         // TODO: put the channel id into a const
-        bytes[0] = 0;
+        buffer[0] = 0;
 
-        let packet_len = packet.serialize(config, bytes[1..].as_mut_array()).unwrap();
+        #[allow(clippy::unwrap_used)]
+        let packet_len = packet
+            .serialize(&self.control_config, buffer[1..].as_mut_array().unwrap())
+            .unwrap();
 
-        let message = &bytes[0..(1 + packet_len)];
+        let message = &buffer[0..(1 + packet_len)];
 
-        let _ = self.ws_sender.binary(message).await;
+        let _ = self.ws_sender.clone().binary(message.to_vec()).await;
     }
 
     async fn on_stop(&self) {
-        self.ws_sender.close(None);
+        let _ = self.ws_sender.clone().close(None);
     }
 }

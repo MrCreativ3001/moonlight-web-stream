@@ -51,11 +51,12 @@ uuid = { version = "0.8.2" }
 hex = { version = "0.4.3" }
 
 # WebRTC
-webrtc = "0.20.0-alpha.1"
+webrtc = "0.17.1"
 
 # Actix
 actix-web = { version = "4.11.0" }
 actix-files = "0.6.6"
+# TODO: upgrade actix-ws
 actix-ws = "0.3.0"
 
 # OpenSSL / Crypto
@@ -102,7 +103,6 @@ actix-ws = { workspace = true }
 
 moonlight-common = { workspace = true }
 webrtc = { workspace = true }
-rtc = "0.20.0-alpha.1"
 
 log = { workspace = true }
 tracing = { workspace = true }

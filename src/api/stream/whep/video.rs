@@ -1,8 +1,5 @@
 use moonlight_common::stream::video::VideoFormat;
-use rtc::{
-    peer_connection::configuration::media_engine::{MIME_TYPE_H264, MIME_TYPE_HEVC},
-    rtp_transceiver::rtp_sender::{RTCPFeedback, RTCRtpCodec},
-};
+use webrtc::rtp_transceiver::{RTCPFeedback, rtp_codec::RTCRtpCodecCapability};
 
 fn rtcp_feedback() -> Vec<RTCPFeedback> {
     vec![
@@ -26,10 +23,10 @@ fn rtcp_feedback() -> Vec<RTCPFeedback> {
 
 macro_rules! video_formats_codec_mapping {
     ($($format:path = $mime_type:ident : $sdp_fmtp_line:expr ),*) => {
-        pub fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodec> {
+        pub fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecCapability> {
             match format {
                 $(
-                    $format => Some(RTCRtpCodec {
+                    $format => Some(RTCRtpCodecCapability {
                         mime_type: $mime_type.to_string(),
                         sdp_fmtp_line: $sdp_fmtp_line.to_string(),
                         clock_rate: 90000,
@@ -41,7 +38,7 @@ macro_rules! video_formats_codec_mapping {
             }
         }
 
-        pub fn codec_to_video_format(codec: &RTCRtpCodec) -> Option<VideoFormat> {
+        pub fn codec_to_video_format(codec: &RTCRtpCodecCapability) -> Option<VideoFormat> {
             match codec.mime_type.as_str() {
                 $(
                     // TODO: check the sdp fmtp line?

@@ -11,7 +11,7 @@ use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
 use moonlight_common::{
     crypto::rustcrypto::RustCryptoError, high::MoonlightClientError,
-    http::client::tokio_hyper::TokioHyperClient,
+    http::client::tokio_hyper::TokioHyperClient, stream::tokio::MoonlightStreamError,
 };
 use openssl::error::ErrorStack;
 use thiserror::Error;
@@ -96,6 +96,8 @@ pub enum AppError {
     Io(#[from] io::Error),
     #[error("moonlight error: {0}")]
     Moonlight(#[from] MoonlightClientError),
+    #[error("moonlight error: {0}")]
+    MoonlightStream(#[from] MoonlightStreamError),
 }
 
 impl ResponseError for AppError {
@@ -126,6 +128,7 @@ impl ResponseError for AppError {
             Self::UserNameEmpty => StatusCode::BAD_REQUEST,
             Self::BadRequest => StatusCode::BAD_REQUEST,
             Self::Moonlight(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::MoonlightStream(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

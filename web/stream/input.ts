@@ -19,7 +19,7 @@ const TOUCH_AS_CLICK_MAX_TIME_MS = 350
 // How much to move to open up the screen keyboard when having three touches at the same time
 const TOUCHES_AS_KEYBOARD_DISTANCE = 100
 // Two-finger scroll only starts after one finger clearly commits to scrolling
-const TWO_TOUCH_SCROLL_TRIGGER_DISTANCE = 15
+const TWO_TOUCH_SCROLL_TRIGGER_DISTANCE = 3
 // How long is the first tap allowed to be for it to maybe be a double tap
 const DOUBLE_TAP_FIRST_TAP_MAX_TIME_MS = 100
 // How much time is allowed after a touch release for a new tap to count both taps as a double tap
@@ -463,6 +463,8 @@ export class StreamInput {
     private primaryTouch: number | null = null
     // If the next touch is a double tap?
     private nextTouchDoubleTap: boolean = false
+    private touchScrollRemainderX = 0
+    private touchScrollRemainderY = 0
 
     private onTouchData(data: ArrayBuffer) {
         const buffer = new ByteBuffer(new Uint8Array(data))
@@ -532,6 +534,30 @@ export class StreamInput {
         }
 
         return false
+    }
+    private resetTouchScrollRemainder() {
+        this.touchScrollRemainderX = 0
+        this.touchScrollRemainderY = 0
+    }
+    private sendAccumulatedTouchScroll(deltaX: number, deltaY: number) {
+        this.touchScrollRemainderX += deltaX
+        this.touchScrollRemainderY += deltaY
+
+        const integerX = Math.trunc(this.touchScrollRemainderX)
+        const integerY = Math.trunc(this.touchScrollRemainderY)
+
+        if (integerX == 0 && integerY == 0) {
+            return
+        }
+
+        this.touchScrollRemainderX -= integerX
+        this.touchScrollRemainderY -= integerY
+
+        if (this.config.mouseScrollMode == "highres") {
+            this.sendMouseWheelHighRes(integerX, integerY)
+        } else if (this.config.mouseScrollMode == "normal") {
+            this.sendMouseWheel(integerX, integerY)
+        }
     }
 
     onTouchStart(event: TouchEvent, rect: DOMRect) {
@@ -625,6 +651,7 @@ export class StreamInput {
                 if (this.touchMouseAction == "default") {
                     if (this.shouldStartTwoTouchScroll(touch)) {
                         this.touchMouseAction = "scroll"
+                        this.resetTouchScrollRemainder()
 
                         if (oldTouch.mouseClicked != null) {
                             this.sendMouseButton(false, oldTouch.mouseClicked)
@@ -707,9 +734,15 @@ export class StreamInput {
                 } else if (this.touchMouseAction == "scroll") {
                     // inverting horizontal scroll
                     if (this.config.mouseScrollMode == "highres") {
-                        this.sendMouseWheelHighRes(-movementX * TOUCH_HIGH_RES_SCROLL_MULTIPLIER, movementY * TOUCH_HIGH_RES_SCROLL_MULTIPLIER)
+                        this.sendAccumulatedTouchScroll(
+                            -movementX * TOUCH_HIGH_RES_SCROLL_MULTIPLIER,
+                            movementY * TOUCH_HIGH_RES_SCROLL_MULTIPLIER
+                        )
                     } else if (this.config.mouseScrollMode == "normal") {
-                        this.sendMouseWheel(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
+                        this.sendAccumulatedTouchScroll(
+                            -movementX * TOUCH_SCROLL_MULTIPLIER,
+                            movementY * TOUCH_SCROLL_MULTIPLIER
+                        )
                     }
                 } else if (this.touchMouseAction == "screenKeyboard") {
                     // calculate if we should open the screen keyboard
@@ -862,6 +895,7 @@ export class StreamInput {
 
         if (this.touchMouseAction == "scroll" && this.touchTracker.size < 2) {
             this.touchMouseAction = "default"
+            this.resetTouchScrollRemainder()
         }
     }
 

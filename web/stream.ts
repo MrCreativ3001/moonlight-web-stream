@@ -648,6 +648,7 @@ class ConnectionInfoModal implements Modal<void> {
             const text = I.stream.connectionComplete
             this.text.innerText = text
             this.debugLog(text)
+        } else if (data.type == "videoReady") {
 
             this.eventTarget.dispatchEvent(new Event("ml-connected"))
         } else if (data.type == "addDebugLine") {
@@ -670,8 +671,6 @@ class ConnectionInfoModal implements Modal<void> {
 
             if (data.additional?.type == "fatal" || data.additional?.type == "fatalDescription") {
                 showModal(this)
-            } else if (data.additional?.type == "recover") {
-                showModal(null)
             } else if (data.additional?.type == "informError") {
                 showErrorPopup(data.line)
             }

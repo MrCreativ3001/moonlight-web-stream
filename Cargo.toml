@@ -48,7 +48,7 @@ uuid = { version = "0.8.2" }
 hex = { version = "0.4.3" }
 
 # WebRTC
-webrtc = "0.17.1"
+webrtc = { version = "0.17.1", git = "https://github.com/MrCreativ3001/webrtc-rs.git", rev = "c9675e222245e95c056e2dcc0195fb076ffa9b89" }
 
 # Actix
 actix-web = { version = "4.11.0" }

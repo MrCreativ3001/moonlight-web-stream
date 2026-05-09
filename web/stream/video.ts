@@ -28,8 +28,8 @@ export const CAPABILITIES_CODECS: Record<keyof VideoCodecSupport, { mimeType: st
     // Av1
     "AV1_MAIN8": { mimeType: "video/AV1", fmtpLine: [] }, // <-- Safari AV1 fmtpLine is empty
     "AV1_MAIN10": { mimeType: "video/AV1", fmtpLine: [] }, // <-- Safari AV1 fmtpLine is empty
-    "AV1_HIGH8": { mimeType: "video/AV1", fmtpLine: ["profile=1"] },
-    "AV1_HIGH10": { mimeType: "video/AV1", fmtpLine: ["profile=1"] },
+    "AV1_HIGH8_444": { mimeType: "video/AV1", fmtpLine: ["profile=1"] },
+    "AV1_HIGH10_444": { mimeType: "video/AV1", fmtpLine: ["profile=1"] },
 }
 
 export function emptyVideoCodecs(): VideoCodecSupport {

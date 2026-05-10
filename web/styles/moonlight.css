@@ -633,18 +633,22 @@ input[type=number] {
 }
 
 .actions-list .button-fit-content {
-    position: fixed;
-    left: var(--ml-topbar-padding-x);
-    top: 0;
     width: var(--ml-topbar-icon-button);
     height: var(--ml-topbar-height);
-    background-image: url("../resources/arrow_left.svg");
     background-repeat: no-repeat;
     background-position: center;
     background-size: var(--ml-topbar-icon-size);
     color: transparent;
     text-indent: -9999px;
     overflow: hidden;
+
+    &[data-variant="save-button"] {
+        background-image: url("../resources/save.svg");
+    }
+
+    &[data-variant="back-button"] {
+        background-image: url("../resources/arrow_left.svg");
+    }
 }
 
 /** Settings */

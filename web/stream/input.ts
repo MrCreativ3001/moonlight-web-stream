@@ -463,6 +463,9 @@ export class StreamInput {
     private primaryTouch: number | null = null
     // If the next touch is a double tap?
     private nextTouchDoubleTap: boolean = false
+    // Set when the current gesture has already been consumed by a multi-touch
+    // action. This prevents the remaining finger from becoming a click/right-click.
+    private touchGestureSuppressClick: boolean = false
     private touchScrollRemainderX = 0
     private touchScrollRemainderY = 0
 
@@ -561,6 +564,10 @@ export class StreamInput {
     }
 
     onTouchStart(event: TouchEvent, rect: DOMRect) {
+        if (this.touchTracker.size == 0) {
+            this.touchGestureSuppressClick = false
+        }
+
         for (const touch of event.changedTouches) {
             this.updateTouchTracker(touch)
         }
@@ -599,6 +606,7 @@ export class StreamInput {
             // Detect scrolling
             if (this.touchTracker.size == 3) {
                 this.touchMouseAction = "screenKeyboard"
+                this.touchGestureSuppressClick = true
             }
         }
     }
@@ -651,7 +659,11 @@ export class StreamInput {
                 if (this.touchMouseAction == "default") {
                     if (this.shouldStartTwoTouchScroll(touch)) {
                         this.touchMouseAction = "scroll"
+                        this.touchGestureSuppressClick = true
                         this.resetTouchScrollRemainder()
+                        for (const trackedTouch of this.touchTracker.values()) {
+                            trackedTouch.mouseMoved = true
+                        }
 
                         if (oldTouch.mouseClicked != null) {
                             this.sendMouseButton(false, oldTouch.mouseClicked)
@@ -775,7 +787,7 @@ export class StreamInput {
             }
         } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor" || this.config.touchMode == "pointAndDrag") {
             const endingScroll = this.touchMouseAction == "scroll" && this.touchTracker.size == 2
-            const endingTwoTouchTap = this.touchMouseAction == "default" && this.touchTracker.size == 2
+            const endingTwoTouchTap = !this.touchGestureSuppressClick && this.touchMouseAction == "default" && this.touchTracker.size == 2
             let endingTwoTouchTapShouldRightClick = false
             let handledTwoTouchTap = false
 
@@ -814,6 +826,10 @@ export class StreamInput {
                     }
 
                     if (this.touchMouseAction == "longPress") {
+                        if (this.touchGestureSuppressClick) {
+                            this.nextTouchDoubleTap = false
+                            continue
+                        }
                         this.sendMouseButton(true, StreamMouseButton.RIGHT)
                         this.sendMouseButton(false, StreamMouseButton.RIGHT)
                         this.nextTouchDoubleTap = false
@@ -832,7 +848,7 @@ export class StreamInput {
                     const touchTime = this.calcTouchTime(oldTouch)
                     const touchOriginDistance = this.calcTouchOriginDistance(touch, oldTouch)
 
-                    const maybeDoubleTap = touchTime < DOUBLE_TAP_FIRST_TAP_MAX_TIME_MS
+                    const maybeDoubleTap = !this.touchGestureSuppressClick && touchTime < DOUBLE_TAP_FIRST_TAP_MAX_TIME_MS
 
                     // point and drag: Before making a click we should move the mouse to the position
                     if (this.config.touchMode == "pointAndDrag" && !oldTouch.mouseMoved) {
@@ -843,6 +859,7 @@ export class StreamInput {
                         // See if we should make a click
                         if (
                             touchOriginDistance < TOUCH_AS_CLICK_MAX_DISTANCE &&
+                            !this.touchGestureSuppressClick &&
                             // mouse relative:
                             // - when having moved the mouse we shouldn't allow a click
                             // - when it's maybe a double click we shouldn't do a click
@@ -897,10 +914,32 @@ export class StreamInput {
             this.touchMouseAction = "default"
             this.resetTouchScrollRemainder()
         }
+
+        if (this.touchTracker.size == 0) {
+            this.touchGestureSuppressClick = false
+        }
     }
 
     onTouchCancel(event: TouchEvent, rect: DOMRect) {
-        this.onTouchEnd(event, rect)
+        if (this.config.touchMode == "touch") {
+            for (const touch of event.changedTouches) {
+                this.sendTouch(2, touch, rect)
+            }
+        } else {
+            for (const trackedTouch of this.touchTracker.values()) {
+                if (trackedTouch.mouseClicked != null) {
+                    this.sendMouseButton(false, trackedTouch.mouseClicked)
+                    trackedTouch.mouseClicked = null
+                }
+            }
+        }
+
+        this.touchTracker.clear()
+        this.primaryTouch = null
+        this.touchMouseAction = "default"
+        this.nextTouchDoubleTap = false
+        this.touchGestureSuppressClick = false
+        this.resetTouchScrollRemainder()
     }
 
     private calcNormalizedPosition(clientX: number, clientY: number, rect: DOMRect): [number, number] | null {

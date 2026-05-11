@@ -58,7 +58,10 @@ async function startApp() {
     const app = new ViewerApp(api, hostId, appId, bootstrapRole.role)
     app.mount(rootElement);
 
-    (window as any)["app"] = app
+    (window as any)["app"] = app;
+    (window as any).postMessage({
+        type: "app:ready"
+    }, "*");
 }
 
 // Prevent starting transition
@@ -89,7 +92,17 @@ class ViewerApp implements Component {
     private pendingAutoFullscreenPrompt: boolean = false
     private fullscreenPromptShown: boolean = false
     private toggleFullscreenWithKeybind: boolean = false
-    private hasShownFullscreenEscapeWarning = false
+
+    private fullscreenEscapeWarningStrategy: () => boolean = (() => {
+        let hasShownFullscreenEscapeWarning = false;
+        return () => {
+            if (!hasShownFullscreenEscapeWarning) {
+                hasShownFullscreenEscapeWarning = true;
+                return true;
+            }
+            return false;
+        };
+    })();
 
     constructor(api: Api, hostId: number, appId: number, bootstrapRole: DetailedRole) {
         this.api = api
@@ -432,14 +445,8 @@ class ViewerApp implements Component {
                     console.warn("failed to request fullscreen", e)
                 }
             }
-
-            if ("keyboard" in navigator && navigator.keyboard && "lock" in navigator.keyboard) {
-                await navigator.keyboard.lock()
-
-                if (!this.hasShownFullscreenEscapeWarning) {
-                    await showMessage(I.stream.fullscreenEscapeHint)
-                }
-                this.hasShownFullscreenEscapeWarning = true
+            if (this.requestKeyboardLock) {
+                await this.requestKeyboardLock();
             }
 
             if (this.getStream()?.getInput().getConfig().mouseMode == "relative") {
@@ -469,6 +476,56 @@ class ViewerApp implements Component {
         if ("exitFullscreen" in document && typeof document.exitFullscreen == "function") {
             await document.exitFullscreen()
         }
+    }
+    requestKeyboardLock(keys?: string[]): Promise<void> {
+        type RequestKeyboardLockFunc = (keys?: string[]) => Promise<void>;
+
+        let requestKeyboardLockFunc: RequestKeyboardLockFunc | undefined;
+        let topWindow = window.top;
+
+        if (window.self === topWindow) {
+            if ("keyboard" in navigator && navigator.keyboard && "lock" in navigator.keyboard) {
+                requestKeyboardLockFunc = navigator.keyboard.lock.bind(navigator.keyboard);
+            }
+        } else if (topWindow) {
+            let sameOrigin = false;
+            try {
+                sameOrigin = window.location.origin === topWindow.location.origin;
+            } catch (e) {}
+
+            if (sameOrigin) {
+                if ("keyboard" in topWindow.navigator && topWindow.navigator.keyboard && "lock" in topWindow.navigator.keyboard) {
+                    requestKeyboardLockFunc = topWindow.navigator.keyboard.lock.bind(topWindow.navigator.keyboard);
+                }
+            } else {
+                requestKeyboardLockFunc = (keys?: string[]) => {
+                    const requestId = Math.random().toString(36).substring(2, 9);
+                    window.parent.postMessage({
+                        type: "REQUEST_KEYBOARD_LOCK",
+                        requestId,
+                        keys
+                    }, "*");
+                    return Promise.resolve();
+                };
+            }
+        }
+
+        if (!requestKeyboardLockFunc) {
+            this.requestKeyboardLock = () => Promise.resolve();
+            return Promise.resolve();
+        }
+        let requestKeyboardLockAndWarn = (k?: string[]) => {
+            return requestKeyboardLockFunc!(k).then(() => {
+                if (this.fullscreenEscapeWarningStrategy?.()) {
+                    return showMessage(I.stream.fullscreenEscapeHint);
+                }
+            });
+        } ;
+        this.requestKeyboardLock = requestKeyboardLockAndWarn;
+        return requestKeyboardLockAndWarn(keys);
+    }
+    setFullscreenEscapeWarningStrategy(strategy: () => boolean) {
+        this.fullscreenEscapeWarningStrategy = strategy;
     }
     isFullscreen(): boolean {
         return "fullscreenElement" in document && !!document.fullscreenElement

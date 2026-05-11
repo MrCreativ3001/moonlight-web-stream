@@ -700,12 +700,14 @@ export class StreamInput {
 
                         if (touchOriginDistance > TOUCH_AS_CLICK_MAX_DISTANCE) {
                             oldTouch.mouseMoved = true
+                            this.touchGestureSuppressClick = true
                         }
                     } else if (this.config.touchMode == "localCursor") {
                         this.moveLocalCursorClientCoordinates(movementX, movementY, rect, false)
 
                         if (touchOriginDistance > TOUCH_AS_CLICK_MAX_DISTANCE) {
                             oldTouch.mouseMoved = true
+                            this.touchGestureSuppressClick = true
                         }
                     }
                     // Point and Drag
@@ -726,6 +728,7 @@ export class StreamInput {
                 } else if (this.touchMouseAction == "longPress") {
                     if (movementX != 0 || movementY != 0) {
                         this.touchMouseAction = "drag"
+                        this.touchGestureSuppressClick = true
                         oldTouch.mouseMoved = true
                         oldTouch.mouseClicked = StreamMouseButton.LEFT
                         this.sendMouseButton(true, StreamMouseButton.LEFT)
@@ -860,10 +863,7 @@ export class StreamInput {
                         if (
                             touchOriginDistance < TOUCH_AS_CLICK_MAX_DISTANCE &&
                             !this.touchGestureSuppressClick &&
-                            // mouse relative:
-                            // - when having moved the mouse we shouldn't allow a click
-                            // - when it's maybe a double click we shouldn't do a click
-                            !(this.config.mouseMode == "relative" && !oldTouch.mouseMoved) &&
+                            !oldTouch.mouseMoved &&
                             !maybeDoubleTap
                         ) {
                             // Should we right or left click?

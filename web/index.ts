@@ -145,6 +145,7 @@ class MainApp implements Component {
         this.backButton.innerText = I.index.back
         this.backButton.classList.add("button-fit-content")
         this.backButton.addEventListener("click", backAppState)
+        this.backButton.dataset.variant = "back-button"
 
         // Host add button
         this.hostAddButton.classList.add("host-add")
@@ -161,6 +162,7 @@ class MainApp implements Component {
         this.saveRoleDefaultsButton.innerText = I.settings.saveRoleDefaults
         this.saveRoleDefaultsButton.classList.add("button-fit-content")
         this.saveRoleDefaultsButton.addEventListener("click", this.onSaveRoleDefaults.bind(this))
+        this.saveRoleDefaultsButton.dataset.variant = "save-button"
 
         // Settings
         this.settings = new StreamSettingsComponent(

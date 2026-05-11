@@ -28,17 +28,21 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Update version and Tag
         run: |
           RAW_VERSION=${{ github.event.inputs.version }}
           VERSION=${RAW_VERSION#v}
 
           sed -i "0,/^version = .*/s//version = \"$VERSION\"/" Cargo.toml
+          cargo update --workspace
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add Cargo.toml
+          
+          git add Cargo.toml Cargo.lock
           git commit -m "chore: bump version to $VERSION"
 
           git push origin ${{ github.event.inputs.branch }}

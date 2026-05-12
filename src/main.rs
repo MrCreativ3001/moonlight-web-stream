@@ -141,8 +141,9 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
     let (file_layer, guard) = if let Some(log_file) = &config.log.file_path {
         let file = OpenOptions::new()
             .create(true)
-            .write(true)
-            .truncate(true)
+            .append(true)
+            // .write(true)
+            // .truncate(true)
             .open(log_file)
             .expect("failed to open log file");
 

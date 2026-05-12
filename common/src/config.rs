@@ -62,7 +62,7 @@ impl Default for LogConfig {
     fn default() -> Self {
         Self {
             level_filter: default_level_filter(),
-            file_path: None,
+            file_path: default_log_file_path(),
             dev_venator: default_dev_venator(),
         }
     }
@@ -70,6 +70,10 @@ impl Default for LogConfig {
 
 fn default_level_filter() -> LevelFilter {
     LevelFilter::Info
+}
+
+fn default_log_file_path() -> Option<String> {
+    Some("./server/log.txt".to_string())
 }
 
 fn default_dev_venator() -> bool {

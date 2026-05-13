@@ -80,7 +80,7 @@ export const zhCN: Translations = {
         dataTransport: "传输方式",
         auto: "自动",
         webSocket: "WebSocket",
-        enterFullscreenOnStreamStart: "进入串流后弹窗全屏提示",
+        enterFullscreenOnStreamStart: "首次操作串流时进入全屏",
         saveRoleDefaults: "保存为当前角色默认设置",
         saveRoleDefaultsSuccess: "已将当前设置保存为当前角色默认",
         saveRoleDefaultsFailed: "保存角色默认设置失败",

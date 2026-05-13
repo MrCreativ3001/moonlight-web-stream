@@ -80,7 +80,7 @@ export const koKR: Translations = {
         dataTransport: "데이터 전송 방식",
         auto: "자동",
         webSocket: "웹 소켓 (Web Socket)",
-        enterFullscreenOnStreamStart: "스트리밍 시작 시 전체 화면 전환 묻기",
+        enterFullscreenOnStreamStart: "스트림 첫 상호작용 시 전체 화면으로 전환",
         saveRoleDefaults: "현재 설정을 역할 기본값으로 저장",
         saveRoleDefaultsSuccess: "현재 설정을 역할 기본값으로 저장했습니다.",
         saveRoleDefaultsFailed: "역할 기본 설정을 저장하지 못했습니다.",

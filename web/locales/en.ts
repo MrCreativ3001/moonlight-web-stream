@@ -78,7 +78,7 @@ export const en = {
         dataTransport: "Data Transport",
         auto: "Auto",
         webSocket: "Web Socket",
-        enterFullscreenOnStreamStart: "Prompt Fullscreen On Stream Start",
+        enterFullscreenOnStreamStart: "Enter Fullscreen On First Stream Interaction",
         saveRoleDefaults: "Save As Role Defaults",
         saveRoleDefaultsSuccess: "Saved current settings as role defaults",
         saveRoleDefaultsFailed: "Couldn't save role default settings",

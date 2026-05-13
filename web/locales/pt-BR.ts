@@ -80,7 +80,7 @@ export const ptBR: Translations = {
         dataTransport: "Transporte de Dados",
         auto: "Automático",
         webSocket: "WebSocket",
-        enterFullscreenOnStreamStart: "Perguntar sobre Tela Cheia ao Iniciar Stream",
+        enterFullscreenOnStreamStart: "Entrar em Tela Cheia na Primeira Interação com o Stream",
         saveRoleDefaults: "Salvar como Padrão do Perfil",
         saveRoleDefaultsSuccess: "Configurações salvas como padrão do perfil",
         saveRoleDefaultsFailed: "Não foi possível salvar as configurações padrão do perfil",

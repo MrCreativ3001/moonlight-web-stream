@@ -127,12 +127,22 @@ export class VideoElementRenderer implements TrackVideoRenderer, VideoRenderer {
             })
         }
     }
+    private getEffectiveVideoSize(): [number, number] | null {
+        const width = this.videoElement.videoWidth
+        const height = this.videoElement.videoHeight
+        if (width > 0 && height > 0) {
+            return [width, height]
+        }
+
+        return this.size
+    }
     getStreamRect(): DOMRect {
-        if (!this.size) {
+        const effectiveSize = this.getEffectiveVideoSize()
+        if (!effectiveSize) {
             return new DOMRect()
         }
 
-        return getStreamRectCorrected(this.videoElement.getBoundingClientRect(), this.size)
+        return getStreamRectCorrected(this.videoElement.getBoundingClientRect(), effectiveSize)
     }
 
     getBase(): Pipe | null {
@@ -219,12 +229,22 @@ export class UrlVideoElementRenderer implements UrlVideoRenderer, VideoRenderer 
             })
         }
     }
+    private getEffectiveVideoSize(): [number, number] | null {
+        const width = this.videoElement.videoWidth
+        const height = this.videoElement.videoHeight
+        if (width > 0 && height > 0) {
+            return [width, height]
+        }
+
+        return this.size
+    }
     getStreamRect(): DOMRect {
-        if (!this.size) {
+        const effectiveSize = this.getEffectiveVideoSize()
+        if (!effectiveSize) {
             return new DOMRect()
         }
 
-        return getStreamRectCorrected(this.videoElement.getBoundingClientRect(), this.size)
+        return getStreamRectCorrected(this.videoElement.getBoundingClientRect(), effectiveSize)
     }
 
     getBase(): Pipe | null {

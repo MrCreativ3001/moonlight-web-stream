@@ -480,8 +480,8 @@ input[type=number] {
 
 /** TODO: reorder stream sidebar */
 
-/** Errors */
-.error-list {
+/** Notifications */
+.notification-list {
     visibility: hidden;
     position: fixed;
     z-index: 1;
@@ -494,7 +494,7 @@ input[type=number] {
     margin-right: 1cm;
 }
 
-.error-element {
+.notification-element {
     visibility: visible;
     display: flex;
     flex-direction: row;

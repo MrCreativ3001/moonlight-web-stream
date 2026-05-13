@@ -1,6 +1,6 @@
 import { Api } from "../api.js"
 import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamPermissions, StreamServerMessage, StreamSettings, TransportChannelId } from "../api_bindings.js"
-import { showErrorPopup } from "../component/error.js"
+import { showNotification } from "../component/notification.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
 import { AudioPlayer } from "./audio/index.js"
@@ -237,7 +237,7 @@ export class Stream implements Component {
 
             // we should allow streaming without audio
             if (!this.audioPlayer) {
-                showErrorPopup("Failed to find supported audio player -> audio is missing.")
+                showNotification("Failed to find supported audio player -> audio is missing.")
             }
 
             if (!this.videoRenderer || !this.audioPlayer) {

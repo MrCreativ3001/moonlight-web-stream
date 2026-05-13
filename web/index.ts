@@ -3,7 +3,7 @@ import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, 
 import { AddHostModal } from "./component/host/add_modal.js";
 import { HostList } from "./component/host/list.js";
 import { Component, ComponentEvent } from "./component/index.js";
-import { showErrorPopup } from "./component/error.js";
+import { showNotification } from "./component/notification.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { setContextMenu } from "./component/context_menu.js";
 import { GameList } from "./component/game/list.js";
@@ -28,7 +28,7 @@ async function startApp() {
 
     const rootElement = document.getElementById("root");
     if (rootElement == null) {
-        showErrorPopup(I.index.rootNotFound, true)
+        showNotification(I.index.rootNotFound, "error")
         return;
     }
 
@@ -204,7 +204,7 @@ class MainApp implements Component {
                 if (e instanceof FetchError) {
                     const response = e.getResponse()
                     if (response && response.status == 404) {
-                        showErrorPopup(I.index.addHostUnreachable(host.address))
+                        showNotification(I.index.addHostUnreachable(host.address))
                         return
                     }
                 }
@@ -238,7 +238,7 @@ class MainApp implements Component {
 
     private onSettingsChange() {
         if (!this.settings) {
-            showErrorPopup(I.index.saveSettingsFailed)
+            showNotification(I.index.saveSettingsFailed)
             return
         }
 
@@ -257,7 +257,7 @@ class MainApp implements Component {
 
     private async onSaveRoleDefaults() {
         if (!this.settings || !this.role || this.user?.role !== "Admin") {
-            showErrorPopup(I.settings.saveRoleDefaultsFailed)
+            showNotification(I.settings.saveRoleDefaultsFailed)
             return
         }
 
@@ -280,7 +280,7 @@ class MainApp implements Component {
 
             await showMessage(I.settings.saveRoleDefaultsSuccess)
         } catch {
-            showErrorPopup(I.settings.saveRoleDefaultsFailed)
+            showNotification(I.settings.saveRoleDefaultsFailed)
         } finally {
             this.saveRoleDefaultsButton.disabled = false
         }

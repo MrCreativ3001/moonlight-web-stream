@@ -1,5 +1,5 @@
 import { Component } from "../index.js"
-import { showErrorPopup } from "../error.js"
+import { showNotification } from "../notification.js"
 import { getCurrentLanguage, getTranslations } from "../../i18n.js"
 import { FormModal } from "./form.js"
 
@@ -24,11 +24,11 @@ export function getModalBackground(): HTMLElement | null {
 export async function showModal<Output>(modal: Modal<Output> | null): Promise<Output | null> {
     const i = getTranslations(getCurrentLanguage()).common
     if (modalParent == null) {
-        showErrorPopup(i.missingModalParent)
+        showNotification(i.missingModalParent)
         return null
     }
     if (modalBackground == null) {
-        showErrorPopup(i.missingModalOverlay)
+        showNotification(i.missingModalOverlay)
     }
 
     if (modalAbort != null) {

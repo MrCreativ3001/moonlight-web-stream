@@ -1,6 +1,6 @@
 import { Api, apiGetApps } from "../../api.js";
 import { App } from "../../api_bindings.js";
-import { showErrorPopup } from "../error.js";
+import { showNotification } from "../notification.js";
 import { FetchListComponent } from "../fetch_list.js";
 import { ComponentEvent } from "../index.js";
 import { Game, GameCache, GameEventListener } from "./index.js";

@@ -5,6 +5,7 @@ export const HOST_OVERLAY_NONE = "";
 export const HOST_OVERLAY_OFFLINE = buildUrl("/resources/baseline-error_outline-24px.svg")
 export const HOST_OVERLAY_LOCK = buildUrl("/resources/baseline-lock-24px.svg")
 
+export const INFO_IMAGE = buildUrl("/resources/new/info_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg")
 export const WARN_IMAGE = buildUrl("/resources/baseline-warning-24px.svg")
 export const ERROR_IMAGE = buildUrl("/resources/baseline-error_outline-24px.svg")
 

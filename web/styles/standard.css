@@ -596,8 +596,8 @@ input[type=number] {
     box-shadow: 0 0 25px rgba(0, 212, 255, 0.3), 0 0 50px rgba(0, 212, 255, 0.15);
 }
 
-/** Errors */
-.error-list {
+/** Notification */
+.notification-list {
     visibility: hidden;
     position: fixed;
     z-index: 1;
@@ -610,7 +610,7 @@ input[type=number] {
     margin-right: 1cm;
 }
 
-.error-element {
+.notification-element {
     visibility: visible;
     display: flex;
     flex-direction: row;

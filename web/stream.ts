@@ -522,7 +522,7 @@ class ViewerApp implements Component {
                 await navigator.keyboard.lock()
 
                 if (showEscapeWarning && !this.hasShownFullscreenEscapeWarning) {
-                    await showMessage(I.stream.fullscreenEscapeHint)
+                    showNotification(I.stream.fullscreenEscapeHint, "info")
                     this.hasShownFullscreenEscapeWarning = true
                 }
             }

@@ -19,7 +19,8 @@ RUN tar -xvzf /tmp/app.tar.gz --strip-components=1 -C ${MOONLIGHT_WEB_PATH}/ && 
     rm /tmp/app.tar.gz && \
     mkdir -p ${MOONLIGHT_WEB_PATH}/server && \
     chown -R moonlight:moonlight ${MOONLIGHT_WEB_PATH} && \
-    chmod +x ${MOONLIGHT_WEB_PATH}/web-server
+    chmod +x ${MOONLIGHT_WEB_PATH}/web-server && \
+    chmod +x ${MOONLIGHT_WEB_PATH}/streamer
 
 # Create a volume with the config.json and data.json
 VOLUME ${MOONLIGHT_WEB_PATH}/server

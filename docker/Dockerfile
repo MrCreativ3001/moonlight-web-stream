@@ -15,7 +15,8 @@ ADD https://github.com/MrCreativ3001/moonlight-web-stream/releases/latest/downlo
 RUN tar -xvzf /tmp/app.tar.gz --strip-components=1 -C ${MOONLIGHT_WEB_PATH}/ && \
     rm /tmp/app.tar.gz && \
     mkdir -p ${MOONLIGHT_WEB_PATH}/server && \
-    chown -R moonlight:moonlight ${MOONLIGHT_WEB_PATH}
+    chown -R moonlight:moonlight ${MOONLIGHT_WEB_PATH} && \
+    chmod +x ${MOONLIGHT_WEB_PATH}/web-server
 
 # Create a volume with the config.json and data.json
 VOLUME ${MOONLIGHT_WEB_PATH}/server

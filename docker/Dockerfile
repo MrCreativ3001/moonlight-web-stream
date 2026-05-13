@@ -33,4 +33,4 @@ RUN chown moonlight:moonlight ${MOONLIGHT_WEB_PATH}/entrypoint.sh && \
 USER moonlight
 
 # Run the binary
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["${MOONLIGHT_WEB_PATH}/entrypoint.sh"]

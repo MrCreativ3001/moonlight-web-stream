@@ -1,5 +1,5 @@
 import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton, TransportChannelId } from "../api_bindings.js"
-import { showErrorPopup } from "../component/error.js"
+import { showNotification } from "../component/notification.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
@@ -1180,7 +1180,7 @@ export class StreamInput {
         this.buffer.putU16(capabilities)
 
         if (!this.controllers) {
-            showErrorPopup("controller channel is not yet present, controller connect event is dropped")
+            showNotification("controller channel is not yet present, controller connect event is dropped")
         }
         trySendChannel(this.controllers, this.buffer)
     }

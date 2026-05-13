@@ -1,6 +1,6 @@
 import { Component } from "../component/index.js"
 import { getCurrentLanguage, getTranslations } from "../i18n.js"
-import { showErrorPopup } from "./error.js"
+import { showNotification } from "./notification.js"
 import { ListComponent } from "./list.js"
 
 document.addEventListener("click", () => removeContextMenu())
@@ -26,7 +26,7 @@ export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {
     event.stopPropagation()
 
     if (contextMenuElement == null) {
-        showErrorPopup(i.missingContextMenu)
+        showNotification(i.missingContextMenu)
         return;
     }
 
@@ -46,7 +46,7 @@ export function setContextMenu(event: MouseEvent, init?: ContextMenuInit) {
 export function removeContextMenu() {
     const i = getTranslations(getCurrentLanguage()).common
     if (contextMenuElement == null) {
-        showErrorPopup(i.missingContextMenu)
+        showNotification(i.missingContextMenu)
         return;
     }
 

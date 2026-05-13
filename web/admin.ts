@@ -2,7 +2,7 @@ import "./polyfill/index.js"
 import "./styles/index.js"
 import { Api, apiGetRole, apiGetUser, apiLogout, apiPostRole, apiPostUser, FetchError, getApi } from "./api.js";
 import { Component, ComponentEvent } from "./component/index.js";
-import { showErrorPopup } from "./component/error.js";
+import { showNotification } from "./component/notification.js";
 import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
 import { UserList } from "./component/user/list.js";
 import { AddUserModal } from "./component/user/add_modal.js";
@@ -32,7 +32,7 @@ async function startApp() {
 
     const rootElement = document.getElementById("root")
     if (rootElement == null) {
-        showErrorPopup(I.admin.rootNotFound, true)
+        showNotification(I.admin.rootNotFound, "error")
         return;
     }
 

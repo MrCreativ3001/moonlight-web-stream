@@ -1,7 +1,7 @@
 import "./polyfill/index.js"
 import { Api, apiGetRole, getApi } from "./api.js";
 import { Component } from "./component/index.js";
-import { showErrorPopup } from "./component/error.js";
+import { showNotification } from "./component/notification.js";
 import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
@@ -25,7 +25,7 @@ async function startApp() {
 
     const rootElement = document.getElementById("root");
     if (rootElement == null) {
-        showErrorPopup(I.stream.rootNotFound, true)
+        showNotification(I.stream.rootNotFound, "error")
         return;
     }
 
@@ -672,7 +672,7 @@ class ConnectionInfoModal implements Modal<void> {
             if (data.additional?.type == "fatal" || data.additional?.type == "fatalDescription") {
                 showModal(this)
             } else if (data.additional?.type == "informError") {
-                showErrorPopup(data.line)
+                showNotification(data.line)
             }
         } else if (data.type == "serverMessage") {
             const text = I.stream.serverMessage(data.message)

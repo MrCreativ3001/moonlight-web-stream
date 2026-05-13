@@ -2,8 +2,11 @@ FROM ubuntu:24.04
 
 ENV MOONLIGHT_WEB_PATH=/moonlight-web
 
+ARG GID=999
+ARG UID=999
+
 # Create a non-root user
-RUN groupadd -r moonlight && useradd -r -g moonlight -d ${MOONLIGHT_WEB_PATH} -s /sbin/nologin moonlight
+RUN groupadd -g ${GID} -r moonlight && useradd -u ${UID} -r -g moonlight -d ${MOONLIGHT_WEB_PATH} -s /sbin/nologin moonlight
 
 # Create / Go to app directory
 WORKDIR ${MOONLIGHT_WEB_PATH}

@@ -26,6 +26,7 @@ export type InfoEvent = CustomEvent<
     { type: "app", app: App } |
     { type: "serverMessage", message: string } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
+    { type: "videoReady" } |
     { type: "connectionStatus", status: ConnectionStatus } |
     { type: "addDebugLine", line: string, additional?: LogMessageInfo }
 >
@@ -114,6 +115,9 @@ export class Stream implements Component {
     private stats: StreamStats
 
     private streamerSize: [number, number]
+    private hasConnectionComplete = false
+    private hasVideoReady = false
+    private hasDispatchedVideoReady = false
 
     constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number], permissions: StreamPermissions) {
         this.logger.addInfoListener((info, type) => {
@@ -156,6 +160,30 @@ export class Stream implements Component {
 
             this.eventTarget.dispatchEvent(event)
         }
+    }
+    private resetVideoReadyState() {
+        this.hasConnectionComplete = false
+        this.hasVideoReady = false
+        this.hasDispatchedVideoReady = false
+    }
+    private markConnectionComplete() {
+        this.hasConnectionComplete = true
+        this.tryDispatchVideoReady()
+    }
+    private markVideoReady() {
+        this.hasVideoReady = true
+        this.tryDispatchVideoReady()
+    }
+    private tryDispatchVideoReady() {
+        if (!this.hasConnectionComplete || !this.hasVideoReady || this.hasDispatchedVideoReady) {
+            return
+        }
+
+        this.hasDispatchedVideoReady = true
+        const event: InfoEvent = new CustomEvent("stream-info", {
+            detail: { type: "videoReady" }
+        })
+        this.eventTarget.dispatchEvent(event)
     }
 
     private async onMessage(message: StreamServerMessage) {
@@ -232,6 +260,8 @@ export class Stream implements Component {
                     mapping: audioMapping,
                 })
             ])
+
+            this.markConnectionComplete()
         } else if ("ConnectionTerminated" in message) {
             const code = message.ConnectionTerminated.error_code
 
@@ -329,6 +359,7 @@ export class Stream implements Component {
     }
     private async restartWithFreshTransportFallback(transport: TransportType): Promise<void> {
         this.transportOverride = transport
+        this.resetVideoReadyState()
 
         if (this.transport) {
             await this.transport.close()
@@ -637,6 +668,7 @@ export class Stream implements Component {
             videoRenderer.mount(this.divElement)
 
             video.addTrackListener((track) => {
+                this.markVideoReady()
                 videoRenderer.setTrack(track)
             })
 
@@ -652,6 +684,7 @@ export class Stream implements Component {
             videoRenderer.mount(this.divElement)
 
             video.addReceiveListener((data) => {
+                this.markVideoReady()
                 videoRenderer.submitPacket(data)
 
                 // data pipeline support requesting idrs over video channel

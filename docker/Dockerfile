@@ -25,8 +25,9 @@ ENV WEBRTC_PORT_RANGE=40000:40100
 EXPOSE 8080 40000-40100/udp
 
 # Create an entrypoint
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY entrypoint.sh ${MOONLIGHT_WEB_PATH}/entrypoint.sh
+RUN chown moonlight:moonlight ${MOONLIGHT_WEB_PATH}/entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
 # Switch to the non-root user
 USER moonlight

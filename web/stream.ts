@@ -256,7 +256,7 @@ class ViewerApp implements Component {
         }
 
         this.fullscreenOnNextInteractionArmed = false
-        void this.requestFullscreen(false).then(() => {
+        void this.requestFullscreen().then(() => {
             if (!this.isFullscreen()) {
                 this.armFullscreenOnNextInteraction()
             }

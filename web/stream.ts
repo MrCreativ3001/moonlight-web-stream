@@ -88,6 +88,10 @@ class ViewerApp implements Component {
     private autoEnterFullscreenOnStart: boolean = false
     private pendingAutoFullscreenPrompt: boolean = false
     private fullscreenPromptShown: boolean = false
+    private fullscreenOnNextInteractionArmed: boolean = false
+    private pendingAutoFullscreenTouchGesture: boolean = false
+    private pendingAutoFullscreenMouseGesture: boolean = false
+    private manualFullscreenExitRequested: boolean = false
     private toggleFullscreenWithKeybind: boolean = false
     private hasShownFullscreenEscapeWarning = false
 
@@ -199,7 +203,7 @@ class ViewerApp implements Component {
             if (this.autoEnterFullscreenOnStart && this.pendingAutoFullscreenPrompt && !this.fullscreenPromptShown && !this.isFullscreen()) {
                 this.fullscreenPromptShown = true
                 this.pendingAutoFullscreenPrompt = false
-                await this.promptAutoFullscreen()
+                this.armFullscreenOnNextInteraction()
             }
         })
 
@@ -240,6 +244,40 @@ class ViewerApp implements Component {
 
         this.stream.getVideoRenderer()?.onUserInteraction()
         this.stream.getAudioPlayer()?.onUserInteraction()
+    }
+    private armFullscreenOnNextInteraction() {
+        if (this.autoEnterFullscreenOnStart) {
+            this.fullscreenOnNextInteractionArmed = true
+        }
+    }
+    private consumeAutoFullscreenInteraction(): boolean {
+        if (!this.fullscreenOnNextInteractionArmed || this.isFullscreen()) {
+            return false
+        }
+
+        this.fullscreenOnNextInteractionArmed = false
+        void this.requestFullscreen().then(() => {
+            if (!this.isFullscreen()) {
+                this.armFullscreenOnNextInteraction()
+            }
+        })
+        return true
+    }
+    private beginAutoFullscreenTouchGesture(): boolean {
+        if (!this.fullscreenOnNextInteractionArmed || this.isFullscreen()) {
+            return false
+        }
+
+        this.pendingAutoFullscreenTouchGesture = true
+        return true
+    }
+    private consumeAutoFullscreenTouchGesture(): boolean {
+        if (!this.pendingAutoFullscreenTouchGesture) {
+            return false
+        }
+
+        this.pendingAutoFullscreenTouchGesture = false
+        return this.consumeAutoFullscreenInteraction()
     }
     private onScreenKeyboardSetVisible(event: ScreenKeyboardSetVisibleEvent) {
         console.info(event.detail)
@@ -321,6 +359,13 @@ class ViewerApp implements Component {
 
     // Mouse
     onMouseButtonDown(event: MouseEvent) {
+        if (this.consumeAutoFullscreenInteraction()) {
+            this.pendingAutoFullscreenMouseGesture = true
+            event.preventDefault()
+            event.stopPropagation()
+            return
+        }
+
         this.onUserInteraction()
 
         event.preventDefault()
@@ -329,6 +374,13 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onMouseButtonUp(event: MouseEvent) {
+        if (this.pendingAutoFullscreenMouseGesture) {
+            this.pendingAutoFullscreenMouseGesture = false
+            event.preventDefault()
+            event.stopPropagation()
+            return
+        }
+
         this.onUserInteraction()
 
         event.preventDefault()
@@ -337,6 +389,12 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onMouseMove(event: MouseEvent) {
+        if (this.pendingAutoFullscreenMouseGesture) {
+            event.preventDefault()
+            event.stopPropagation()
+            return
+        }
+
         event.preventDefault()
         this.stream.getInput().onMouseMove(event, this.getStreamRect())
 
@@ -356,6 +414,12 @@ class ViewerApp implements Component {
 
     // Touch
     onTouchStart(event: TouchEvent) {
+        if (this.beginAutoFullscreenTouchGesture()) {
+            event.preventDefault()
+            event.stopPropagation()
+            return
+        }
+
         this.onUserInteraction()
 
         event.preventDefault()
@@ -364,6 +428,12 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onTouchEnd(event: TouchEvent) {
+        if (this.consumeAutoFullscreenTouchGesture()) {
+            event.preventDefault()
+            event.stopPropagation()
+            return
+        }
+
         this.onUserInteraction()
 
         event.preventDefault()
@@ -372,6 +442,15 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onTouchCancel(event: TouchEvent) {
+        if (this.pendingAutoFullscreenTouchGesture) {
+            this.pendingAutoFullscreenTouchGesture = false
+            event.preventDefault()
+            event.stopPropagation()
+            return
+        }
+
+        this.pendingAutoFullscreenTouchGesture = false
+
         this.onUserInteraction()
 
         event?.preventDefault()
@@ -386,6 +465,12 @@ class ViewerApp implements Component {
         window.requestAnimationFrame(this.onTouchUpdate.bind(this))
     }
     onTouchMove(event: TouchEvent) {
+        if (this.pendingAutoFullscreenTouchGesture) {
+            event.preventDefault()
+            event.stopPropagation()
+            return
+        }
+
         event.preventDefault()
         this.stream.getInput().onTouchMove(event, this.getStreamRect())
 
@@ -412,7 +497,7 @@ class ViewerApp implements Component {
     private async promptAutoFullscreen() {
         await showModal(new AutoFullscreenModal(this.requestFullscreen.bind(this)))
     }
-    async requestFullscreen() {
+    async requestFullscreen(showEscapeWarning: boolean = true) {
         const body = document.body
         if (body) {
             if (!("requestFullscreen" in body && typeof body.requestFullscreen == "function")) {
@@ -436,10 +521,10 @@ class ViewerApp implements Component {
             if ("keyboard" in navigator && navigator.keyboard && "lock" in navigator.keyboard) {
                 await navigator.keyboard.lock()
 
-                if (!this.hasShownFullscreenEscapeWarning) {
-                    await showMessage(I.stream.fullscreenEscapeHint)
+                if (showEscapeWarning && !this.hasShownFullscreenEscapeWarning) {
+                    showNotification(I.stream.fullscreenEscapeHint, "info")
+                    this.hasShownFullscreenEscapeWarning = true
                 }
-                this.hasShownFullscreenEscapeWarning = true
             }
 
             if (this.getStream()?.getInput().getConfig().mouseMode == "relative") {
@@ -474,7 +559,24 @@ class ViewerApp implements Component {
         return "fullscreenElement" in document && !!document.fullscreenElement
     }
     private async onFullscreenChange() {
+        if (this.isFullscreen()) {
+            this.fullscreenOnNextInteractionArmed = false
+            this.pendingAutoFullscreenTouchGesture = false
+            this.pendingAutoFullscreenMouseGesture = false
+            this.manualFullscreenExitRequested = false
+        } else {
+            const manualExit = this.manualFullscreenExitRequested
+            this.manualFullscreenExitRequested = false
+
+            if (this.autoEnterFullscreenOnStart && !manualExit) {
+                this.armFullscreenOnNextInteraction()
+            }
+        }
+
         this.checkFullyImmersed()
+    }
+    markManualFullscreenExitRequested() {
+        this.manualFullscreenExitRequested = true
     }
 
     // Pointer Lock
@@ -806,6 +908,7 @@ class ViewerSidebar implements Component, Sidebar {
         this.fullscreenButton.innerText = I.stream.fullscreen
         this.fullscreenButton.addEventListener("click", async () => {
             if (this.app.isFullscreen()) {
+                this.app.markManualFullscreenExitRequested()
                 await this.app.exitFullscreen()
             } else {
                 await this.app.requestFullscreen()

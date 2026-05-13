@@ -80,7 +80,7 @@ export const frFr: Translations = {
         dataTransport: "Transport des données",
         auto: "Auto",
         webSocket: "Web Socket",
-        enterFullscreenOnStreamStart: "Invite de mise en plein écran au démarrage de la diffusion",
+        enterFullscreenOnStreamStart: "Passer en plein écran à la première interaction avec la diffusion",
         saveRoleDefaults: "Enregistrer par défaut pour le rôle",
         saveRoleDefaultsSuccess: "Enregistré par défaut pour le rôle",
         saveRoleDefaultsFailed: "Echec de l'enregistrement des paramètres par défaut pour le rôle",

@@ -1,5 +1,8 @@
 use moonlight_common::stream::video::VideoFormat;
-use webrtc::rtp_transceiver::{RTCPFeedback, rtp_codec::RTCRtpCodecCapability};
+use webrtc::{
+    api::media_engine::{MIME_TYPE_H264, MIME_TYPE_HEVC},
+    rtp_transceiver::{RTCPFeedback, rtp_codec::RTCRtpCodecCapability},
+};
 
 fn rtcp_feedback() -> Vec<RTCPFeedback> {
     vec![
@@ -52,12 +55,14 @@ macro_rules! video_formats_codec_mapping {
 
 video_formats_codec_mapping!(
     // H264
-    VideoFormat::H264 = MIME_TYPE_H264: "profile-level-id=64001f;packetization-mode=1;level-asymmetry-allowed=1",
-    VideoFormat::H264High8_444 = MIME_TYPE_H264: "profile-level-id=f4001f;packetization-mode=1;level-asymmetry-allowed=1",
+    VideoFormat::H264 = MIME_TYPE_H264: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
+    VideoFormat::H264High8_444 = MIME_TYPE_H264: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=f4001f",
 
     // H265
-    VideoFormat::H265 = MIME_TYPE_HEVC: "profile-id=1;level-id=93;tier-flag=0;packetization-mode=1",
+    VideoFormat::H265 = MIME_TYPE_HEVC: "packetization-mode=1",
     VideoFormat::H265Main10 = MIME_TYPE_HEVC: "profile-id=2;level-id=93;tier-flag=0;packetization-mode=1",
     VideoFormat::H265Rext8_444 = MIME_TYPE_HEVC: "profile-id=4;level-id=93;tier-flag=0;packetization-mode=1",
     VideoFormat::H265Rext10_444 = MIME_TYPE_HEVC: "profile-id=5;level-id=93;tier-flag=0;packetization-mode=1"
+    // AV1
+    // TODO: av1
 );

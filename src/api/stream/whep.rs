@@ -7,6 +7,7 @@ use actix_web::{
     post,
 };
 use async_trait::async_trait;
+use common::config::PortRange;
 use moonlight_common::ServerVersion;
 use moonlight_common::crypto::disabled::DisabledCryptoBackend;
 use moonlight_common::crypto::rustcrypto::RustCryptoBackend;
@@ -28,15 +29,16 @@ use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
 };
 use moonlight_common::webrtc::launch::WebRtcLaunchRequest;
-use moonlight_common::webrtc::sdp::WebRtcClientFeatures;
-use moonlight_common::webrtc::sdp::sdp::Session;
+use moonlight_common::webrtc::{
+    LINK_CONTROL_STREAM_ENET, LINK_CONTROL_STREAM_SIMPLE, LINK_MICROPHONE,
+};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
 use tokio::spawn;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Sender, channel};
 use tokio::sync::{Mutex, Notify};
 use tokio::time::sleep;
 use tracing::{Instrument, debug, info, instrument, trace, warn};
@@ -45,10 +47,14 @@ use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_OPUS, MediaEngine};
 use webrtc::api::setting_engine::SettingEngine;
 use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
+use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::data_channel::data_channel_state::RTCDataChannelState;
+use webrtc::ice::udp_network::{EphemeralUDP, UDPNetwork};
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use webrtc::rtcp::payload_feedbacks::receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate;
@@ -58,12 +64,15 @@ use webrtc::rtp::extension::HeaderExtension;
 use webrtc::rtp::extension::playout_delay_extension::PlayoutDelayExtension;
 use webrtc::rtp::header::Header;
 use webrtc::rtp::packet::Packet;
+use webrtc::rtp::packetizer::Payloader;
 use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RTPCodecType,
 };
 use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
+use webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit};
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 
+use crate::api::stream::whep::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
 use crate::api::stream::whep::dynamic_ice_servers::load_dynamic_ice_servers;
 use crate::api::stream::whep::video::{codec_to_video_format, video_format_to_codec};
 use crate::app::App;
@@ -71,11 +80,13 @@ use crate::app::host::HostId;
 use crate::app::{AppError, user::AuthenticatedUser};
 
 mod control;
+mod convert;
 mod dynamic_ice_servers;
 mod video;
 mod webrtc_wrapper;
 
 // This works very well for testing: https://webrtc.player.eyevinn.technology/?type=whep
+// whep test url, replace appid and hostId: http://localhost:8080/api/host/stream/whep?hostId=4156725524&appid=881448767&mode=1920x1080x60&bitrate=10000
 
 #[options("")]
 pub async fn whep_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
@@ -92,17 +103,32 @@ pub async fn whep_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppE
             header::ACCESS_CONTROL_REQUEST_HEADERS,
             "Content-Type, Authorization",
         ))
+        .insert_header((header::ACCESS_CONTROL_EXPOSE_HEADERS, "Location"))
         // Insert accept post, like the spec says
         .append_header(("Accept-Post", "application/sdp"))
         // This server supports microphone
         // advertise this here so that the client can include the microphone track in it's offer
-        .append_header(("X-Moonlight-Microphone", "true"))
+        .append_header((header::LINK, LINK_MICROPHONE))
         .finish())
 }
 
 #[get("")]
 pub async fn whep_get() -> HttpResponse {
     HttpResponseBuilder::new(StatusCode::METHOD_NOT_ALLOWED).finish()
+}
+
+fn opus_codec() -> RTCRtpCodecCapability {
+    RTCRtpCodecCapability {
+        mime_type: MIME_TYPE_OPUS.to_owned(),
+        clock_rate: 48000,
+        channels: 2,
+        sdp_fmtp_line: "minptime=10;useinbandfec=1".to_owned(),
+        rtcp_feedback: vec![RTCPFeedback {
+            // negative acknowledgement
+            typ: "nack".to_string(),
+            parameter: "".to_string(),
+        }],
+    }
 }
 
 fn create_media_engine() -> MediaEngine {
@@ -135,13 +161,7 @@ fn create_media_engine() -> MediaEngine {
     media_engine
         .register_codec(
             RTCRtpCodecParameters {
-                capability: RTCRtpCodecCapability {
-                    mime_type: MIME_TYPE_OPUS.to_owned(),
-                    clock_rate: 48000,
-                    channels: 2,
-                    sdp_fmtp_line: "minptime=10;useinbandfec=1".to_owned(),
-                    ..Default::default()
-                },
+                capability: opus_codec(),
                 payload_type: 111,
                 ..Default::default()
             },
@@ -180,7 +200,7 @@ struct StreamHandler {
     video_track: Mutex<Option<Arc<TrackLocalStaticRTP>>>,
     video_sequence_number: AtomicU16,
     peer: Arc<RTCPeerConnection>,
-    control_peer_sender: Sender<ControlPacket>,
+    client_control_sender: Sender<ControlPacket>,
 }
 
 #[async_trait]
@@ -192,13 +212,16 @@ impl MoonlightStreamHandler for StreamHandler {
         }
 
         // Create video track
+        let codec = video_format_to_codec(setup.format).expect("webrtc video codec");
         let video_track = Arc::new(TrackLocalStaticRTP::new(
-            video_format_to_codec(setup.format).expect("webrtc video codec"),
+            codec.clone(),
             "video".to_string(),
             "moonlight".to_string(),
         ));
 
         let video_sender = self.peer.add_track(video_track.clone()).await.unwrap();
+
+        let control_sender = self.client_control_sender.clone();
 
         // Feedback
         spawn(async move {
@@ -209,7 +232,9 @@ impl MoonlightStreamHandler for StreamHandler {
                     let packet = packet.as_any();
 
                     if let Some(_) = packet.downcast_ref::<PictureLossIndication>() {
-                        // TODO
+                        if let Err(err) = control_sender.send(ControlPacket::RequestIdr).await {
+                            warn!(error = %err, "failed to send request idr to host");
+                        }
                     } else if let Some(_) = packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
                     {
                         // TODO
@@ -222,6 +247,8 @@ impl MoonlightStreamHandler for StreamHandler {
             let mut video_guard = self.video_track.lock().await;
             *video_guard = Some(video_track.clone());
         }
+
+        info!(setup = ?setup, codec = ?codec, "finished video track setup");
 
         Ok(())
     }
@@ -251,8 +278,6 @@ impl MoonlightStreamHandler for StreamHandler {
                 .write_rtp_with_extensions(
                     &Packet {
                         header: Header {
-                            // TODO: select correct payload type
-                            payload_type: 96,
                             // Marker needs to mark the end of one frame
                             marker: i == len - 1,
                             sequence_number: self
@@ -282,7 +307,37 @@ impl MoonlightStreamHandler for StreamHandler {
         audio_config: AudioConfig,
         opus_config: OpusMultistreamConfig,
     ) -> Result<(), MoonlightStreamError> {
-        // TODO
+        // TODO: what audio format is used?
+
+        // Create audio track
+        let mut codec = opus_codec();
+        codec.clock_rate = opus_config.sample_rate;
+        codec.channels = opus_config.channel_count as u16;
+
+        let audio_track = Arc::new(TrackLocalStaticRTP::new(
+            codec.clone(),
+            "audio".to_string(),
+            "moonlight".to_string(),
+        ));
+
+        let audio_sender = self.peer.add_track(audio_track.clone()).await.unwrap();
+
+        // Feedback
+        spawn(async move {
+            let mut buffer = [0; 1500];
+
+            while let Ok((_packets, _)) = audio_sender.read(&mut buffer).await {
+                // do nothing, because we'll just have to poll packets to dequeue them
+            }
+        });
+
+        {
+            let mut audio_guard = self.audio_track.lock().await;
+            *audio_guard = Some(audio_track.clone());
+        }
+
+        info!(audio_config = ?audio_config, opus_config = ?opus_config, codec = ?codec, "finished audio track setup");
+
         Ok(())
     }
     async fn on_audio_frame(&self, frame: AudioFrame<&[u8]>) {
@@ -292,13 +347,19 @@ impl MoonlightStreamHandler for StreamHandler {
         // The audio track is initialized before the moonlight stream starts
         let audio_track = audio_guard.as_ref().expect("audio track");
 
+        if audio_track.all_binding_paused().await {
+            trace!("audio track all binding paused");
+            // Don't send any packets when the track is paused because we don't want to increment the sequence number
+            return;
+        }
+
+        trace!(len = ?frame.buffer.len(), timestamp = ?frame.timestamp, "audio frame");
+
         // Opus doesn't need any special payloading: https://github.com/webrtc-rs/webrtc/blob/6b94718e23111df28125f96af4b0de8cbb3dfd0d/rtp/src/codecs/opus/mod.rs#L9-L24
         if let Err(err) = audio_track
             .write_rtp_with_extensions(
                 &Packet {
                     header: Header {
-                        // TODO: select correct payload type
-                        payload_type: 111,
                         sequence_number: self.audio_sequence_number.fetch_add(1, Ordering::Acquire),
                         timestamp,
                         ..Default::default()
@@ -316,22 +377,30 @@ impl MoonlightStreamHandler for StreamHandler {
     }
 
     async fn on_control_packet(&self, packet: ControlPacket) {
-        // TODO: send packets over data channel
+        if let Err(err) = self.client_control_sender.send(packet).await {
+            warn!(error = %err, packet = ?err.0, "failed to relay control packet to client");
+        }
     }
 
     async fn on_stop(&self) {
-        // TODO: close the peer
+        info!("closing webrtc peer because the stream was closed");
+
+        if let Err(err) = self.peer.close().await {
+            warn!(error = %err, "error whilst closing peer because the stream was stopped");
+        }
     }
 }
 
 #[post("")]
-#[instrument(skip(app, user), fields(user = %user.id()))]
+#[instrument(skip(app, user, req, session_description), fields(user = %user.id()))]
 pub async fn whep_post(
     app: Data<App>,
     mut user: AuthenticatedUser,
     req: HttpRequest,
-    session_description_raw: Bytes,
+    session_description: String,
 ) -> Result<HttpResponse, AppError> {
+    debug!(req = ?req, session_description = ?session_description, "whep request");
+
     let query = req.query_string();
     let query = match WebRtcLaunchRequest::from_query_params(&query) {
         Ok(value) => value,
@@ -357,34 +426,52 @@ pub async fn whep_post(
         return Err(AppError::HostNotPaired);
     }
 
-    // Check Session
-    let mut session_description = match Session::parse(&session_description_raw) {
-        Ok(value) => value,
-        Err(err) => {
-            warn!(error = %err, "failed to parse session description");
-            return Err(AppError::BadRequest);
+    // Create offer based on the sdp
+    let offer = RTCSessionDescription::offer(session_description).unwrap();
+
+    // Look for supported Moonlight extensions
+    let mut supports_control_stream_simple = false;
+    let mut supports_control_stream_enet = false;
+    for value in req.headers().get_all(header::LINK) {
+        if let Ok(value) = value.to_str() {
+            match value.trim() {
+                LINK_CONTROL_STREAM_SIMPLE => supports_control_stream_simple = true,
+                LINK_CONTROL_STREAM_ENET => supports_control_stream_enet = true,
+                _ => {}
+            }
         }
-    };
-
-    let client_features = WebRtcClientFeatures::from_session(&session_description);
-    WebRtcClientFeatures::remove_from_session(&mut session_description);
-    info!(client_features = ?client_features, "client features");
-
-    // Create offer based on the modified sdp
-    let mut session_description_raw = Vec::new();
-    session_description
-        .write(&mut session_description_raw)
-        .unwrap();
-    let offer = RTCSessionDescription::offer(
-        String::from_utf8(session_description_raw).expect("valid utf8 session description"),
-    )
-    .unwrap();
+    }
 
     // -- Create WebRtc peer
     // Create settings
     let mut setting_engine = SettingEngine::default();
+    if let Some(PortRange { min, max }) = app.config().webrtc.port_range {
+        match EphemeralUDP::new(min, max) {
+            Ok(udp) => {
+                setting_engine.set_udp_network(UDPNetwork::Ephemeral(udp));
+            }
+            Err(err) => {
+                warn!("[Stream]: Invalid port range in config: {err:?}");
+            }
+        }
+    }
+    if let Some(mapping) = app.config().webrtc.nat_1to1.as_ref() {
+        setting_engine.set_nat_1to1_ips(
+            mapping.ips.clone(),
+            into_webrtc_ice_candidate(mapping.ice_candidate_type),
+        );
+    }
+    setting_engine.set_network_types(
+        app.config()
+            .webrtc
+            .network_types
+            .iter()
+            .copied()
+            .map(into_webrtc_network_type)
+            .collect(),
+    );
+
     setting_engine.set_include_loopback_candidate(app.config().webrtc.include_loopback_candidates);
-    // TODO: finish settings
 
     // Create media engine
     let mut media_engine = create_media_engine();
@@ -401,7 +488,11 @@ pub async fn whep_post(
     let interceptor_registry =
         register_default_interceptors(Registry::new(), &mut media_engine).unwrap();
 
-    let api = APIBuilder::new().build();
+    let api = APIBuilder::new()
+        .with_interceptor_registry(interceptor_registry)
+        .with_media_engine(media_engine)
+        .with_setting_engine(setting_engine)
+        .build();
 
     // Configure peer
     let peer = api
@@ -423,65 +514,72 @@ pub async fn whep_post(
     info!("created server webrtc peer");
 
     // Set remote description so that we can query for codecs
-    peer.set_remote_description(offer).await.unwrap();
+    peer.set_remote_description(offer.clone()).await.unwrap();
 
-    info!("added video and audio tracks");
+    info!("querying client for supported video and audio codecs");
 
     // -- Query sdp about video, audio and potential microphone
     let mut microphone_enabled = false;
-    let mut audio_config = None;
+    let mut audio_config = Some(AudioConfig::STEREO);
     let mut supported_video_formats = VideoFormats::empty();
 
-    let transceivers = peer.get_transceivers().await;
-    for transceiver in transceivers {
-        let kind = transceiver.kind();
+    let offer = offer.unmarshal().unwrap();
 
-        if kind == RTPCodecType::Audio {
-            let direction = transceiver.direction();
+    for media in offer.media_descriptions {
+        let kind = &media.media_name.media;
 
-            if !microphone_enabled {
-                microphone_enabled = matches!(
-                    direction,
-                    RTCRtpTransceiverDirection::Sendonly | RTCRtpTransceiverDirection::Sendrecv
-                );
-            }
+        let payload_types: Vec<u8> = media
+            .media_name
+            .formats
+            .iter()
+            .filter_map(|f| f.parse::<u8>().ok())
+            .collect();
 
-            if matches!(
-                direction,
-                RTCRtpTransceiverDirection::Recvonly | RTCRtpTransceiverDirection::Sendrecv
-            ) {
-                // audio send transceiver
-                let sender = transceiver.sender().await;
-                let parameters = sender.get_parameters().await;
+        // Map payload type -> codec
+        for payload_type in &payload_types {
+            if let Some(attr) = media.attributes.iter().find(|a| {
+                a.key == "rtpmap"
+                    && a.value
+                        .as_ref()
+                        .map(|v| v.starts_with(&format!("{} ", payload_type)))
+                        .unwrap_or(false)
+            }) {
+                // value example: "111 opus/48000/2"
+                if let Some(value) = &attr.value {
+                    let mut parts = value.split_whitespace().nth(1).unwrap_or("").split('/');
+                    let codec_name = parts.next().unwrap_or("");
+                    let clock_rate = parts.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
+                    let channels = parts.next().unwrap_or("1").parse::<u16>().unwrap_or(1);
 
-                for codec in parameters.rtp_parameters.codecs {
-                    // TODO: search for the config
-                    if codec.capability.mime_type == MIME_TYPE_OPUS {
-                        audio_config = Some(AudioConfig::STEREO);
+                    if let Some(format) = codec_to_video_format(&RTCRtpCodecCapability {
+                        mime_type: format!("{kind}/{}", codec_name.to_uppercase()),
+                        clock_rate,
+                        channels,
+                        ..Default::default()
+                    }) {
+                        debug!(
+                            kind = ?kind, codec_name = ?codec_name, clock_rate = clock_rate, channels = channels,
+                            "added video codec",
+                        );
+
+                        supported_video_formats |= format.into_formats();
+                    } else {
+                        debug!(
+                            kind = ?kind, codec_name = ?codec_name, clock_rate = clock_rate, channels = channels,
+                            "unknown codec",
+                        );
                     }
-                }
-            }
-        } else if kind == RTPCodecType::Video {
-            let direction = transceiver.direction();
-
-            if matches!(
-                direction,
-                RTCRtpTransceiverDirection::Recvonly | RTCRtpTransceiverDirection::Sendrecv
-            ) {
-                // video send transceiver
-                let sender = transceiver.sender().await;
-                let parameters = sender.get_parameters().await;
-
-                for codec in parameters.rtp_parameters.codecs {
-                    let Some(codec) = codec_to_video_format(&codec.capability) else {
-                        continue;
-                    };
-
-                    supported_video_formats |= codec.into_formats();
+                    // TODO: detect audio
                 }
             }
         }
     }
+
+    debug!(
+        supported_video_formats = %supported_video_formats,
+        audio_config = ?audio_config,
+        "found codecs"
+    );
 
     // Cancel connection if no audio or video format was detected as supported
     let Some(audio_config) = audio_config else {
@@ -494,7 +592,7 @@ pub async fn whep_post(
         todo!();
     }
 
-    let settings = MoonlightStreamSettings {
+    let mut settings = MoonlightStreamSettings {
         width: query.mode_width,
         height: query.mode_height,
         fps: query.mode_fps,
@@ -517,11 +615,20 @@ pub async fn whep_post(
         enable_mic: microphone_enabled,
     };
 
+    let server_version = host.version().await.unwrap();
+    let gfe_version = host.gfe_version().await.unwrap();
+    let server_codec_mode_support = host.server_codec_mode_support().await.unwrap();
+    settings
+        .adjust_for_server(server_version, &gfe_version, server_codec_mode_support)
+        .unwrap();
+
     let aes_key = AesKey::new_random(&RustCryptoBackend)?;
     let aes_iv = AesIv::new_random(&RustCryptoBackend)?;
 
     // Start moonlight stream
     info!(settings = ?settings, "starting stream");
+
+    let (client_control_sender, mut client_control_receiver) = channel(10);
 
     let moonlight_handler = StreamHandler {
         audio_track: Default::default(),
@@ -529,6 +636,8 @@ pub async fn whep_post(
         video_track: Default::default(),
         video_sequence_number: AtomicU16::new(0),
         peer: peer.clone(),
+        video_formats: supported_video_formats,
+        client_control_sender,
     };
 
     let config = host
@@ -557,14 +666,11 @@ pub async fn whep_post(
 
     info!("started moonlight stream");
 
-    // Create control channel based on support
+    // -- Create control channel based on support
     let control_config = ControlPacketConfig::new(ServerVersion::new(7, 0, 0, 0), true)
         .expect("control packet config");
 
-    match (
-        client_features.control_stream_simple,
-        client_features.control_stream_enet,
-    ) {
+    match (supports_control_stream_simple, supports_control_stream_enet) {
         (_, true) => {
             let control = peer
                 .create_data_channel(
@@ -595,21 +701,90 @@ pub async fn whep_post(
             let control = peer.create_data_channel("control", None).await.unwrap();
             let stream = moonlight_stream.clone();
 
-            todo!();
+            // Spawn from client to host relay
+            control.on_message({
+                let control_config = control_config.clone();
+                let stream = stream.clone();
+
+                Box::new(move |message: DataChannelMessage| {
+                    let control_config = control_config.clone();
+                    let stream = stream.clone();
+
+                    Box::pin(async move {
+                        let Some(packet) = ControlPacket::deserialize(
+                            PacketDirection::ServerBound,
+                            &control_config,
+                            &message.data,
+                        ) else {
+                            return;
+                        };
+
+                        if let Err(err) = stream.send_input_raw(packet).await {
+                            warn!(error = %err, "failed to relay input from client to host");
+                        }
+                    })
+                })
+            });
+
+            // Spawn from host to client relay
+            spawn({
+                let control_config = control_config.clone();
+                async move {
+                    while let Some(packet) = client_control_receiver.recv().await
+                        && !matches!(control.ready_state(), RTCDataChannelState::Closed)
+                    {
+                        let mut buffer = [0; _];
+                        let len = match packet.serialize(&control_config, &mut buffer) {
+                            Ok(value) => value,
+                            Err(err) => {
+                                warn!(error = %err, "failed to relay control packet from host to client");
+                                continue;
+                            }
+                        };
+                        let buffer = &buffer[0..len];
+
+                        if let Err(err) = control.send(&Bytes::copy_from_slice(buffer)).await {
+                            warn!(error = %err, "failed to relay control packet from host to client");
+                        }
+                    }
+
+                    debug!("stopping relaying from host to client");
+                }
+            });
         }
         (false, false) => {
             // do nothing because the peer doesn't support control channel
         }
     };
 
+    // -- Register webrtc peer listeners
+    peer.on_peer_connection_state_change(Box::new({
+        let moonlight_stream = moonlight_stream.clone();
+
+        move |state: RTCPeerConnectionState| {
+            let moonlight_stream = moonlight_stream.clone();
+
+            Box::pin(async move {
+                if matches!(state, RTCPeerConnectionState::Failed) {
+                    info!("stopping stream because the webrtc peer state is failed");
+
+                    moonlight_stream.stop().await;
+                }
+            })
+        }
+    }));
+
+    info!("configured server webrtc peer, waiting for ice gathering to complete");
+
+    // Get ice gathering receiver
+    let mut ice_complete = peer.gathering_complete_promise().await;
+
     // Complete negotiation
     let answer = peer.create_answer(None).await.unwrap();
     peer.set_local_description(answer.clone()).await.unwrap();
 
-    info!("configured server webrtc peer, waiting for ice gathering to complete");
-
     // Wait for ice gathering to complete
-    peer.gathering_complete_promise().await;
+    let _ = ice_complete.recv().await;
 
     // Use the local description with video and audio tracks, control channel and all ice candidates included
     let answer = peer.local_description().await.unwrap();
@@ -618,20 +793,10 @@ pub async fn whep_post(
 
     debug!(answer = ?answer, "sending answer to client");
 
-    // continue in a new thread
-    spawn(async move {
-        // TODO: wait until stop signal
-
-        sleep(Duration::from_secs(5)).await;
-
-        moonlight_stream.stop().await;
-        peer.close().await.unwrap();
-    });
-
     Ok(HttpResponse::Created()
         // TODO: add session location
         // TODO: add ice servers / configuration, see whep
-        .insert_header(("Location", "TODO"))
+        .insert_header(("Location", "/api/host/stream/whep/SESSION"))
         .content_type("application/sdp")
         .body(answer.sdp))
 }

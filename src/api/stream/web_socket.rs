@@ -37,7 +37,7 @@ pub async fn web_socket_stream(
     mut user: AuthenticatedUser,
     req: HttpRequest,
     body_stream: Payload,
-) -> Result<HttpResponse, AppError> {
+) -> Result<HttpResponse, Error> {
     let query = req.query_string();
     let query = match WebRtcLaunchRequest::from_query_params(&query) {
         Ok(value) => value,
@@ -57,7 +57,7 @@ pub async fn web_socket_stream(
 
     let host = host.use_host(&mut user).await?;
 
-    if !host.is_paired().await? {
+    if !host.is_paired().await.map_err(|err| AppError::from(err))? {
         return Err(AppError::HostNotPaired.into());
     }
 
@@ -69,6 +69,7 @@ pub async fn web_socket_stream(
             Ok(_) => {}
             Err(err) => {
                 // TODO
+                todo!();
             }
         }
     });
@@ -79,14 +80,14 @@ pub async fn web_socket_stream(
 async fn handle_ws(
     query: WebRtcLaunchRequest,
     host: &MoonlightHost<RequestClient>,
-    mut ws_sender: Session,
-    ws_receiver: MessageStream,
+    ws_sender: Session,
+    mut ws_receiver: MessageStream,
 ) -> Result<(), AppError> {
     let control_config = create_control_packet_config();
 
     // create moonlight stream handler, will handle sending over the web socket
     let handler = Arc::new(WsStreamHandler {
-        control_config,
+        control_config: control_config.clone(),
         ws_sender,
     });
 

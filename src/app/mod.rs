@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use actix_web::{ResponseError, http::StatusCode, web::Bytes};
+use actix_web::{HttpResponse, ResponseError, body::BoxBody, http::StatusCode, web::Bytes};
 use common::config::Config;
 use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
@@ -102,34 +102,47 @@ pub enum AppError {
 
 impl ResponseError for AppError {
     fn status_code(&self) -> StatusCode {
+        unreachable!()
+    }
+
+    fn error_response(&self) -> HttpResponse<BoxBody> {
         match self {
-            Self::AppDestroyed => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::FirstUserAlreadyExists => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::FirstLoginCreateAdminNotSet => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::HostNotFound => StatusCode::NOT_FOUND,
-            Self::HostNotPaired => StatusCode::FORBIDDEN,
-            Self::HostPaired => StatusCode::NOT_MODIFIED,
-            Self::WebRtcClientCodecNotSupported => StatusCode::BAD_REQUEST,
-            Self::UserNotFound => StatusCode::NOT_FOUND,
-            Self::RoleNotFound => StatusCode::NOT_FOUND,
-            Self::UserAlreadyExists => StatusCode::CONFLICT,
-            Self::CredentialsWrong => StatusCode::UNAUTHORIZED,
-            Self::SessionTokenNotFound => StatusCode::UNAUTHORIZED,
-            Self::Unauthorized => StatusCode::UNAUTHORIZED,
-            Self::Forbidden => StatusCode::FORBIDDEN,
-            Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::RustCrypto(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::HeaderAuthDisabled => StatusCode::UNAUTHORIZED,
-            Self::Hex(_) => StatusCode::BAD_REQUEST,
-            Self::AuthorizationNotBearer => StatusCode::BAD_REQUEST,
-            Self::HeaderAuthMalformed => StatusCode::BAD_REQUEST,
-            Self::BearerMalformed => StatusCode::BAD_REQUEST,
-            Self::PasswordEmpty => StatusCode::BAD_REQUEST,
-            Self::UserNameEmpty => StatusCode::BAD_REQUEST,
-            Self::BadRequest => StatusCode::BAD_REQUEST,
-            Self::Moonlight(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::MoonlightStream(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::AppDestroyed => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::FirstUserAlreadyExists => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::FirstLoginCreateAdminNotSet => {
+                HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+            Self::HostNotFound => {
+                HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("host not found"))
+            }
+            Self::HostNotPaired => HttpResponse::new(StatusCode::FORBIDDEN),
+            Self::HostPaired => HttpResponse::new(StatusCode::NOT_MODIFIED)
+                .set_body(BoxBody::new("host not paired")),
+            Self::WebRtcClientCodecNotSupported => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::UserNotFound => {
+                HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("user not found"))
+            }
+            Self::RoleNotFound => {
+                HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("role not found"))
+            }
+            Self::UserAlreadyExists => HttpResponse::new(StatusCode::CONFLICT),
+            Self::CredentialsWrong => HttpResponse::new(StatusCode::UNAUTHORIZED),
+            Self::SessionTokenNotFound => HttpResponse::new(StatusCode::UNAUTHORIZED),
+            Self::Unauthorized => HttpResponse::new(StatusCode::UNAUTHORIZED),
+            Self::Forbidden => HttpResponse::new(StatusCode::FORBIDDEN),
+            Self::OpenSSL(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::RustCrypto(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::HeaderAuthDisabled => HttpResponse::new(StatusCode::UNAUTHORIZED),
+            Self::Hex(_) => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::AuthorizationNotBearer => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::HeaderAuthMalformed => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::BearerMalformed => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::PasswordEmpty => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::UserNameEmpty => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::BadRequest => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::Moonlight(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::MoonlightStream(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::Io(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
         }
     }
 }

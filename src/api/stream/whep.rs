@@ -239,6 +239,7 @@ impl MoonlightStreamHandler for StreamHandler {
                         let packet = packet.as_any();
 
                         if let Some(_) = packet.downcast_ref::<PictureLossIndication>() {
+                            debug!("got picture loss indication, set need idr flag");
                             need_idr.store(true, Ordering::Release);
                         } else if let Some(_) =
                             packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
@@ -277,7 +278,8 @@ impl MoonlightStreamHandler for StreamHandler {
         let video = video_guard.as_mut().expect("video track");
 
         if video.track.all_binding_paused().await {
-            // If the binding paused don't send data to not increment the sequence number
+            trace!("audio track all binding paused");
+            // Don't send any packets when the track is paused because we don't want to increment the sequence number
             return DecodeResult::Ok;
         }
 
@@ -329,6 +331,7 @@ impl MoonlightStreamHandler for StreamHandler {
             self.video_need_idr
                 .compare_exchange(true, false, Ordering::Acquire, Ordering::Acquire)
         {
+            info!("requesting idr");
             DecodeResult::NeedIdr
         } else {
             DecodeResult::Ok
@@ -401,9 +404,7 @@ impl MoonlightStreamHandler for StreamHandler {
                     },
                     payload: Bytes::copy_from_slice(frame.buffer),
                 },
-                &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension::new(
-                    0, 0,
-                ))],
+                &[],
             )
             .await
         {

@@ -360,8 +360,10 @@ impl MoonlightStreamHandler for StreamHandler {
             .write_rtp_with_extensions(
                 &Packet {
                     header: Header {
+                        version: 2,
                         sequence_number: self.audio_sequence_number.fetch_add(1, Ordering::Acquire),
                         timestamp,
+                        payload_type: 111,
                         ..Default::default()
                     },
                     payload: Bytes::copy_from_slice(frame.buffer),
@@ -513,9 +515,6 @@ pub async fn whep_post(
 
     info!("created server webrtc peer");
 
-    // Set remote description so that we can query for codecs
-    peer.set_remote_description(offer.clone()).await.unwrap();
-
     info!("querying client for supported video and audio codecs");
 
     // -- Query sdp about video, audio and potential microphone
@@ -523,9 +522,9 @@ pub async fn whep_post(
     let mut audio_config = Some(AudioConfig::STEREO);
     let mut supported_video_formats = VideoFormats::empty();
 
-    let offer = offer.unmarshal().unwrap();
+    let offer_parsed = offer.unmarshal().unwrap();
 
-    for media in offer.media_descriptions {
+    for media in offer_parsed.media_descriptions {
         let kind = &media.media_name.media;
 
         let payload_types: Vec<u8> = media
@@ -773,6 +772,9 @@ pub async fn whep_post(
             })
         }
     }));
+
+    // Set remote description
+    peer.set_remote_description(offer).await.unwrap();
 
     info!("configured server webrtc peer, waiting for ice gathering to complete");
 

@@ -34,7 +34,7 @@ use moonlight_common::webrtc::{
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
 use tokio::spawn;
@@ -59,7 +59,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use webrtc::rtcp::payload_feedbacks::receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate;
 use webrtc::rtp::codecs::h264::H264Payloader;
-use webrtc::rtp::codecs::h265::RTP_OUTBOUND_MTU;
+use webrtc::rtp::codecs::h265::{HevcPayloader, RTP_OUTBOUND_MTU};
 use webrtc::rtp::extension::HeaderExtension;
 use webrtc::rtp::extension::playout_delay_extension::PlayoutDelayExtension;
 use webrtc::rtp::header::Header;
@@ -193,12 +193,18 @@ fn create_media_engine() -> MediaEngine {
     media_engine
 }
 
+struct VideoTrack {
+    track: Arc<TrackLocalStaticRTP>,
+    payloader: Box<dyn Payloader + Send + Sync>,
+}
+
 struct StreamHandler {
     audio_track: Mutex<Option<Arc<TrackLocalStaticRTP>>>,
     audio_sequence_number: AtomicU16,
     video_formats: VideoFormats,
-    video_track: Mutex<Option<Arc<TrackLocalStaticRTP>>>,
+    video: Mutex<Option<VideoTrack>>,
     video_sequence_number: AtomicU16,
+    video_need_idr: Arc<AtomicBool>,
     peer: Arc<RTCPeerConnection>,
     client_control_sender: Sender<ControlPacket>,
 }
@@ -221,31 +227,43 @@ impl MoonlightStreamHandler for StreamHandler {
 
         let video_sender = self.peer.add_track(video_track.clone()).await.unwrap();
 
-        let control_sender = self.client_control_sender.clone();
-
         // Feedback
-        spawn(async move {
-            let mut buffer = [0; 1500];
+        spawn({
+            let need_idr = self.video_need_idr.clone();
 
-            while let Ok((packets, _)) = video_sender.read(&mut buffer).await {
-                for packet in packets {
-                    let packet = packet.as_any();
+            async move {
+                let mut buffer = [0; 1500];
 
-                    if let Some(_) = packet.downcast_ref::<PictureLossIndication>() {
-                        if let Err(err) = control_sender.send(ControlPacket::RequestIdr).await {
-                            warn!(error = %err, "failed to send request idr to host");
+                while let Ok((packets, _)) = video_sender.read(&mut buffer).await {
+                    for packet in packets {
+                        let packet = packet.as_any();
+
+                        if let Some(_) = packet.downcast_ref::<PictureLossIndication>() {
+                            need_idr.store(true, Ordering::Release);
+                        } else if let Some(_) =
+                            packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
+                        {
+                            // TODO
                         }
-                    } else if let Some(_) = packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
-                    {
-                        // TODO
                     }
                 }
             }
         });
 
+        let payloader = if setup.format.contained_in(VideoFormats::MASK_H264) {
+            Box::new(H264Payloader::default()) as Box<dyn Payloader + Send + Sync>
+        } else if setup.format.contained_in(VideoFormats::MASK_H265) {
+            Box::new(HevcPayloader::default()) as Box<dyn Payloader + Send + Sync>
+        } else {
+            todo!()
+        };
+
         {
-            let mut video_guard = self.video_track.lock().await;
-            *video_guard = Some(video_track.clone());
+            let mut video_guard = self.video.lock().await;
+            *video_guard = Some(VideoTrack {
+                track: video_track.clone(),
+                payloader,
+            });
         }
 
         info!(setup = ?setup, codec = ?codec, "finished video track setup");
@@ -255,17 +273,20 @@ impl MoonlightStreamHandler for StreamHandler {
     async fn on_video_frame(&self, frame: VideoDecodeUnit<&[u8]>) -> DecodeResult {
         let timestamp = (frame.timestamp.as_secs_f64() * 90000.0) as u32;
 
-        let mut video_guard = self.video_track.lock().await;
-        let video_track = video_guard.as_mut().expect("video track");
+        let mut video_guard = self.video.lock().await;
+        let video = video_guard.as_mut().expect("video track");
+
+        if video.track.all_binding_paused().await {
+            // If the binding paused don't send data to not increment the sequence number
+            return DecodeResult::Ok;
+        }
 
         let mut payloads = Vec::with_capacity(10);
 
         // Each buffer is one nal
-        // TODO: move payloader into StreamHandler
-        let mut payloader = H264Payloader::default();
-
         for buffer in &frame.buffers {
-            let nal_payloads = payloader
+            let nal_payloads = video
+                .payloader
                 .payload(RTP_OUTBOUND_MTU, &Bytes::copy_from_slice(buffer.data))
                 .unwrap();
 
@@ -274,16 +295,20 @@ impl MoonlightStreamHandler for StreamHandler {
 
         let len = payloads.len();
         for (i, payload) in payloads.into_iter().enumerate() {
-            if let Err(err) = video_track
+            if let Err(err) = video
+                .track
                 .write_rtp_with_extensions(
                     &Packet {
                         header: Header {
+                            version: 2,
                             // Marker needs to mark the end of one frame
                             marker: i == len - 1,
                             sequence_number: self
                                 .video_sequence_number
                                 .fetch_add(1, Ordering::Acquire),
                             timestamp,
+                            // TODO: this needs to match
+                            payload_type: 96,
                             ..Default::default()
                         },
                         payload,
@@ -299,7 +324,15 @@ impl MoonlightStreamHandler for StreamHandler {
             }
         }
 
-        DecodeResult::Ok
+        // Check if idr is needed
+        if let Ok(_) =
+            self.video_need_idr
+                .compare_exchange(true, false, Ordering::Acquire, Ordering::Acquire)
+        {
+            DecodeResult::NeedIdr
+        } else {
+            DecodeResult::Ok
+        }
     }
 
     async fn setup_audio(
@@ -591,6 +624,9 @@ pub async fn whep_post(
         todo!();
     }
 
+    // TODO: remove this limitation
+    supported_video_formats &= VideoFormats::H264;
+
     let mut settings = MoonlightStreamSettings {
         width: query.mode_width,
         height: query.mode_height,
@@ -632,8 +668,9 @@ pub async fn whep_post(
     let moonlight_handler = StreamHandler {
         audio_track: Default::default(),
         audio_sequence_number: AtomicU16::new(0),
-        video_track: Default::default(),
+        video: Default::default(),
         video_sequence_number: AtomicU16::new(0),
+        video_need_idr: Default::default(),
         peer: peer.clone(),
         video_formats: supported_video_formats,
         client_control_sender,

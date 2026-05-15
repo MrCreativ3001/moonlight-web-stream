@@ -137,6 +137,7 @@ fn create_media_engine() -> MediaEngine {
 
     // register extensions
     const PLAYOUT_DELAY_URI: &str = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay";
+    const COLOR_SPACE_URI: &str = "http://www.webrtc.org/experiments/rtp-hdrext/color-space";
 
     media_engine
         .register_header_extension(
@@ -147,6 +148,15 @@ fn create_media_engine() -> MediaEngine {
             None,
         )
         .expect("register playout delay extension");
+    media_engine
+        .register_header_extension(
+            RTCRtpHeaderExtensionCapability {
+                uri: COLOR_SPACE_URI.to_string(),
+            },
+            RTPCodecType::Video,
+            None,
+        )
+        .expect("register color space extension");
     media_engine
         .register_header_extension(
             RTCRtpHeaderExtensionCapability {
@@ -413,6 +423,13 @@ impl MoonlightStreamHandler for StreamHandler {
     }
 
     async fn on_control_packet(&self, packet: ControlPacket) {
+        match &packet {
+            ControlPacket::HdrMode { enabled, sunshine } => {
+                // TODO: use the color space(hdr) extension, this seems to only be used on keyframes -> request one https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/color-space
+            }
+            _ => {}
+        }
+
         if let Err(err) = self.client_control_sender.send(packet).await {
             warn!(error = %err, packet = ?err.0, "failed to relay control packet to client");
         }

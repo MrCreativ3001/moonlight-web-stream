@@ -13,6 +13,7 @@ import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
+import {requestKeyboardLock} from "./iframe.js";
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -518,13 +519,14 @@ class ViewerApp implements Component {
                 }
             }
 
-            if ("keyboard" in navigator && navigator.keyboard && "lock" in navigator.keyboard) {
-                await navigator.keyboard.lock()
-
-                if (showEscapeWarning && !this.hasShownFullscreenEscapeWarning) {
+            try {
+                await requestKeyboardLock();
+                  if (showEscapeWarning && !this.hasShownFullscreenEscapeWarning) {
                     showNotification(I.stream.fullscreenEscapeHint, "info")
                     this.hasShownFullscreenEscapeWarning = true
                 }
+            } catch (e) {
+                console.warn("Keyboard lock failed, skipping notification.", e);
             }
 
             if (this.getStream()?.getInput().getConfig().mouseMode == "relative") {

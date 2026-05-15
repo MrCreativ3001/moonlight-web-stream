@@ -2,14 +2,19 @@ FROM ubuntu:24.04
 
 ENV MOONLIGHT_WEB_PATH=/moonlight-web
 
+# Create a non-root user
+RUN groupadd -r moonlight && useradd -r -g moonlight -d ${MOONLIGHT_WEB_PATH} -s /sbin/nologin moonlight
+
 # Create / Go to app directory
 WORKDIR ${MOONLIGHT_WEB_PATH}
 
 # Copy prebuilt artifacts
 COPY moonlight-web/ ${MOONLIGHT_WEB_PATH}/
 
-# Mark executables as executable
-RUN chmod +x ${MOONLIGHT_WEB_PATH}/streamer ${MOONLIGHT_WEB_PATH}/web-server
+# Mark executables as executable, create server directory, and change ownership
+RUN chmod +x ${MOONLIGHT_WEB_PATH}/streamer ${MOONLIGHT_WEB_PATH}/web-server && \
+    mkdir -p ${MOONLIGHT_WEB_PATH}/server && \
+    chown -R moonlight:moonlight ${MOONLIGHT_WEB_PATH}
 
 # Create a volume with the config.json and data.json
 VOLUME ${MOONLIGHT_WEB_PATH}/server
@@ -21,6 +26,9 @@ EXPOSE 8080 40000-40100/udp
 # Create an entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# Switch to the non-root user
+USER moonlight
 
 # Run the binary
 ENTRYPOINT ["/entrypoint.sh"]

@@ -250,6 +250,8 @@ export class StreamInput {
         trySendChannel(this.keyboard, this.buffer)
     }
     sendText(text: string) {
+        this.buffer.reset()
+
         this.buffer.putU8(1)
 
         this.buffer.putU8(text.length)
@@ -303,11 +305,7 @@ export class StreamInput {
         }
     }
     onMouseWheel(event: WheelEvent) {
-        if (this.config.mouseScrollMode == "highres") {
-            this.sendMouseWheelHighRes(event.deltaX, -event.deltaY)
-        } else if (this.config.mouseScrollMode == "normal") {
-            this.sendMouseWheel(event.deltaX, -event.deltaY)
-        }
+        this.sendAccumulatedScroll(event.deltaX, -event.deltaY)
     }
 
     sendMouseMove(movementX: number, movementY: number) {
@@ -437,6 +435,34 @@ export class StreamInput {
         trySendChannel(this.mouseRelative, this.buffer)
     }
 
+    private scrollRemainderX = 0
+    private scrollRemainderY = 0
+
+    private resetScrollRemainder() {
+        this.scrollRemainderX = 0
+        this.scrollRemainderY = 0
+    }
+    private sendAccumulatedScroll(deltaX: number, deltaY: number) {
+        this.scrollRemainderX += deltaX
+        this.scrollRemainderY += deltaY
+
+        const integerX = Math.trunc(this.scrollRemainderX)
+        const integerY = Math.trunc(this.scrollRemainderY)
+
+        if (integerX == 0 && integerY == 0) {
+            return
+        }
+
+        this.scrollRemainderX -= integerX
+        this.scrollRemainderY -= integerY
+
+        if (this.config.mouseScrollMode == "highres") {
+            this.sendMouseWheelHighRes(integerX, integerY)
+        } else if (this.config.mouseScrollMode == "normal") {
+            this.sendMouseWheel(integerX, integerY)
+        }
+    }
+
     // -- Touch
     private touchTracker: Map<number, {
         startTime: number
@@ -466,8 +492,6 @@ export class StreamInput {
     // Set when the current gesture has already been consumed by a multi-touch
     // action. This prevents the remaining finger from becoming a click/right-click.
     private touchGestureSuppressClick: boolean = false
-    private touchScrollRemainderX = 0
-    private touchScrollRemainderY = 0
 
     private onTouchData(data: ArrayBuffer) {
         const buffer = new ByteBuffer(new Uint8Array(data))
@@ -537,30 +561,6 @@ export class StreamInput {
         }
 
         return false
-    }
-    private resetTouchScrollRemainder() {
-        this.touchScrollRemainderX = 0
-        this.touchScrollRemainderY = 0
-    }
-    private sendAccumulatedTouchScroll(deltaX: number, deltaY: number) {
-        this.touchScrollRemainderX += deltaX
-        this.touchScrollRemainderY += deltaY
-
-        const integerX = Math.trunc(this.touchScrollRemainderX)
-        const integerY = Math.trunc(this.touchScrollRemainderY)
-
-        if (integerX == 0 && integerY == 0) {
-            return
-        }
-
-        this.touchScrollRemainderX -= integerX
-        this.touchScrollRemainderY -= integerY
-
-        if (this.config.mouseScrollMode == "highres") {
-            this.sendMouseWheelHighRes(integerX, integerY)
-        } else if (this.config.mouseScrollMode == "normal") {
-            this.sendMouseWheel(integerX, integerY)
-        }
     }
 
     onTouchStart(event: TouchEvent, rect: DOMRect) {
@@ -660,7 +660,7 @@ export class StreamInput {
                     if (this.shouldStartTwoTouchScroll(touch)) {
                         this.touchMouseAction = "scroll"
                         this.touchGestureSuppressClick = true
-                        this.resetTouchScrollRemainder()
+                        this.resetScrollRemainder()
                         for (const trackedTouch of this.touchTracker.values()) {
                             trackedTouch.mouseMoved = true
                         }
@@ -749,12 +749,12 @@ export class StreamInput {
                 } else if (this.touchMouseAction == "scroll") {
                     // inverting horizontal scroll
                     if (this.config.mouseScrollMode == "highres") {
-                        this.sendAccumulatedTouchScroll(
+                        this.sendAccumulatedScroll(
                             -movementX * TOUCH_HIGH_RES_SCROLL_MULTIPLIER,
                             movementY * TOUCH_HIGH_RES_SCROLL_MULTIPLIER
                         )
                     } else if (this.config.mouseScrollMode == "normal") {
-                        this.sendAccumulatedTouchScroll(
+                        this.sendAccumulatedScroll(
                             -movementX * TOUCH_SCROLL_MULTIPLIER,
                             movementY * TOUCH_SCROLL_MULTIPLIER
                         )
@@ -912,7 +912,7 @@ export class StreamInput {
 
         if (this.touchMouseAction == "scroll" && this.touchTracker.size < 2) {
             this.touchMouseAction = "default"
-            this.resetTouchScrollRemainder()
+            this.resetScrollRemainder()
         }
 
         if (this.touchTracker.size == 0) {
@@ -939,7 +939,7 @@ export class StreamInput {
         this.touchMouseAction = "default"
         this.nextTouchDoubleTap = false
         this.touchGestureSuppressClick = false
-        this.resetTouchScrollRemainder()
+        this.resetScrollRemainder()
     }
 
     private calcNormalizedPosition(clientX: number, clientY: number, rect: DOMRect): [number, number] | null {

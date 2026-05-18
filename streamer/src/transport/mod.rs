@@ -256,7 +256,7 @@ impl InboundPacket {
                     Some(InboundPacket::HighResScroll { delta_x, delta_y })
                 } else if ty == 4 {
                     // Mouse Wheel Normal
-                    if buffer.remaining() < 4 {
+                    if buffer.remaining() < 2 {
                         warn!("[InboudPacket]: failed to read mouse wheel normal message");
                         return None;
                     }

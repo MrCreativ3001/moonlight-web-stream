@@ -1215,7 +1215,7 @@ input[type=number] {
 /** Stream */
 .video-stream {
     position: fixed;
-    top: 50%;
+    top: var(--stream-video-top, 50%);
     left: 50%;
     transform: translate(-50%, -50%);
     max-width: 100vw;
@@ -1279,9 +1279,9 @@ canvas.video-stream {
 
 .stream-keyboard-floating-button {
     position: fixed;
-    top: 50%;
+    top: var(--stream-keyboard-button-top, 50%);
     right: 12px;
-    transform: translateY(-50%);
+    transform: translateY(-100%);
     width: 44px;
     height: 44px;
     z-index: 1000;
@@ -1306,7 +1306,7 @@ canvas.video-stream {
 
 .stream-keyboard-floating-button:active {
     opacity: 1;
-    transform: translateY(-50%) scale(0.95);
+    transform: translateY(-100%) scale(0.95);
 }
 
 /* Prevent starting animation for elements */

@@ -1,6 +1,7 @@
 
 export type TextEvent = CustomEvent<{ text: string }>
 export type KeyboardModeEvent = CustomEvent<{ enabled: boolean }>
+export type KeyboardDebugEvent = CustomEvent<{ label: string, data?: unknown }>
 
 const KEYBOARD_SENTINEL = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -33,9 +34,11 @@ export class ScreenKeyboard {
     }
 
     show() {
+        this.debug("show")
         this.setEnabled(true)
     }
     hide() {
+        this.debug("hide")
         this.setEnabled(false)
     }
 
@@ -49,6 +52,7 @@ export class ScreenKeyboard {
         if (enabled) {
             this.refocusIfEnabled()
         } else if (document.activeElement === this.fakeElement) {
+            this.debug("blur-before-hide")
             this.fakeElement.blur()
         }
 
@@ -61,11 +65,21 @@ export class ScreenKeyboard {
     }
     private refocusIfEnabled() {
         if (!this.enabled || document.activeElement === this.fakeElement) {
+            this.debug("refocus-skipped", {
+                enabled: this.enabled,
+                activeElement: describeElement(document.activeElement)
+            })
             return
         }
 
         this.resetInputValue()
+        this.debug("focus-before-refocus", {
+            activeElement: describeElement(document.activeElement)
+        })
         this.fakeElement.focus()
+        this.debug("focus-after-refocus", {
+            activeElement: describeElement(document.activeElement)
+        })
     }
 
     addKeyDownListener(listener: (event: KeyboardEvent) => void) {
@@ -79,6 +93,9 @@ export class ScreenKeyboard {
     }
     addKeyboardModeListener(listener: (event: KeyboardModeEvent) => void) {
         this.eventTarget.addEventListener("ml-keyboardmode", listener as any)
+    }
+    addDebugListener(listener: (event: KeyboardDebugEvent) => void) {
+        this.eventTarget.addEventListener("ml-keyboarddebug", listener as any)
     }
 
     // -- Events
@@ -129,6 +146,10 @@ export class ScreenKeyboard {
         return value
     }
     private onCompositionEnd() {
+        this.debug("compositionend", {
+            valueLength: this.fakeElement.value.length,
+            activeElement: describeElement(document.activeElement)
+        })
         const text = this.extractInsertedText()
         if (text) {
             this.dispatchTextWithLineBreaks(text)
@@ -140,6 +161,13 @@ export class ScreenKeyboard {
         if (!(event instanceof InputEvent)) {
             return
         }
+        this.debug("input", {
+            inputType: event.inputType,
+            data: event.data,
+            isComposing: event.isComposing,
+            valueLength: this.fakeElement.value.length,
+            activeElement: describeElement(document.activeElement)
+        })
         if (event.isComposing) {
             return
         }
@@ -162,4 +190,21 @@ export class ScreenKeyboard {
         // Repopulate the input so that the deleteContent commands will work
         this.resetInputValue()
     }
+
+    private debug(label: string, data?: unknown) {
+        const event: KeyboardDebugEvent = new CustomEvent("ml-keyboarddebug", {
+            detail: { label, data }
+        })
+        this.eventTarget.dispatchEvent(event)
+    }
+}
+
+function describeElement(element: Element | null): string {
+    if (!element) {
+        return "null"
+    }
+
+    const id = element.id ? `#${element.id}` : ""
+    const className = element instanceof HTMLElement && element.className ? `.${element.className}` : ""
+    return `${element.tagName}${id}${className}`
 }

@@ -1,5 +1,6 @@
 
 export type TextEvent = CustomEvent<{ text: string }>
+export type KeyboardModeEvent = CustomEvent<{ enabled: boolean }>
 
 const KEYBOARD_SENTINEL = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -8,7 +9,7 @@ export class ScreenKeyboard {
     private eventTarget = new EventTarget()
     private fakeElement = document.createElement("textarea")
 
-    private visible: boolean = false
+    private enabled: boolean = false
 
     constructor() {
         this.fakeElement.classList.add("hiddeninput")
@@ -24,8 +25,7 @@ export class ScreenKeyboard {
         this.fakeElement.addEventListener("input", this.onKeyInput.bind(this))
         this.fakeElement.addEventListener("compositionend", this.onCompositionEnd.bind(this))
 
-        document.addEventListener("click", this.hide.bind(this))
-        this.fakeElement.addEventListener("blur", this.hide.bind(this))
+        document.addEventListener("click", this.refocusIfEnabled.bind(this))
     }
 
     getHiddenElement() {
@@ -33,24 +33,39 @@ export class ScreenKeyboard {
     }
 
     show() {
-        if (!this.visible) {
-            this.visible = true
-
-            this.resetInputValue()
-            this.fakeElement.focus()
-        }
+        this.setEnabled(true)
     }
     hide() {
-        if (this.visible) {
-            this.visible = false
-
-            this.fakeElement.focus()
-            this.fakeElement.blur()
-        }
+        this.setEnabled(false)
     }
 
     isVisible(): boolean {
-        return this.visible
+        return this.enabled
+    }
+    private setEnabled(enabled: boolean) {
+        const changed = this.enabled != enabled
+        this.enabled = enabled
+
+        if (enabled) {
+            this.refocusIfEnabled()
+        } else if (document.activeElement === this.fakeElement) {
+            this.fakeElement.blur()
+        }
+
+        if (changed) {
+            const event: KeyboardModeEvent = new CustomEvent("ml-keyboardmode", {
+                detail: { enabled }
+            })
+            this.eventTarget.dispatchEvent(event)
+        }
+    }
+    private refocusIfEnabled() {
+        if (!this.enabled || document.activeElement === this.fakeElement) {
+            return
+        }
+
+        this.resetInputValue()
+        this.fakeElement.focus()
     }
 
     addKeyDownListener(listener: (event: KeyboardEvent) => void) {
@@ -61,6 +76,9 @@ export class ScreenKeyboard {
     }
     addTextListener(listener: (event: TextEvent) => void) {
         this.eventTarget.addEventListener("ml-text", listener as any)
+    }
+    addKeyboardModeListener(listener: (event: KeyboardModeEvent) => void) {
+        this.eventTarget.addEventListener("ml-keyboardmode", listener as any)
     }
 
     // -- Events

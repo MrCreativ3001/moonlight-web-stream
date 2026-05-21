@@ -24,6 +24,7 @@ export const koKR: Translations = {
         sendKeycode: "키코드 전송",
         lockMouse: "마우스 가두기",
         keyboard: "키보드",
+        hideKeyboard: "키보드 숨기기",
         fullscreen: "전체 화면",
         stats: "통계",
         exit: "종료",

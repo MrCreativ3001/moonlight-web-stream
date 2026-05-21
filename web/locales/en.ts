@@ -22,6 +22,7 @@ export const en = {
         sendKeycode: "Send Keycode",
         lockMouse: "Lock Mouse",
         keyboard: "Keyboard",
+        hideKeyboard: "Hide Keyboard",
         fullscreen: "Fullscreen",
         stats: "Stats",
         exit: "Exit",

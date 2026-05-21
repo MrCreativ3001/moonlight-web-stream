@@ -9,7 +9,7 @@ import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, Str
 import { getLocalStreamSettings, Settings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
-import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
+import { KeyboardModeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
@@ -851,6 +851,7 @@ class ViewerSidebar implements Component, Sidebar {
     private sendKeycodeButton = document.createElement("button")
 
     private keyboardButton = document.createElement("button")
+    private floatingKeyboardButton = document.createElement("button")
     private screenKeyboard = new ScreenKeyboard()
 
     private lockMouseButton = document.createElement("button")
@@ -900,9 +901,20 @@ class ViewerSidebar implements Component, Sidebar {
         })
         this.buttonDiv.appendChild(this.keyboardButton)
 
+        this.floatingKeyboardButton.innerText = "⌨×"
+        this.floatingKeyboardButton.title = I.stream.hideKeyboard
+        this.floatingKeyboardButton.ariaLabel = I.stream.hideKeyboard
+        this.floatingKeyboardButton.classList.add("stream-keyboard-floating-button")
+        this.floatingKeyboardButton.addEventListener("click", event => {
+            event.preventDefault()
+            event.stopPropagation()
+            this.screenKeyboard.hide()
+        })
+        stopPropagationOn(this.floatingKeyboardButton)
         this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this))
         this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this))
         this.screenKeyboard.addTextListener(this.onText.bind(this))
+        this.screenKeyboard.addKeyboardModeListener(this.onKeyboardModeChange.bind(this))
         this.div.appendChild(this.screenKeyboard.getHiddenElement())
 
 
@@ -993,6 +1005,13 @@ class ViewerSidebar implements Component, Sidebar {
     private onKeyUp(event: KeyboardEvent) {
         this.app.getStream()?.getInput().onKeyUp(event)
     }
+    private onKeyboardModeChange(event: KeyboardModeEvent) {
+        if (event.detail.enabled) {
+            this.floatingKeyboardButton.classList.add("visible")
+        } else {
+            this.floatingKeyboardButton.classList.remove("visible")
+        }
+    }
 
     // -- Mouse Mode
     private onMouseModeChange() {
@@ -1017,9 +1036,14 @@ class ViewerSidebar implements Component, Sidebar {
 
     mount(parent: HTMLElement): void {
         parent.appendChild(this.div)
+        const appRoot = document.getElementById("root")
+        ;(appRoot ?? document.body).appendChild(this.floatingKeyboardButton)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
+        if (this.floatingKeyboardButton.parentElement) {
+            this.floatingKeyboardButton.parentElement.removeChild(this.floatingKeyboardButton)
+        }
     }
 }
 

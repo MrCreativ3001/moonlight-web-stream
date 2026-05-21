@@ -1277,6 +1277,38 @@ canvas.video-stream {
     translate: 200vw 200vh;
 }
 
+.stream-keyboard-floating-button {
+    position: fixed;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--accent-cyan);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--text-1);
+    font-size: 18px;
+    opacity: 0.78;
+    cursor: pointer;
+    contain: layout paint style;
+    touch-action: none;
+    will-change: transform;
+}
+
+.stream-keyboard-floating-button.visible {
+    display: flex;
+}
+
+.stream-keyboard-floating-button:active {
+    opacity: 1;
+    transform: translateY(-50%) scale(0.95);
+}
+
 /* Prevent starting animation for elements */
 .prevent-start-transition {
     transition: none;

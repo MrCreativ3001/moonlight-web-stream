@@ -24,6 +24,7 @@ export const frFr: Translations = {
         sendKeycode: "Envoiyer le code clé",
         lockMouse: "Verrouillage de la souris",
         keyboard: "Clavier",
+        hideKeyboard: "Masquer le clavier",
         fullscreen: "Plein écran",
         stats: "Stats",
         exit: "Quitter",

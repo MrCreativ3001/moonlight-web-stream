@@ -24,6 +24,7 @@ export const ptBR: Translations = {
         sendKeycode: "Enviar Código de Tecla",
         lockMouse: "Bloquear Mouse",
         keyboard: "Teclado",
+        hideKeyboard: "Ocultar Teclado",
         fullscreen: "Tela Cheia",
         stats: "Estatísticas",
         exit: "Sair",

@@ -24,6 +24,7 @@ export const zhCN: Translations = {
         sendKeycode: "发送按键码",
         lockMouse: "锁定鼠标",
         keyboard: "键盘",
+        hideKeyboard: "隐藏键盘",
         fullscreen: "全屏",
         stats: "统计",
         exit: "退出",

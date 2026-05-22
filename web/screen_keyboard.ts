@@ -1,4 +1,3 @@
-
 export type TextEvent = CustomEvent<{ text: string }>
 export type KeyboardModeEvent = CustomEvent<{ enabled: boolean }>
 
@@ -26,6 +25,16 @@ export class ScreenKeyboard {
         this.fakeElement.addEventListener("compositionend", this.onCompositionEnd.bind(this))
 
         document.addEventListener("click", this.refocusIfEnabled.bind(this))
+
+        // Use Virtual Keyboard api if available
+        this.fakeElement.virtualkeyboardpolicy = "manual"
+        this.fakeElement.contentEditable = "true"
+
+        if ("virtualKeyboard" in navigator) {
+            navigator.virtualKeyboard.overlaysContent = true
+
+            navigator.virtualKeyboard.addEventListener("geometrychange", this.onGeometryChange.bind(this))
+        }
     }
 
     getHiddenElement() {
@@ -48,8 +57,16 @@ export class ScreenKeyboard {
 
         if (enabled) {
             this.refocusIfEnabled()
+
+            if ("virtualKeyboard" in navigator) {
+                navigator.virtualKeyboard.show()
+            }
         } else if (document.activeElement === this.fakeElement) {
             this.fakeElement.blur()
+
+            if ("virtualKeyboard" in navigator) {
+                navigator.virtualKeyboard.hide()
+            }
         }
 
         if (changed) {
@@ -66,6 +83,16 @@ export class ScreenKeyboard {
 
         this.resetInputValue()
         this.fakeElement.focus()
+    }
+    private onGeometryChange() {
+        if (!("virtualKeyboard" in navigator)) {
+            return
+        }
+        const boundingRect = navigator.virtualKeyboard.boundingRect
+
+        if (boundingRect.width == 0 || boundingRect.height == 0) {
+            this.hide()
+        }
     }
 
     addKeyDownListener(listener: (event: KeyboardEvent) => void) {

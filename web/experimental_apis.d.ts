@@ -5,6 +5,19 @@ declare global {
             lock(): Promise<void>;
             unlock(): void;
         };
+
+        // Virtual Keyboard: https://developer.mozilla.org/en-US/docs/Web/API/VirtualKeyboard_API
+        virtualKeyboard: {
+            boundingRect: DOMRect
+            overlaysContent: Boolean
+            show(): void
+            hide(): void
+        } & EventTarget
+    }
+
+    // Virtual Keyboard: https://developer.mozilla.org/en-US/docs/Web/API/VirtualKeyboard_API
+    interface HTMLElement {
+        virtualkeyboardpolicy: "auto" | "manual"
     }
 
     // MediaStreamTrackProcessor: https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrackProcessor

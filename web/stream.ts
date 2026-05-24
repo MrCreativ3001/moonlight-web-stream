@@ -9,7 +9,7 @@ import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, Str
 import { getLocalStreamSettings, Settings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
-import { KeyboardDebugEvent, KeyboardModeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
+import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
@@ -95,8 +95,6 @@ class ViewerApp implements Component {
     private manualFullscreenExitRequested: boolean = false
     private toggleFullscreenWithKeybind: boolean = false
     private hasShownFullscreenEscapeWarning = false
-    private keyboardViewportDebugLog: string[] = []
-    private lastKeyboardViewportDebugLogByLabel = new Map<string, number>()
     private keyboardViewportBaselineHeight: number | null = null
     private streamVideoTopOffsetPx: number = 0
 
@@ -164,7 +162,6 @@ class ViewerApp implements Component {
 
         document.addEventListener("pointerlockchange", this.onPointerLockChange.bind(this))
         document.addEventListener("fullscreenchange", this.onFullscreenChange.bind(this))
-        this.addKeyboardViewportDebugListeners()
 
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
         window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
@@ -287,7 +284,6 @@ class ViewerApp implements Component {
     }
     private onScreenKeyboardSetVisible(event: ScreenKeyboardSetVisibleEvent) {
         console.info(event.detail)
-        this.logKeyboardViewportDebug("screenKeyboardSetVisible", event.detail)
         const screenKeyboard = this.sidebar.getScreenKeyboard()
 
         const newShown = event.detail.visible
@@ -421,7 +417,6 @@ class ViewerApp implements Component {
 
     // Touch
     onTouchStart(event: TouchEvent) {
-        this.logKeyboardViewportDebug("touchstart", touchDebugData(event))
         if (this.beginAutoFullscreenTouchGesture()) {
             event.preventDefault()
             event.stopPropagation()
@@ -436,7 +431,6 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onTouchEnd(event: TouchEvent) {
-        this.logKeyboardViewportDebug("touchend", touchDebugData(event))
         if (this.consumeAutoFullscreenTouchGesture()) {
             event.preventDefault()
             event.stopPropagation()
@@ -451,7 +445,6 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onTouchCancel(event: TouchEvent) {
-        this.logKeyboardViewportDebug("touchcancel", touchDebugData(event))
         if (this.pendingAutoFullscreenTouchGesture) {
             this.pendingAutoFullscreenTouchGesture = false
             event.preventDefault()
@@ -472,12 +465,10 @@ class ViewerApp implements Component {
         this.stream.getInput().onTouchUpdate(this.getStreamRect())
         this.updateKeyboardViewportVideoOffset()
         this.renderLocalTouchCursor()
-        this.logCursorKeyboardViewportDebug("cursorTick")
 
         window.requestAnimationFrame(this.onTouchUpdate.bind(this))
     }
     onTouchMove(event: TouchEvent) {
-        this.logThrottledKeyboardViewportDebug("touchmove", touchDebugData(event), 120)
         if (this.pendingAutoFullscreenTouchGesture) {
             event.preventDefault()
             event.stopPropagation()
@@ -684,55 +675,19 @@ class ViewerApp implements Component {
         this.localTouchCursorDiv.style.top = `${rect.top + localCursorState.y * rect.height}px`
     }
 
-    onScreenKeyboardDebug(event: KeyboardDebugEvent) {
-        if (event.detail.label == "show") {
+    onScreenKeyboardModeWillChange(event: KeyboardModeWillChangeEvent) {
+        if (event.detail.enabled) {
             this.captureKeyboardViewportBaseline()
-        } else if (event.detail.label == "hide") {
-            this.resetKeyboardViewportVideoOffset()
-        }
-
-        this.logKeyboardViewportDebug(`screenKeyboard:${event.detail.label}`, event.detail.data)
-    }
-    async copyKeyboardViewportDebugLog(reason: string) {
-        this.logKeyboardViewportDebug("copyRequested", { reason })
-
-        const text = this.keyboardViewportDebugLog.join("\n")
-        try {
-            await copyTextToClipboard(text)
-            console.info(`Copied keyboard viewport debug log (${this.keyboardViewportDebugLog.length} entries)`)
-        } catch (error) {
-            console.warn("Failed to copy keyboard viewport debug log", error)
         }
     }
-    private addKeyboardViewportDebugListeners() {
-        window.addEventListener("resize", () => this.logKeyboardViewportDebug("window.resize"))
-        window.addEventListener("scroll", () => this.logKeyboardViewportDebug("window.scroll"), { passive: true })
 
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener("resize", () => this.logKeyboardViewportDebug("visualViewport.resize"))
-            window.visualViewport.addEventListener("scroll", () => this.logKeyboardViewportDebug("visualViewport.scroll"))
-        }
-
-        const virtualKeyboard = (navigator as any).virtualKeyboard
-        if (virtualKeyboard?.addEventListener) {
-            virtualKeyboard.addEventListener("geometrychange", () => this.logKeyboardViewportDebug("virtualKeyboard.geometrychange"))
-        }
-
-        this.logKeyboardViewportDebug("debugListenersInstalled", {
-            hasVisualViewport: !!window.visualViewport,
-            hasVirtualKeyboard: !!virtualKeyboard,
-        })
-    }
     private captureKeyboardViewportBaseline() {
         this.keyboardViewportBaselineHeight = window.visualViewport?.height ?? null
         this.streamVideoTopOffsetPx = 0
         this.applyStreamVideoTopOffset()
         this.updateKeyboardFloatingButtonPosition()
-        this.logKeyboardViewportDebug("keyboardViewportBaseline", {
-            height: this.keyboardViewportBaselineHeight,
-        })
     }
-    private resetKeyboardViewportVideoOffset() {
+    resetKeyboardViewportVideoOffset() {
         this.keyboardViewportBaselineHeight = null
         this.streamVideoTopOffsetPx = 0
         this.applyStreamVideoTopOffset()
@@ -758,7 +713,6 @@ class ViewerApp implements Component {
             if (this.streamVideoTopOffsetPx != 0) {
                 this.streamVideoTopOffsetPx = 0
                 this.applyStreamVideoTopOffset()
-                this.logKeyboardViewportDebug("streamVideoOffsetReset", { reason: "viewport-not-shrunk" })
             }
             return
         }
@@ -786,15 +740,6 @@ class ViewerApp implements Component {
 
         this.streamVideoTopOffsetPx += delta
         this.applyStreamVideoTopOffset()
-        this.logKeyboardViewportDebug("streamVideoOffsetAdjusted", {
-            delta,
-            offset: this.streamVideoTopOffsetPx,
-            cursorY,
-            visibleTop,
-            visibleBottom,
-            safeMargin,
-            viewportShrink,
-        })
     }
     private applyStreamVideoTopOffset() {
         if (Math.abs(this.streamVideoTopOffsetPx) < 0.5) {
@@ -818,65 +763,6 @@ class ViewerApp implements Component {
     }
     private resetKeyboardFloatingButtonPosition() {
         document.documentElement.style.removeProperty("--stream-keyboard-button-top")
-    }
-    private logCursorKeyboardViewportDebug(label: string) {
-        if (!this.shouldLogThrottled(label, 250)) {
-            return
-        }
-        this.logKeyboardViewportDebug(label)
-    }
-    private logThrottledKeyboardViewportDebug(label: string, extra: unknown, intervalMs: number) {
-        if (!this.shouldLogThrottled(label, intervalMs)) {
-            return
-        }
-
-        this.logKeyboardViewportDebug(label, extra)
-    }
-    private shouldLogThrottled(label: string, intervalMs: number): boolean {
-        const now = performance.now()
-        const last = this.lastKeyboardViewportDebugLogByLabel.get(label) ?? 0
-        if (now - last < intervalMs) {
-            return false
-        }
-
-        this.lastKeyboardViewportDebugLogByLabel.set(label, now)
-        return true
-    }
-    private logKeyboardViewportDebug(label: string, extra?: unknown) {
-        const entry = {
-            time: new Date().toISOString(),
-            label,
-            extra,
-            viewport: getViewportDebugSnapshot(),
-            fullscreen: this.isFullscreen(),
-            pointerLock: !!document.pointerLockElement,
-            activeElement: describeElement(document.activeElement),
-            keyboardModeEnabled: this.sidebar.getScreenKeyboard().isVisible(),
-            touchAction: this.stream.getInput().getCurrentPredictedTouchAction(),
-            streamRect: rectDebugData(this.getStreamRect()),
-            localCursor: this.getLocalCursorDebugData(),
-        }
-
-        this.keyboardViewportDebugLog.push(JSON.stringify(entry))
-        if (this.keyboardViewportDebugLog.length > 1200) {
-            this.keyboardViewportDebugLog.splice(0, this.keyboardViewportDebugLog.length - 1200)
-        }
-    }
-    private getLocalCursorDebugData() {
-        const localCursorState = this.stream.getInput().getLocalCursorState()
-        const rect = this.getStreamRect()
-        const screenX = localCursorState ? rect.left + localCursorState.x * rect.width : null
-        const screenY = localCursorState ? rect.top + localCursorState.y * rect.height : null
-        const visibleRect = getVisibleViewportRect()
-        const virtualKeyboardRect = getVirtualKeyboardRect()
-
-        return {
-            state: localCursorState,
-            screenX,
-            screenY,
-            coveredByVisibleViewport: screenX == null || screenY == null ? null : !pointInRect(screenX, screenY, visibleRect),
-            coveredByVirtualKeyboard: screenX == null || screenY == null || !virtualKeyboardRect ? null : pointInRect(screenX, screenY, virtualKeyboardRect),
-        }
     }
 
     mount(parent: HTMLElement): void {
@@ -1121,8 +1007,8 @@ class ViewerSidebar implements Component, Sidebar {
         this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this))
         this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this))
         this.screenKeyboard.addTextListener(this.onText.bind(this))
+        this.screenKeyboard.addKeyboardModeWillChangeListener(this.app.onScreenKeyboardModeWillChange.bind(this.app))
         this.screenKeyboard.addKeyboardModeListener(this.onKeyboardModeChange.bind(this))
-        this.screenKeyboard.addDebugListener(this.app.onScreenKeyboardDebug.bind(this.app))
         this.div.appendChild(this.screenKeyboard.getHiddenElement())
 
 
@@ -1151,7 +1037,6 @@ class ViewerSidebar implements Component, Sidebar {
         // Close stream
         this.exitStreamButton.innerText = I.stream.exit
         this.exitStreamButton.addEventListener("click", async () => {
-            await this.app.copyKeyboardViewportDebugLog("exitStreamButton")
             const stream = this.app.getStream()
             if (stream) {
                 const success = await stream.stop()
@@ -1219,6 +1104,7 @@ class ViewerSidebar implements Component, Sidebar {
             this.floatingKeyboardButton.classList.add("visible")
         } else {
             this.floatingKeyboardButton.classList.remove("visible")
+            this.app.resetKeyboardViewportVideoOffset()
         }
     }
 
@@ -1324,150 +1210,4 @@ function stopPropagationOn(element: HTMLElement) {
 }
 function onStopPropagation(event: Event) {
     event.stopPropagation()
-}
-
-function getViewportDebugSnapshot() {
-    const visualViewport = window.visualViewport
-    const virtualKeyboardRect = getVirtualKeyboardRect()
-
-    return {
-        window: {
-            innerWidth: window.innerWidth,
-            innerHeight: window.innerHeight,
-            outerWidth: window.outerWidth,
-            outerHeight: window.outerHeight,
-            scrollX: window.scrollX,
-            scrollY: window.scrollY,
-        },
-        documentElement: {
-            clientWidth: document.documentElement.clientWidth,
-            clientHeight: document.documentElement.clientHeight,
-            scrollWidth: document.documentElement.scrollWidth,
-            scrollHeight: document.documentElement.scrollHeight,
-            scrollTop: document.documentElement.scrollTop,
-            scrollLeft: document.documentElement.scrollLeft,
-        },
-        body: {
-            clientWidth: document.body?.clientWidth,
-            clientHeight: document.body?.clientHeight,
-            scrollWidth: document.body?.scrollWidth,
-            scrollHeight: document.body?.scrollHeight,
-            scrollTop: document.body?.scrollTop,
-            scrollLeft: document.body?.scrollLeft,
-        },
-        visualViewport: visualViewport ? {
-            width: visualViewport.width,
-            height: visualViewport.height,
-            offsetLeft: visualViewport.offsetLeft,
-            offsetTop: visualViewport.offsetTop,
-            pageLeft: visualViewport.pageLeft,
-            pageTop: visualViewport.pageTop,
-            scale: visualViewport.scale,
-        } : null,
-        virtualKeyboard: {
-            supported: !!(navigator as any).virtualKeyboard,
-            boundingRect: virtualKeyboardRect,
-        },
-        screen: {
-            width: screen.width,
-            height: screen.height,
-            availWidth: screen.availWidth,
-            availHeight: screen.availHeight,
-            orientation: screen.orientation ? {
-                type: screen.orientation.type,
-                angle: screen.orientation.angle,
-            } : null,
-        },
-    }
-}
-
-function getVisibleViewportRect(): DOMRectReadOnly {
-    const visualViewport = window.visualViewport
-    if (!visualViewport) {
-        return new DOMRect(0, 0, window.innerWidth, window.innerHeight)
-    }
-
-    return new DOMRect(
-        visualViewport.offsetLeft,
-        visualViewport.offsetTop,
-        visualViewport.width,
-        visualViewport.height
-    )
-}
-
-function getVirtualKeyboardRect(): { x: number, y: number, width: number, height: number, top: number, right: number, bottom: number, left: number } | null {
-    const rect = (navigator as any).virtualKeyboard?.boundingRect
-    if (!rect) {
-        return null
-    }
-
-    return rectDebugData(rect)
-}
-
-function rectDebugData(rect: DOMRectReadOnly): { x: number, y: number, width: number, height: number, top: number, right: number, bottom: number, left: number } {
-    return {
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-        left: rect.left,
-    }
-}
-
-function pointInRect(x: number, y: number, rect: DOMRectReadOnly | { top: number, right: number, bottom: number, left: number }): boolean {
-    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
-}
-
-function touchDebugData(event: TouchEvent) {
-    return {
-        touches: Array.from(event.touches).map(touchPointDebugData),
-        changedTouches: Array.from(event.changedTouches).map(touchPointDebugData),
-        target: event.target instanceof Element ? describeElement(event.target) : String(event.target),
-    }
-}
-
-function touchPointDebugData(touch: Touch) {
-    return {
-        identifier: touch.identifier,
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        pageX: touch.pageX,
-        pageY: touch.pageY,
-        screenX: touch.screenX,
-        screenY: touch.screenY,
-    }
-}
-
-function describeElement(element: Element | null): string {
-    if (!element) {
-        return "null"
-    }
-
-    const id = element.id ? `#${element.id}` : ""
-    const className = element instanceof HTMLElement && element.className ? `.${element.className}` : ""
-    return `${element.tagName}${id}${className}`
-}
-
-async function copyTextToClipboard(text: string) {
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text)
-        return
-    }
-
-    const textarea = document.createElement("textarea")
-    textarea.value = text
-    textarea.style.position = "fixed"
-    textarea.style.left = "-9999px"
-    textarea.style.top = "-9999px"
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    try {
-        document.execCommand("copy")
-    } finally {
-        document.body.removeChild(textarea)
-    }
 }

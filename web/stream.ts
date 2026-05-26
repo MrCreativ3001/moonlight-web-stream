@@ -13,7 +13,7 @@ import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEve
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
-import {requestKeyboardLock} from "./iframe.js";
+import { requestKeyboardLock } from "./iframe.js";
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -524,7 +524,7 @@ class ViewerApp implements Component {
 
             try {
                 await requestKeyboardLock();
-                  if (showEscapeWarning && !this.hasShownFullscreenEscapeWarning) {
+                if (showEscapeWarning && !this.hasShownFullscreenEscapeWarning) {
                     showNotification(I.stream.fullscreenEscapeHint, "info")
                     this.hasShownFullscreenEscapeWarning = true
                 }
@@ -701,7 +701,7 @@ class ViewerApp implements Component {
         const baselineHeight = this.keyboardViewportBaselineHeight
         const localCursorState = this.stream.getInput().getLocalCursorState()
 
-        if (!screenKeyboard.isVisible() || !visualViewport || baselineHeight == null || !localCursorState?.visible) {
+        if (!screenKeyboard.isVisible() || !visualViewport || baselineHeight == null) {
             if (this.streamVideoTopOffsetPx != 0 && !screenKeyboard.isVisible()) {
                 this.resetKeyboardViewportVideoOffset()
             }
@@ -724,22 +724,32 @@ class ViewerApp implements Component {
 
         const visibleTop = visualViewport.offsetTop
         const visibleBottom = visualViewport.offsetTop + visualViewport.height
-        const safeMargin = Math.min(100, visualViewport.height * 0.25)
-        const cursorY = streamRect.top + localCursorState.y * streamRect.height
 
-        let delta = 0
-        if (cursorY < visibleTop + safeMargin) {
-            delta = visibleTop + safeMargin - cursorY
-        } else if (cursorY > visibleBottom - safeMargin) {
-            delta = visibleBottom - safeMargin - cursorY
+        let newTopOffsetPx = this.streamVideoTopOffsetPx
+        if (localCursorState.visible) {
+            let delta = 0
+
+            const safeMargin = Math.min(100, visualViewport.height * 0.25)
+            const cursorY = streamRect.top + localCursorState.y * streamRect.height
+
+            if (cursorY < visibleTop + safeMargin) {
+                delta = visibleTop + safeMargin - cursorY
+            } else if (cursorY > visibleBottom - safeMargin) {
+                delta = visibleBottom - safeMargin - cursorY
+            }
+
+            newTopOffsetPx += delta
+        } else {
+            const screenTopToVideoTop = visualViewport.height - streamRect.height
+            if (screenTopToVideoTop > 0) {
+                newTopOffsetPx = visibleTop - screenTopToVideoTop
+            }
         }
 
-        if (Math.abs(delta) < 1) {
-            return
+        if (Math.abs(newTopOffsetPx - this.streamVideoTopOffsetPx) >= 1) {
+            this.streamVideoTopOffsetPx = newTopOffsetPx
+            this.applyStreamVideoTopOffset()
         }
-
-        this.streamVideoTopOffsetPx += delta
-        this.applyStreamVideoTopOffset()
     }
     private applyStreamVideoTopOffset() {
         if (Math.abs(this.streamVideoTopOffsetPx) < 0.5) {
@@ -1132,7 +1142,7 @@ class ViewerSidebar implements Component, Sidebar {
     mount(parent: HTMLElement): void {
         parent.appendChild(this.div)
         const appRoot = document.getElementById("root")
-        ;(appRoot ?? document.body).appendChild(this.floatingKeyboardButton)
+            ; (appRoot ?? document.body).appendChild(this.floatingKeyboardButton)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)

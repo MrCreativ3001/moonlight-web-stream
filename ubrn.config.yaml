@@ -1,0 +1,14 @@
+# Docs: https://jhugman.github.io/uniffi-bindgen-react-native/reference/config-yaml.html
+
+rust:
+  # Update the package.json script, when this changes because the "ubrn checkout" doesn't seem to work for me
+  repo: https://github.com/MrCreativ3001/moonlight-common-rust.git
+  branch: uniffi-2
+  manifestPath: bindings/Cargo.toml
+
+web:
+  entrypoint: web/generated/uniffi_entry.ts
+  tsBindings: web/generated
+  defaultFeatures: false
+  features: ["web"]
+  manifestPatchFile: ./Cargo.wasm.toml

@@ -14,18 +14,25 @@
       "runOnChangeOnly": false
     }
   },
+  "repository": {
+    "url": "This is required for uniffi-bindgen-react-native"
+  },
   "scripts": {
     "dev": "npm run generate-bindings && npm-watch build-light",
-    "build": "npm run generate-bindings && npm run build-light",
+    "build": "npm run generate-bindings && npm run build-moonlight-common && npm run build-light",
     "build-light": "tsc && npm run copy-static",
     "generate-bindings": "cargo test export_bindings --package common",
-    "copy-static": "cpx \"web/**/*.{html,json,css,svg,png,js,wasm}\" dist/"
+    "copy-static": "cpx \"web/**/*.{html,json,css,svg,png,js,wasm}\" dist/",
+    "build-moonlight-common": "npm run ubrn:checkout && npm run ubrn:build",
+    "ubrn:checkout": "ubrn checkout",
+    "ubrn:build": "ubrn build web"
   },
   "license": "GPL-3.0-or-later",
   "private": "true",
   "devDependencies": {
     "cpx": "1.2.1",
     "npm-watch": "0.13.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "uniffi-bindgen-react-native": "0.31.0-3"
   }
 }

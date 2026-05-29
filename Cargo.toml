@@ -17,6 +17,7 @@ license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 # TODO: change this to the repo url
+# Make sure to keep the ubrn.config.yaml repo the same as this
 moonlight-common = { path = "../moonlight-common-rust", features = [
     "tokio",
     "tokio-hyper",

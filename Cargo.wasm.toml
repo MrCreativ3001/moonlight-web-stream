@@ -1,0 +1,5 @@
+# This overrides the generated Cargo.toml in the wasm bindgen project by Uniffi-Bindgen-React-Native. See ubrn.config.yaml
+
+[dependencies]
+# Lock the wasm bindgen version to an exact version because wasm bindgen is unstable and has changes in every patch
+wasm-bindgen = "=0.2.122"

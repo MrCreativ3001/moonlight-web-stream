@@ -130,7 +130,9 @@ async fn handle_ws(
         )
         .await?;
 
-    let stream = MoonlightStream::connect(config, settings, RustCryptoBackend, handler).await?;
+    let stream =
+        MoonlightStream::connect(config, settings, Arc::new(RustCryptoBackend) as _, handler)
+            .await?;
 
     // handle incoming ws messages
     while let Some(Ok(message)) = ws_receiver.recv().await {

@@ -11,7 +11,7 @@ export function globalObject(): any {
     return globalThis;
 }
 
-export function download(data: Uint8Array, filename: string, mime: string = "application/octet-stream") {
+export function download(data: Uint8Array<ArrayBuffer>, filename: string, mime: string = "application/octet-stream") {
     const blob = data instanceof Blob ? data : new Blob([data], { type: mime })
     const url = URL.createObjectURL(blob)
 

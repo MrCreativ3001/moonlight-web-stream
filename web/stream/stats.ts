@@ -144,7 +144,7 @@ export class StreamStats {
                 this.statsChannel = channel
             }
             if (this.updateIntervalId == null) {
-                this.updateIntervalId = setInterval(this.updateLocalStats.bind(this), 1000)
+                this.updateIntervalId = window.setInterval(this.updateLocalStats.bind(this), 1000)
             }
         } else {
             if (this.updateIntervalId != null) {

@@ -8,7 +8,6 @@
       "DOM",
       "DOM.Iterable",
       "ES6",
-      "ES2020",
       "ESNext.Disposable"
     ],
     "strict": true

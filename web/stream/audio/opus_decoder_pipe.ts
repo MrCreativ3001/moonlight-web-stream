@@ -33,7 +33,7 @@ export class OpusAudioDecoderPipe implements DataAudioPlayer {
     private setupData: AudioPlayerSetup | null = null
 
     private buffer: Float32Array = new Float32Array([])
-    private channelBuffers: Array<Float32Array> = []
+    private channelBuffers: Array<Float32Array<ArrayBuffer>> = []
 
     constructor(base: PcmAudioPlayer, logger?: Logger) {
         loadOpus().then(module => this.opusModule = module)

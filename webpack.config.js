@@ -80,6 +80,7 @@ export default {
         clean: true
     },
     externals: {
-        "./config.js": "window.__RUNTIME_CONFIG__"
+        "./config.js": "window.__RUNTIME_CONFIG__",
+        "../../libopenh264/decoder.js": "window.__OPENH264_DECODER__",
     }
 };

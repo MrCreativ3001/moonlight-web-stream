@@ -107,7 +107,7 @@ export interface Yuv420FrameVideoRenderer extends Pipe {
 }
 
 export type RgbaVideoFrame = {
-    buffer: Uint8ClampedArray
+    buffer: Uint8ClampedArray<ArrayBuffer>
     width: number
     height: number
     timestampMicroseconds: number

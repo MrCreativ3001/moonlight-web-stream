@@ -11,6 +11,7 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
         const videoCodecs = emptyVideoCodecs()
         videoCodecs.H264 = true
 
+        // TODO: fix the dynamic importing
         let environmentSupported = false
         try {
             await import("../../libopenh264/decoder.js")

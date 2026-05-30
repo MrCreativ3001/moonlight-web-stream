@@ -7,8 +7,8 @@ rust:
   manifestPath: bindings/Cargo.toml
 
 web:
-  entrypoint: web/generated/uniffi_entry.ts
-  tsBindings: web/generated
+  entrypoint: web/uniffi/entry.ts
+  tsBindings: web/uniffi
   defaultFeatures: false
   features: ["web"]
   manifestPatchFile: ./Cargo.wasm.toml

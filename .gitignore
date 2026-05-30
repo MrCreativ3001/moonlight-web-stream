@@ -14,7 +14,7 @@ web/api_bindings.ts
 
 # uniffi bindings
 rust_modules
-web/generated
+web/uniffi
 
 # Server
 server

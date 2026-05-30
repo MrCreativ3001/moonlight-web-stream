@@ -28,11 +28,9 @@ use moonlight_common::stream::video::{
 use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
 };
-use moonlight_common::webrtc::launch::WebRtcLaunchRequest;
-use moonlight_common::webrtc::{
-    LINK_CONTROL_STREAM_ENET, LINK_CONTROL_STREAM_SIMPLE, LINK_MICROPHONE,
-};
+use moonlight_common::webrtc::MoonlightWebRtcSession;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::{Duration, Instant};
@@ -106,9 +104,6 @@ pub async fn whep_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppE
         .insert_header((header::ACCESS_CONTROL_EXPOSE_HEADERS, "Location"))
         // Insert accept post, like the spec says
         .append_header(("Accept-Post", "application/sdp"))
-        // This server supports microphone
-        // advertise this here so that the client can include the microphone track in it's offer
-        .append_header((header::LINK, LINK_MICROPHONE))
         .finish())
 }
 
@@ -454,19 +449,9 @@ pub async fn whep_post(
 ) -> Result<HttpResponse, AppError> {
     debug!(req = ?req, session_description = ?session_description, "whep request");
 
-    let query = req.query_string();
-    let query = match WebRtcLaunchRequest::from_query_params(&query) {
-        Ok(value) => value,
-        Err(err) => {
-            warn!(
-                error = %err,
-                "failed to parse query parameters for launch whep endpoint"
-            );
-            return Err(AppError::BadRequest);
-        }
-    };
+    let session = MoonlightWebRtcSession::from_str(&session_description).unwrap();
 
-    let Some(host_id) = query.web_host_id else {
+    let Some(host_id) = session.host_id else {
         return Err(AppError::HostNotFound);
     };
     let host_id = HostId(host_id);
@@ -485,15 +470,7 @@ pub async fn whep_post(
     // Look for supported Moonlight extensions
     let mut supports_control_stream_simple = false;
     let mut supports_control_stream_enet = false;
-    for value in req.headers().get_all(header::LINK) {
-        if let Ok(value) = value.to_str() {
-            match value.trim() {
-                LINK_CONTROL_STREAM_SIMPLE => supports_control_stream_simple = true,
-                LINK_CONTROL_STREAM_ENET => supports_control_stream_enet = true,
-                _ => {}
-            }
-        }
-    }
+    // TODO
 
     // -- Create WebRtc peer
     // Create settings
@@ -646,23 +623,24 @@ pub async fn whep_post(
     supported_video_formats &= VideoFormats::H264;
 
     let mut settings = MoonlightStreamSettings {
-        width: query.mode_width,
-        height: query.mode_height,
-        fps: query.mode_fps,
-        fps_x100: query.mode_fps,
-        bitrate: query.bitrate_kbps,
+        width: session.width,
+        height: session.height,
+        fps: session.fps,
+        fps_x100: session.fps * 100,
+        bitrate: session.bitrate,
         packet_size: 2048,
         // There's not need to encrypt video
         encryption_flags: EncryptionFlags::AUDIO | EncryptionFlags::FOUNDATION_MICROPHONE,
         streaming_remotely: StreamingConfig::Auto,
         sops: true,
-        hdr: query.hdr,
+        hdr: session.hdr,
         supported_video_formats,
         // TODO: what color space / range? is this in the sdp?
         color_space: ColorSpace::Rec709,
         color_range: ColorRange::Limited,
-        local_audio_play_mode: query.local_audio_play_mode,
-        audio_config: query.preferred_audio,
+        local_audio_play_mode: session.local_audio_play_mode,
+        // TODO: what audio config?
+        audio_config: AudioConfig::STEREO,
         gamepads_attached: ActiveGamepads::empty(),
         gamepads_persist_after_disconnect: false,
         enable_mic: microphone_enabled,
@@ -696,7 +674,7 @@ pub async fn whep_post(
 
     let config = host
         .start_stream(
-            query.app_id,
+            session.app_id,
             &settings,
             aes_key,
             aes_iv,

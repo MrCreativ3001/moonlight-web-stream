@@ -14,7 +14,8 @@ export default {
     mode: "development",
     entry: {
         index: "./web/index.ts",
-        stream: "./web/stream.ts"
+        stream: "./web/stream.ts",
+        admin: "./web/admin.ts"
     },
     module: {
         rules: [
@@ -56,6 +57,12 @@ export default {
             filename: 'stream.html',
             template: './web/stream.html',
             chunks: ['stream'],
+            scriptLoading: 'blocking'
+        }),
+        new HtmlWebpackPlugin({
+            filename: 'admin.html',
+            template: './web/admin.html',
+            chunks: ['admin'],
             scriptLoading: 'blocking'
         }),
         new CopyPlugin({

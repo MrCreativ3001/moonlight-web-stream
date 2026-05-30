@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "rootDir": "web",
     "outDir": "./dist",
     "target": "ES6",
     "module": "ESNext",
@@ -12,10 +11,12 @@
       "ES2020",
       "ESNext.Disposable"
     ],
-    "strict": true,
-    "esModuleInterop": true
+    "strict": true
   },
   "include": [
     "web/**/*"
   ],
+  "exclude": [
+    "node_modules"
+  ]
 }

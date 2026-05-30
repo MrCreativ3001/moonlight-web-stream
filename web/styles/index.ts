@@ -11,6 +11,9 @@ function toAbsolute(path: string) {
 }
 
 export function setStyle(style: PageStyle) {
+    // TODO: reenable
+    return
+
     if (!currentStyle) {
         document.head.appendChild(styleLink)
     }

@@ -1,9 +1,9 @@
 # Docs: https://jhugman.github.io/uniffi-bindgen-react-native/reference/config-yaml.html
 
 rust:
-  # Update the package.json script, when this changes because the "ubrn checkout" doesn't seem to work for me
   repo: https://github.com/MrCreativ3001/moonlight-common-rust.git
-  branch: uniffi-2
+  # TODO: replace by a direct rev
+  branch: master
   manifestPath: bindings/Cargo.toml
 
 web:

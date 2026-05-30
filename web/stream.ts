@@ -14,6 +14,8 @@ import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
 
+import "./styles/index.ts"
+
 let I = getTranslations(getCurrentLanguage())
 
 async function startApp() {
@@ -415,7 +417,7 @@ class ViewerApp implements Component {
     async requestFullscreen() {
         const body = document.body
         if (body) {
-                if (!("requestFullscreen" in body && typeof body.requestFullscreen == "function")) {
+            if (!("requestFullscreen" in body && typeof body.requestFullscreen == "function")) {
                 await showMessage(I.stream.fullscreenUnsupported)
 
                 return

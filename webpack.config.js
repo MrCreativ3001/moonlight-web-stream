@@ -25,7 +25,15 @@ export default {
             },
             {
                 test: /\.css$/i,
-                use: ['style-loader', 'css-loader'],
+                use: [
+                    {
+                        loader: 'style-loader',
+                        options: {
+                            injectType: 'lazyStyleTag'
+                        }
+                    },
+                    'css-loader'
+                ]
             },
             {
                 test: /\.(png|svg|jpg|jpeg|gif)$/i,

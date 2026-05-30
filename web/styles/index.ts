@@ -1,30 +1,25 @@
 import { globalDefaultSettings, getLocalStreamSettings } from "../component/settings_menu.js"
 
 // old doesn't exist anymore and is always replaced with moonlight when loading the settings
-export type PageStyle = "standard" | "old" | "moonlight"
+import standardUrl from "./standard.css";
+import moonlightUrl from "./moonlight.css";
+
+export type PageStyle = "standard" | "old" | "moonlight";
 
 let currentStyle: PageStyle | null = null
-const styleLink = document.getElementById("style") as HTMLLinkElement
 
-function toAbsolute(path: string) {
-    return new URL(path, document.baseURI).href
-}
+const styleMap: Record<PageStyle, LazyStyleModule> = {
+    standard: standardUrl,
+    old: standardUrl,
+    moonlight: moonlightUrl
+};
 
 export function setStyle(style: PageStyle) {
-    // TODO: reenable
-    return
-
-    if (!currentStyle) {
-        document.head.appendChild(styleLink)
+    if (currentStyle && currentStyle != style) {
+        styleMap[currentStyle].unuse()
     }
 
-    const path = `styles/${style}.css`
-    const absolute = toAbsolute(path)
-
-    if (styleLink.href !== absolute) {
-        styleLink.href = absolute
-    }
-
+    styleMap[style].use()
     currentStyle = style
 }
 

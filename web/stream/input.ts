@@ -1,7 +1,7 @@
 import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton, TransportChannelId } from "../api_bindings.js"
 import { showNotification } from "../component/notification.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
-import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
+import { areGamepadStatesEqual, ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 import { DataTransportChannel, Transport, TransportChannelIdKey, TransportChannelIdValue } from "./transport/index.js"
@@ -26,6 +26,17 @@ const DOUBLE_TAP_FIRST_TAP_MAX_TIME_MS = 100
 const DOUBLE_TAP_SECOND_TAP_MAX_TIME_MS = 200
 
 const CONTROLLER_RUMBLE_INTERVAL_MS = 60
+
+type GamepadRumbleState = {
+    lowFrequencyMotor: number,
+    highFrequencyMotor: number,
+    leftTrigger: number,
+    rightTrigger: number
+}
+
+function emptyGamepadRumbleState(): GamepadRumbleState {
+    return { lowFrequencyMotor: 0, highFrequencyMotor: 0, leftTrigger: 0, rightTrigger: 0 }
+}
 
 function trySendChannel(channel: DataTransportChannel | null, buffer: ByteBuffer) {
     if (!channel) {
@@ -1042,7 +1053,7 @@ export class StreamInput {
         }
 
         // Reset rumble
-        this.gamepadRumbleCurrent[0] = { lowFrequencyMotor: 0, highFrequencyMotor: 0, leftTrigger: 0, rightTrigger: 0 }
+        this.gamepadRumbleCurrent[gamepad.index] = emptyGamepadRumbleState()
 
         let capabilities = 0
 
@@ -1068,7 +1079,7 @@ export class StreamInput {
             }
         }
 
-        this.sendControllerAdd(this.gamepads.length - 1, SUPPORTED_BUTTONS, capabilities)
+        this.sendControllerAdd(id, SUPPORTED_BUTTONS, capabilities)
 
         if (gamepad.mapping != "standard") {
             console.warn(`[Gamepad]: Unable to read values of gamepad with mapping ${gamepad.mapping}`)
@@ -1077,12 +1088,10 @@ export class StreamInput {
     onGamepadDisconnect(event: GamepadEvent) {
         const index = this.gamepads.findIndex(value => value?.gamepadIndex == event.gamepad.index)
         if (index != -1) {
-            const id = this.gamepads[index]?.gamepadIndex
-            if (id != null) {
-                this.sendControllerRemove(id)
-            }
+            this.sendControllerRemove(index)
 
             this.gamepads[index] = null
+            this.gamepadRumbleCurrent[event.gamepad.index] = emptyGamepadRumbleState()
         }
     }
 
@@ -1099,7 +1108,7 @@ export class StreamInput {
         for (let gamepadId = 0; gamepadId < this.gamepads.length; gamepadId++) {
             const oldGamepadState = this.gamepads[gamepadId]
             if (oldGamepadState == null) {
-                return
+                continue
             }
             const gamepad = navigator.getGamepads()[oldGamepadState.gamepadIndex]
             if (!gamepad) {
@@ -1111,7 +1120,7 @@ export class StreamInput {
             }
 
             const state = extractGamepadState(gamepad, this.config.controllerConfig)
-            if (state == oldGamepadState.oldState) {
+            if (areGamepadStatesEqual(state, oldGamepadState.oldState)) {
                 continue
             }
             oldGamepadState.oldState = state
@@ -1157,16 +1166,17 @@ export class StreamInput {
     }
 
     // -- Controller rumble
-    private gamepadRumbleCurrent: Array<{
-        lowFrequencyMotor: number, highFrequencyMotor: number,
-        leftTrigger: number, rightTrigger: number
-    }> = []
+    private gamepadRumbleCurrent: Array<GamepadRumbleState> = []
 
     private setGamepadEffect(id: number, ty: "dual-rumble", params: { lowFrequencyMotor: number, highFrequencyMotor: number }): void
     private setGamepadEffect(id: number, ty: "trigger-rumble", params: { leftTrigger: number, rightTrigger: number }): void
 
     private setGamepadEffect(id: number, _ty: "dual-rumble" | "trigger-rumble", params: { lowFrequencyMotor: number, highFrequencyMotor: number } | { leftTrigger: number, rightTrigger: number }) {
-        const rumble = this.gamepadRumbleCurrent[id]
+        let rumble = this.gamepadRumbleCurrent[id]
+        if (!rumble) {
+            rumble = emptyGamepadRumbleState()
+            this.gamepadRumbleCurrent[id] = rumble
+        }
 
         Object.assign(rumble, params)
     }

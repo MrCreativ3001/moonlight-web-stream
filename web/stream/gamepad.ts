@@ -66,6 +66,9 @@ export function extractGamepadState(gamepad: Gamepad, config: ControllerConfig):
     let buttonFlags = 0
     for (let buttonId = 0; buttonId < gamepad.buttons.length; buttonId++) {
         const button = gamepad.buttons[buttonId]
+        if (!button) {
+            continue
+        }
 
         const buttonFlag = convertStandardButton(buttonId, config)
         if (button.pressed && buttonFlag !== null) {
@@ -73,13 +76,13 @@ export function extractGamepadState(gamepad: Gamepad, config: ControllerConfig):
         }
     }
 
-    const leftTrigger = gamepad.buttons[6].value
-    const rightTrigger = gamepad.buttons[7].value
+    const leftTrigger = getButtonValue(gamepad, 6)
+    const rightTrigger = getButtonValue(gamepad, 7)
 
-    const leftStickX = gamepad.axes[0]
-    const leftStickY = gamepad.axes[1]
-    const rightStickX = gamepad.axes[2]
-    const rightStickY = gamepad.axes[3]
+    const leftStickX = getAxisValue(gamepad, 0)
+    const leftStickY = getAxisValue(gamepad, 1)
+    const rightStickX = getAxisValue(gamepad, 2)
+    const rightStickY = getAxisValue(gamepad, 3)
 
     return {
         buttonFlags,
@@ -90,6 +93,18 @@ export function extractGamepadState(gamepad: Gamepad, config: ControllerConfig):
         rightStickX,
         rightStickY
     }
+}
+
+function getButtonValue(gamepad: Gamepad, index: number): number {
+    return finiteOrDefault(gamepad.buttons[index]?.value, 0)
+}
+
+function getAxisValue(gamepad: Gamepad, index: number): number {
+    return finiteOrDefault(gamepad.axes[index], 0)
+}
+
+function finiteOrDefault(value: unknown, fallback: number): number {
+    return typeof value == "number" && Number.isFinite(value) ? value : fallback
 }
 
 export function emptyGamepadState(): GamepadState {

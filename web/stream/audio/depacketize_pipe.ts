@@ -37,8 +37,8 @@ export class DepacketizeAudioPipe implements DataPipe {
     submitPacket(buffer: ArrayBuffer) {
         this.base.decodeAndPlay({
             data: buffer,
-            timestampMicroseconds: 0,
-            durationMicroseconds: 0,
+            timestampMicroseconds: this.timestampMicroseconds,
+            durationMicroseconds: this.packetDurationMicroseconds,
         })
 
         this.timestampMicroseconds += this.packetDurationMicroseconds

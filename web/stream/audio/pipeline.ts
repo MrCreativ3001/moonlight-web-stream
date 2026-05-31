@@ -65,7 +65,8 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
     let pipelines = PIPELINES
     if (settings.useWasmOpusDecoder) {
         pipelines = [
-            ...PIPELINES.filter(pipeline => pipeline.pipes.indexOf(OpusAudioDecoderPipe) != -1),
+            ...PIPELINES.filter(pipeline => pipeline.pipes.indexOf(OpusAudioDecoderPipe) != -1 && pipeline.player == ContextDestinationNodeAudioPlayer),
+            ...PIPELINES.filter(pipeline => pipeline.pipes.indexOf(OpusAudioDecoderPipe) != -1 && pipeline.player != ContextDestinationNodeAudioPlayer),
             ...PIPELINES.filter(pipeline => pipeline.pipes.indexOf(OpusAudioDecoderPipe) == -1),
         ]
     }

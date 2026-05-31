@@ -50,6 +50,12 @@ export abstract class AudioContextBasePipe implements NodeAudioPlayer {
     }
 
     onUserInteraction(): void {
+        if (this.audioContext?.state == "suspended") {
+            this.audioContext.resume().catch((e: any) => {
+                this.logger?.debug(`Failed to resume audio context: ${"toString" in e && typeof e.toString == "function" ? e.toString() : e}`)
+            })
+        }
+
         if (this.base && "onUserInteraction" in this.base && typeof this.base.onUserInteraction == "function") {
             return this.base.onUserInteraction(...arguments)
         }

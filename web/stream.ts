@@ -6,13 +6,13 @@ import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { getLocalStreamSettings, Settings } from "./component/settings_menu.js";
+import { getLocalStreamSettings, Settings, TransportType} from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
+import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage} from "./i18n.js";
 import { requestKeyboardLock } from "./iframe.js";
 
 let I = getTranslations(getCurrentLanguage())
@@ -20,9 +20,14 @@ let I = getTranslations(getCurrentLanguage())
 async function startApp() {
     const api = await getApi()
 
+    const queryParams = new URLSearchParams(location.search)
+    let lang = parseLanguageFromQuery(queryParams)
     const bootstrapRole = await apiGetRole(api, { id: null })
-    adoptRoleDefaultLanguage(bootstrapRole.role.default_settings)
-    I = getTranslations(getCurrentLanguage())
+    if (!lang) {
+        adoptRoleDefaultLanguage(bootstrapRole.role.default_settings)
+        lang = getCurrentLanguage()
+    }
+    I = getTranslations(lang)
 
     const rootElement = document.getElementById("root");
     if (rootElement == null) {
@@ -31,8 +36,6 @@ async function startApp() {
     }
 
     // Get Host and App via Query
-    const queryParams = new URLSearchParams(location.search)
-
     const hostIdStr = queryParams.get("hostId")
     const appIdStr = queryParams.get("appId")
     if (hostIdStr == null || appIdStr == null) {
@@ -56,7 +59,7 @@ async function startApp() {
     }
 
     // Start and Mount App
-    const app = new ViewerApp(api, hostId, appId, bootstrapRole.role)
+    const app = new ViewerApp(api, hostId, appId, bootstrapRole.role, parseSettingsFromQuery(queryParams))
     app.mount(rootElement);
 
     (window as any)["app"] = app
@@ -70,6 +73,51 @@ window.requestAnimationFrame(() => {
         elements.item(0)?.classList.remove("prevent-start-transition")
     }
 })
+
+function parseSettingsFromQuery(queryParams: URLSearchParams): Partial<Settings> {
+    const settings: Partial<Settings> = {}
+
+    const bitrate = queryParams.get("bitrate")
+    if (bitrate) {
+        settings.bitrate = Number(bitrate)
+    }
+
+    const fps = queryParams.get("fps")
+    if (fps) {
+        settings.fps = Number(fps)
+    }
+
+    const hdr = queryParams.get("hdr")
+    if (hdr != null) {
+        settings.hdr = hdr === "true"
+    }
+
+    const videoSize = queryParams.get("videoSize")
+    if (videoSize) {
+        settings.videoSize = videoSize as Settings["videoSize"]
+    }
+
+    const width = queryParams.get("videoSizeCustom.width")
+    const height = queryParams.get("videoSizeCustom.height")
+    if (width && height) {
+        settings.videoSizeCustom = {
+            width: Number(width),
+            height: Number(height),
+        }
+    }
+
+    const dataTransport = queryParams.get("dataTransport")
+    if (dataTransport) {
+        settings.dataTransport = dataTransport as TransportType
+    }
+
+    return settings
+}
+
+function parseLanguageFromQuery(queryParams: URLSearchParams): Language | undefined {
+    const language = queryParams.get("language")
+    return language ? normalizeLanguage(language) : undefined
+}
 
 startApp()
 
@@ -98,10 +146,18 @@ class ViewerApp implements Component {
     private keyboardViewportBaselineHeight: number | null = null
     private streamVideoTopOffsetPx: number = 0
 
-    constructor(api: Api, hostId: number, appId: number, bootstrapRole: DetailedRole) {
+    constructor(api: Api, hostId: number, appId: number, bootstrapRole: DetailedRole, options?: Partial<Settings>) {
         this.api = api
 
-        const settings = getLocalStreamSettings(bootstrapRole.default_settings)
+        const defaultSettings = getLocalStreamSettings(bootstrapRole.default_settings)
+        const settings = {
+            ...defaultSettings,
+            ...options,
+            videoSizeCustom: {
+                ...defaultSettings.videoSizeCustom,
+                ...options?.videoSizeCustom,
+            },
+        }
         Object.assign(this.inputConfig, {
             mouseMode: settings.mouseMode,
             mouseScrollMode: settings.mouseScrollMode,

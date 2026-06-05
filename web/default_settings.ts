@@ -10,7 +10,7 @@ const trueDefaultSettings: Settings =
     "bitrate": 10000,
     "fps": 60,
     "videoFrameQueueSize": 3,
-    // possible values: "720p", "1080p", "1440p", "4k", "native", "custom"
+    // possible values: "720p", "1080p", "1440p", "4k", "native", "portrait", "portrait1440", "custom"
     "videoSize": "custom",
     // only works if videoSize=custom
     "videoSizeCustom": {
@@ -43,6 +43,8 @@ const trueDefaultSettings: Settings =
     "language": "en",
     "enterFullscreenOnStreamStart": false,
     "toggleFullscreenWithKeybind": false,
+    // possible values: "landscape", "portrait", "auto"
+    "fullscreenOrientation": "landscape",
     // possible values: "standard", "old"
     "pageStyle": "standard",
     "hdr": false,

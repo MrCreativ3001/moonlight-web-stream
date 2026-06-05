@@ -10,7 +10,7 @@ export type Settings = {
     sidebarEdge: SidebarEdge,
     bitrate: number
     videoFrameQueueSize: number
-    videoSize: "720p" | "1080p" | "1440p" | "4k" | "native" | "custom"
+    videoSize: "720p" | "1080p" | "1440p" | "4k" | "native" | "portrait" | "portrait1440" | "custom"
     videoSizeCustom: {
         width: number
         height: number
@@ -31,6 +31,7 @@ export type Settings = {
     language: Language
     enterFullscreenOnStreamStart: boolean
     toggleFullscreenWithKeybind: boolean
+    fullscreenOrientation: FullscreenOrientation
     pageStyle: PageStyle
     hdr: boolean
     useSelectElementPolyfill: boolean
@@ -38,6 +39,7 @@ export type Settings = {
 
 export type StreamCodec = "h264" | "auto" | "h265" | "av1"
 export type TransportType = "auto" | "webrtc" | "websocket"
+export type FullscreenOrientation = "landscape" | "portrait" | "auto"
 
 import DEFAULT_SETTINGS from "../default_settings.js"
 import { StreamPermissions } from "../api_bindings.js";
@@ -184,6 +186,9 @@ export class StreamSettingsComponent implements Component {
     private enterFullscreenOnStreamStart: InputComponent
     private toggleFullscreenWithKeybind: InputComponent
 
+    private fullscreenOrientation!: SelectComponent
+    private portraitHint = document.createElement("p")
+
     private pageStyle: SelectComponent
 
     private useSelectElementPolyfill: InputComponent
@@ -255,6 +260,8 @@ export class StreamSettingsComponent implements Component {
                 { value: "1440p", name: "1440p" },
                 { value: "4k", name: "4k" },
                 { value: "native", name: i.native },
+                { value: "portrait", name: i.portrait },
+                { value: "portrait1440", name: i.portrait1440 },
                 { value: "custom", name: i.custom }
             ],
             {
@@ -278,6 +285,11 @@ export class StreamSettingsComponent implements Component {
         })
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeHeight.mount(this.divElement)
+
+        this.portraitHint.classList.add("settings-hint")
+        this.portraitHint.innerText = i.portraitHint
+        this.portraitHint.hidden = true
+        this.divElement.appendChild(this.portraitHint)
 
         // Video Sample Queue Size
         this.videoSampleQueueSize = new InputComponent("videoFrameQueueSize", "number", i.videoFrameQueueSize, {
@@ -510,6 +522,18 @@ export class StreamSettingsComponent implements Component {
         this.toggleFullscreenWithKeybind.addChangeListener(this.onSettingsChange.bind(this))
         this.toggleFullscreenWithKeybind.mount(this.divElement)
 
+        // Fullscreen Orientation
+        this.fullscreenOrientation = new SelectComponent("fullscreenOrientation", [
+            { value: "landscape", name: i.orientationLandscape },
+            { value: "portrait", name: i.orientationPortrait },
+            { value: "auto", name: i.orientationAuto },
+        ], {
+            displayName: i.fullscreenOrientation,
+            preSelectedOption: settings?.fullscreenOrientation ?? defaultSettings_.fullscreenOrientation
+        })
+        this.fullscreenOrientation.addChangeListener(this.onSettingsChange.bind(this))
+        this.fullscreenOrientation.mount(this.divElement)
+
         // Page Style
         this.pageStyle = new SelectComponent("pageStyle", [
             { value: "standard", name: "Standard" },
@@ -532,13 +556,22 @@ export class StreamSettingsComponent implements Component {
     }
 
     private onSettingsChange() {
-        if (this.videoSize.getValue() == "custom") {
+        const videoSize = this.videoSize.getValue()
+        if (videoSize == "custom") {
             this.videoSizeWidth.setEnabled(true)
             this.videoSizeHeight.setEnabled(true)
         } else {
             this.videoSizeWidth.setEnabled(false)
             this.videoSizeHeight.setEnabled(false)
         }
+
+        let isPortrait = videoSize == "portrait" || videoSize == "portrait1440"
+        if (videoSize == "custom") {
+            const w = parseInt(this.videoSizeWidth.getValue())
+            const h = parseInt(this.videoSizeHeight.getValue())
+            isPortrait = Number.isFinite(w) && Number.isFinite(h) && h > w
+        }
+        this.portraitHint.hidden = !isPortrait
 
         this.divElement.dispatchEvent(new ComponentEvent("ml-settingschange", this))
     }
@@ -588,6 +621,7 @@ export class StreamSettingsComponent implements Component {
 
         settings.enterFullscreenOnStreamStart = this.enterFullscreenOnStreamStart.isChecked()
         settings.toggleFullscreenWithKeybind = this.toggleFullscreenWithKeybind.isChecked()
+        settings.fullscreenOrientation = this.fullscreenOrientation.getValue() as FullscreenOrientation
 
         settings.pageStyle = this.pageStyle.getValue() as any
 

@@ -1375,3 +1375,9 @@ canvas.video-stream {
 .role-info-delete {
     background-color: red;
 }
+
+.settings-hint {
+    margin: 4px 0 8px;
+    font-size: 0.8rem;
+    opacity: 0.75;
+}

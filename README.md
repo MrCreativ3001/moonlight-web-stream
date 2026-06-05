@@ -52,6 +52,25 @@ You can install it [manually](#install-manually) or with [docker](docker/README.
 
 3. Launch an app
 
+### Vertical / Portrait Streaming
+
+You can stream a vertical (portrait) desktop and have it fill a portrait phone screen.
+
+1. In a stream, open **Settings → Video → Video Size** and pick **Portrait (1080×1920)**
+   (or **Portrait (1440×2560)**). You can also choose **custom** and enter a height larger
+   than the width.
+2. Set **Settings → Fullscreen Orientation** to **Portrait**, or to **Auto** to follow the
+   stream's aspect ratio automatically.
+3. Enter fullscreen on the device. The stream fills the screen with no black bars when the
+   stream and screen orientations match.
+
+Notes:
+- Orientation lock requires a secure context (HTTPS or `localhost`) and is best supported on
+  Android Chrome; on browsers without support it falls back to the device's natural orientation.
+- The host must be able to render the requested portrait resolution (most virtual-display
+  setups do this automatically). If the host is pinned to a fixed landscape monitor, it may
+  rescale and letterbox on its side.
+
 ### Streaming over the Internet
 
 1. Forward the web server port on your router (default is `8080`; HTTP is `80`, HTTPS is `443`).  

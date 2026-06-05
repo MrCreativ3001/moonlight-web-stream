@@ -46,6 +46,12 @@ export function getStreamerSize(settings: Settings, viewerScreenSize: [number, n
     } else if (settings.videoSize == "4k") {
         width = 3840
         height = 2160
+    } else if (settings.videoSize == "portrait") {
+        width = 1080
+        height = 1920
+    } else if (settings.videoSize == "portrait1440") {
+        width = 1440
+        height = 2560
     } else if (settings.videoSize == "custom") {
         width = settings.videoSizeCustom.width
         height = settings.videoSizeCustom.height

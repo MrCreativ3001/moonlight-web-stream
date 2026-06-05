@@ -2,11 +2,11 @@ import "./polyfill/index.js"
 import { Api, apiGetRole, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showNotification } from "./component/notification.js";
-import { InfoEvent, Stream } from "./stream/index.js"
+import { InfoEvent, Stream, getStreamerSize } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { getLocalStreamSettings, Settings } from "./component/settings_menu.js";
+import { getLocalStreamSettings, Settings, FullscreenOrientation } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
@@ -94,6 +94,7 @@ class ViewerApp implements Component {
     private pendingAutoFullscreenMouseGesture: boolean = false
     private manualFullscreenExitRequested: boolean = false
     private toggleFullscreenWithKeybind: boolean = false
+    private fullscreenOrientation: FullscreenOrientation = "landscape"
     private hasShownFullscreenEscapeWarning = false
     private keyboardViewportBaselineHeight: number | null = null
     private streamVideoTopOffsetPx: number = 0
@@ -143,6 +144,14 @@ class ViewerApp implements Component {
 
         this.autoEnterFullscreenOnStart = settings.enterFullscreenOnStreamStart
         this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
+
+        const configuredOrientation = settings.fullscreenOrientation ?? "landscape"
+        if (configuredOrientation === "auto") {
+            const [streamW, streamH] = getStreamerSize(settings, [browserWidth, browserHeight])
+            this.fullscreenOrientation = streamH > streamW ? "portrait" : "landscape"
+        } else {
+            this.fullscreenOrientation = configuredOrientation
+        }
 
         this.stream = new Stream(this.api, hostId, appId, settings, [browserWidth, browserHeight], bootstrapRole.permissions)
         this.startStream(hostId, appId, bootstrapRole.permissions, settings, [browserWidth, browserHeight])
@@ -539,13 +548,18 @@ class ViewerApp implements Component {
             try {
                 if (screen && "orientation" in screen) {
                     const orientation = screen.orientation
+                    const mode = this.fullscreenOrientation
 
-                    if ("lock" in orientation && typeof orientation.lock == "function") {
-                        await orientation.lock("landscape")
+                    if (mode === "auto") {
+                        if ("unlock" in orientation && typeof orientation.unlock == "function") {
+                            orientation.unlock()
+                        }
+                    } else if ("lock" in orientation && typeof orientation.lock == "function") {
+                        await orientation.lock(mode)
                     }
                 }
             } catch (e) {
-                console.warn("failed to set orientation to landscape", e)
+                console.warn("failed to set orientation", e)
             }
         } else {
             console.warn("root element not found")
@@ -554,6 +568,17 @@ class ViewerApp implements Component {
     async exitFullscreen() {
         if ("keyboard" in navigator && navigator.keyboard && "unlock" in navigator.keyboard) {
             await navigator.keyboard.unlock()
+        }
+
+        try {
+            if (screen && "orientation" in screen) {
+                const orientation = screen.orientation
+                if ("unlock" in orientation && typeof orientation.unlock == "function") {
+                    orientation.unlock()
+                }
+            }
+        } catch (e) {
+            console.warn("failed to unlock orientation", e)
         }
 
         if ("exitFullscreen" in document && typeof document.exitFullscreen == "function") {

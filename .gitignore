@@ -15,4 +15,9 @@ web/api_bindings.ts
 # Server
 server
 
+# Local build / packaging artifacts
+/run-test
+/package-out
+*.zip
+
 /.idea

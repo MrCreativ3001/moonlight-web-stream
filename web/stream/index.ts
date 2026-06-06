@@ -515,7 +515,7 @@ export class Stream implements Component {
             return "failednoconnect"
         }
 
-        const transport = new WebRTCTransport(this.logger)
+        const transport = new WebRTCTransport(this.logger, { useDataAudio: this.settings.useWasmOpusDecoder })
         transport.onsendmessage = (message) => this.sendWsMessage({ WebRtc: message })
 
         transport.initPeer({
@@ -720,7 +720,7 @@ export class Stream implements Component {
             return false
         }
 
-        this.transport.setupHostAudio({
+        await this.transport.setupHostAudio({
             type: ["audiotrack", "data"]
         })
 
@@ -765,6 +765,7 @@ export class Stream implements Component {
             width: this.streamerSize[0],
             height: this.streamerSize[1],
             play_audio_local: this.settings.playAudioLocal,
+            use_wasm_opus_decoder: this.settings.useWasmOpusDecoder,
             supported_codecs: createSupportedVideoFormatsBits(videoCodecSupport),
             hdr: this.settings.hdr ?? false,
         }

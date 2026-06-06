@@ -1,4 +1,7 @@
-use std::{sync::Weak, time::Duration};
+use std::{
+    sync::{Arc, Weak},
+    time::Duration,
+};
 
 use bytes::Bytes;
 use log::{error, warn};
@@ -6,6 +9,7 @@ use moonlight_common::stream::audio::{AudioConfig, OpusMultistreamConfig};
 use tokio::runtime::Handle;
 use webrtc::{
     api::media_engine::{MIME_TYPE_OPUS, MediaEngine},
+    data_channel::{RTCDataChannel, data_channel_init::RTCDataChannelInit},
     media::Sample,
     peer_connection::RTCPeerConnection,
     rtp_transceiver::rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType},
@@ -35,6 +39,8 @@ pub fn register_audio_codecs(media_engine: &mut MediaEngine) -> Result<(), webrt
 
 pub struct WebRtcAudio {
     sender: TrackLocalSender<TrackLocalStaticSample>,
+    data_channel: Option<Arc<RTCDataChannel>>,
+    use_data_channel: bool,
     config: Option<OpusMultistreamConfig>,
 }
 
@@ -42,15 +48,21 @@ impl WebRtcAudio {
     pub fn new(runtime: Handle, peer: Weak<RTCPeerConnection>, channel_queue_size: usize) -> Self {
         Self {
             sender: TrackLocalSender::new(runtime, peer, channel_queue_size),
+            data_channel: None,
+            use_data_channel: false,
             config: None,
         }
     }
 }
 
 impl WebRtcAudio {
+    pub fn set_use_data_channel(&mut self, use_data_channel: bool) {
+        self.use_data_channel = use_data_channel;
+    }
+
     pub async fn setup(
         &mut self,
-        _inner: &WebRtcInner,
+        inner: &WebRtcInner,
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
     ) -> i32 {
@@ -66,6 +78,34 @@ impl WebRtcAudio {
                 "[Stream] A different audio configuration than requested was selected, Expected: {:?}, Found: {audio_config:?}",
                 self.config()
             );
+        }
+
+        if self.use_data_channel {
+            if self.data_channel.is_none() {
+                match inner
+                    .peer
+                    .create_data_channel(
+                        "HOST_AUDIO",
+                        Some(RTCDataChannelInit {
+                            ordered: Some(true),
+                            max_retransmits: Some(0),
+                            ..Default::default()
+                        }),
+                    )
+                    .await
+                {
+                    Ok(channel) => {
+                        self.data_channel = Some(channel);
+                    }
+                    Err(err) => {
+                        error!("Failed to create opus data channel: {err:?}");
+                        return -1;
+                    }
+                }
+            }
+
+            self.config = Some(stream_config);
+            return 0;
         }
 
         if let Err(err) = self
@@ -96,6 +136,17 @@ impl WebRtcAudio {
         let Some(config) = self.config.as_ref() else {
             return;
         };
+
+        if self.use_data_channel {
+            let Some(channel) = self.data_channel.as_ref() else {
+                return;
+            };
+
+            if let Err(err) = channel.send(&Bytes::copy_from_slice(data)).await {
+                warn!("Failed to send opus data channel sample: {err:?}");
+            }
+            return;
+        }
 
         let duration =
             Duration::from_secs_f64(config.samples_per_frame as f64 / config.sample_rate as f64);

@@ -304,6 +304,8 @@ pub struct StreamSettings {
     pub height: u32,
     pub fps: u32,
     pub play_audio_local: bool,
+    #[serde(default)]
+    pub use_wasm_opus_decoder: bool,
     /// This is using the [VideoFormats]
     pub supported_codecs: u32,
     pub hdr: bool,

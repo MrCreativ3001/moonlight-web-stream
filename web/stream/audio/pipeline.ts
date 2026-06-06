@@ -21,6 +21,7 @@ type PipelineResult<T> = { audioPlayer: T, error: false } | { audioPlayer: null,
 interface AudioPlayerStatic extends PipeInfoStatic, OutputPipeStatic { }
 
 export type AudioPipelineOptions = {
+    useWasmOpusDecoder?: boolean
 }
 
 type Pipeline = { input: string, pipes: Array<PipeStatic>, player: AudioPlayerStatic }
@@ -62,6 +63,13 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
     logger?.debug(`Building audio pipeline with output "${type}"`)
 
     let pipelines = PIPELINES
+    if (settings.useWasmOpusDecoder) {
+        pipelines = [
+            ...PIPELINES.filter(pipeline => pipeline.pipes.indexOf(OpusAudioDecoderPipe) != -1 && pipeline.player == ContextDestinationNodeAudioPlayer),
+            ...PIPELINES.filter(pipeline => pipeline.pipes.indexOf(OpusAudioDecoderPipe) != -1 && pipeline.player != ContextDestinationNodeAudioPlayer),
+            ...PIPELINES.filter(pipeline => pipeline.pipes.indexOf(OpusAudioDecoderPipe) == -1),
+        ]
+    }
 
     pipelineLoop: for (const pipeline of pipelines) {
         if (pipeline.input != type) {

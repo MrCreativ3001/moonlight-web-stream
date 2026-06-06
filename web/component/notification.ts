@@ -15,6 +15,11 @@ if (notificationListElement) {
 let alertedNotificationListNotFound = false
 
 export function showNotification(message: string, level: NotificationLevel = "error", errorObject?: any) {
+    if (!message.trim()) {
+        console.debug("Suppressed empty notification", errorObject)
+        return
+    }
+
     console.error(message, errorObject)
 
     if (!notificationListElement) {
@@ -45,10 +50,41 @@ export function showNotification(message: string, level: NotificationLevel = "er
 }
 
 function handleError(event: ErrorEvent) {
-    showNotification(`${event.error}`, "error", event)
+    const message = errorMessage(event.error, event.message)
+    if (!message) {
+        console.debug("Suppressed empty error event", event)
+        return
+    }
+
+    showNotification(message, "error", event)
 }
 function handleRejection(event: PromiseRejectionEvent) {
-    showNotification(`${event.reason}`, "error", event)
+    const message = errorMessage(event.reason)
+    if (!message) {
+        console.debug("Suppressed empty promise rejection", event)
+        return
+    }
+
+    showNotification(message, "error", event)
+}
+
+function errorMessage(value: unknown, fallback?: string): string | null {
+    if (value instanceof Error && value.message.trim()) {
+        return value.message
+    }
+    if (typeof value == "string" && value.trim()) {
+        return value
+    }
+    if (value != null) {
+        const message = `${value}`
+        if (message.trim() && message != "[object Object]") {
+            return message
+        }
+    }
+    if (fallback?.trim()) {
+        return fallback
+    }
+    return null
 }
 
 window.addEventListener("error", handleError)

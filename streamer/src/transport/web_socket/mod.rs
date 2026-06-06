@@ -164,7 +164,7 @@ impl TransportSender for WebSocketTransportSender {
         &'a self,
         unit: VideoDecodeUnit<&'a [u8]>,
     ) -> Result<DecodeResult, TransportError> {
-        let mut new_buffer = vec![0; 5];
+        let mut new_buffer = vec![0; 6];
 
         let mut byte_buffer = ByteBuffer::new(new_buffer.as_mut_slice());
         byte_buffer.put_u8(TransportChannelId::HOST_VIDEO);
@@ -172,7 +172,6 @@ impl TransportSender for WebSocketTransportSender {
             FrameType::Idr => 1,
             FrameType::PFrame => 0,
         });
-        byte_buffer.put_u8(0);
         byte_buffer.put_u32(unit.timestamp.as_micros() as u32);
 
         for buffer in &unit.buffers {

@@ -6,4 +6,4 @@ wasm-bindgen = "=0.2.122"
 
 # TODO: update when PR is accepted: https://github.com/jhugman/uniffi-bindgen-react-native/pull/401
 [profile.release]
-opt-level = 3
+opt-level = "s"

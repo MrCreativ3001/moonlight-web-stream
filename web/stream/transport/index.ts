@@ -1,4 +1,5 @@
 import { TransportChannelId } from "../../api_bindings.js"
+import { ClientInputEvent, ControlPacket, ControlStreamInput } from "../../uniffi/moonlight_common_bindings.js"
 import { StatValue } from "../stats.js"
 import { VideoCodecSupport } from "../video.js"
 
@@ -38,44 +39,15 @@ export type TransportShutdown = "failednoconnect" | "failed" | "disconnect"
 export interface Transport {
     readonly implementationName: string
 
-    getChannel(id: TransportChannelIdValue): TransportChannel
-
-    setupHostVideo(setup: TransportVideoSetup): Promise<VideoCodecSupport>
-    setupHostAudio(setup: TransportAudioSetup): Promise<void>
-
     onclose: ((shutdown: TransportShutdown) => void) | null
     close(): Promise<void>
 
     getStats(): Promise<Record<string, StatValue>>
 }
 
-export type TransportChannel = VideoTrackTransportChannel | AudioTrackTransportChannel | DataTransportChannel
-interface TransportChannelBase {
-    readonly type: string
+export interface IControlStream {
+    send(input: ClientInputEvent): void
+    sendRaw(packet: ControlPacket): void
 
-    readonly canReceive: boolean
-    readonly canSend: boolean
-}
-
-export interface TrackTransportChannel extends TransportChannelBase {
-    setTrack(track: MediaStreamTrack | null): void
-
-    addTrackListener(listener: (track: MediaStreamTrack) => void): void
-    removeTrackListener(listener: (track: MediaStreamTrack) => void): void
-}
-export interface VideoTrackTransportChannel extends TrackTransportChannel {
-    readonly type: "videotrack"
-}
-export interface AudioTrackTransportChannel extends TrackTransportChannel {
-    readonly type: "audiotrack"
-}
-
-export interface DataTransportChannel extends TransportChannelBase {
-    readonly type: "data"
-
-    addReceiveListener(listener: (data: ArrayBuffer) => void): void
-    removeReceiveListener(listener: (data: ArrayBuffer) => void): void
-
-    send(message: ArrayBuffer): void
-    estimatedBufferedBytes(): number | null
+    onreceive: (packet: ControlPacket) => void | null
 }

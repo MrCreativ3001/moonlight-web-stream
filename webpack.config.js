@@ -13,6 +13,8 @@ export default {
     // TODO: change based on env
     mode: "development",
     entry: {
+        // TODO: also include i18n
+        common: ["./web/styles/index.ts"],
         index: "./web/index.ts",
         stream: "./web/stream.ts",
         admin: "./web/admin.ts"

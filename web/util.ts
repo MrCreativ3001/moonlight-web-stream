@@ -54,6 +54,12 @@ export function deepEqual(a: unknown, b: unknown): boolean {
     return true;
 }
 
+export function wait(timeoutMs: number): Promise<void> {
+    return new Promise(resolve => {
+        globalObject().setTimeout(resolve, timeoutMs)
+    })
+}
+
 export function download(data: Uint8Array<ArrayBuffer>, filename: string, mime: string = "application/octet-stream") {
     const blob = data instanceof Blob ? data : new Blob([data], { type: mime })
     const url = URL.createObjectURL(blob)

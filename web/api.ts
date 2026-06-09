@@ -84,10 +84,13 @@ export type Api = {
 }
 
 export type ApiFetchInit = {
-    json?: any,
     query?: any,
     noTimeout?: boolean,
-}
+} & (
+        { json?: any, }
+        |
+        { sdp?: string }
+    )
 
 export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
     return (host as DetailedHost).https_port !== undefined
@@ -115,14 +118,21 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
         headers["Authorization"] = `Bearer ${api.bearer}`;
     }
 
-    if (init?.json) {
-        headers["Content-Type"] = "application/json";
+    let body = null
+    if (init) {
+        if ("sdp" in init) {
+            headers["Content-Type"] = "application/sdp"
+            body = init.sdp
+        } else if ("json" in init) {
+            headers["Content-Type"] = "application/json"
+            body = JSON.stringify(init.json)
+        }
     }
 
     const request: RequestInit = {
         method: method,
         headers,
-        body: init?.json && JSON.stringify(init.json),
+        body,
         credentials: "include"
     }
 
@@ -422,4 +432,121 @@ export async function apiHostCancel(api: Api, request: PostCancelRequest): Promi
     })
 
     return response as PostCancelResponse
+}
+
+export type WHEPLocation = string
+export type WHEPResponse = {
+    answerSdp: string,
+    location: WHEPLocation,
+    iceServers: Array<RTCIceServer>
+}
+
+export async function apiWHEPOffer(api: Api, offerSdp: string): Promise<WHEPResponse> {
+    const ENDPOINT = "/host/stream/whep"
+
+    const [url, request] = buildRequest(api, ENDPOINT, POST, { sdp: offerSdp })
+
+    let response
+    try {
+        response = await fetch(url, request)
+    } catch (e: any) {
+        throw new FetchError("unknown", ENDPOINT, POST, e)
+    }
+
+    // 201 == Created
+    if (response.status != 201) {
+        // TODO
+        throw "TODO"
+    }
+
+    // Get sdp
+    const answerSdp = await response.text()
+
+    // Parse ice servers from response
+    let location = null
+    const iceServers: RTCIceServer[] = []
+    for (const [name, value] of response.headers) {
+        if (name.trim().toLowerCase() == "location") {
+            location = value
+        } else if (name.trim().toLowerCase() == "link") {
+            if (value.includes('rel="ice-server"')) {
+                // See https://datatracker.ietf.org/doc/html/draft-ietf-wish-whep-01#name-stun-turn-server-configurat
+                const iceServer = parseLinkHeader(value)
+                if (iceServer) {
+                    iceServers.push(iceServer)
+                }
+            }
+        }
+    }
+
+    if (location == null) {
+        throw "WHEP response didn't contain a \"Location\" header"
+    }
+
+    return {
+        answerSdp,
+        location,
+        iceServers,
+    }
+}
+function parseLinkHeader(value: string): RTCIceServer | null {
+    // See https://datatracker.ietf.org/doc/html/draft-ietf-wish-whep-01#name-stun-turn-server-configurat
+    const { uri, params } = parseWHEPExtensionHeader(value)
+
+    const server: RTCIceServer = {
+        urls: [uri],
+    }
+
+    if ("username" in params) {
+        server.username = params.username
+    }
+    if ("credential" in params) {
+        server.credential = params.credential
+    }
+
+    return server
+}
+function parseWHEPExtensionHeader(
+    value: string,
+): { uri: string; params: Record<string, string> } {
+    const parts = value.split(";").map(p => p.trim());
+
+    const uriPart = parts.shift();
+    if (!uriPart) {
+        throw new Error("Invalid Link header: missing URI");
+    }
+
+    const match = uriPart.match(/^<(.+)>$/);
+    if (!match) {
+        throw new Error(`Invalid Link header URI: ${uriPart}`);
+    }
+
+    const uri = match[1];
+    const params: Record<string, string> = {};
+
+    for (const part of parts) {
+        const eq = part.indexOf("=");
+
+        if (eq === -1) {
+            // parameter without value
+            params[part] = "";
+            continue;
+        }
+
+        const key = part.slice(0, eq).trim();
+        let value = part.slice(eq + 1).trim();
+
+        // remove surrounding quotes
+        if (
+            value.length >= 2 &&
+            value.startsWith('"') &&
+            value.endsWith('"')
+        ) {
+            value = value.slice(1, -1);
+        }
+
+        params[key] = value;
+    }
+
+    return { uri, params };
 }

@@ -61,26 +61,30 @@ export class StreamInput {
 
     private eventTarget = new EventTarget()
 
-    private buffer: ByteBuffer = new ByteBuffer(1024)
-
     private connected = false
     private config: StreamInputConfig
     private capabilities: StreamCapabilities = { touch: true }
     // Size of the streamer device
     private streamerSize: [number, number] = [0, 0]
 
-    private controlStream: IControlStream
+    private controlStream: IControlStream | null = null
 
     private touchSupported: boolean | null = null
     private localCursorPosition: [number, number] | null = null
+    buffer: any
 
-    constructor(controlStream: IControlStream, config?: StreamInputConfig) {
-        this.controlStream = controlStream
-
+    constructor(config?: StreamInputConfig) {
         this.config = defaultStreamInputConfig()
         if (config) {
             this.setConfig(config)
         }
+    }
+
+    setControlStream(controlStream: IControlStream) {
+        // Clear state
+        this.raiseAllKeys()
+
+        this.controlStream = controlStream
     }
 
     setConfig(config: StreamInputConfig) {
@@ -184,7 +188,7 @@ export class StreamInput {
 
     // Note: key = StreamKeys.VK_, modifiers = StreamKeyModifiers.
     sendKey(isDown: boolean, key: number, modifiers: KeyModifiers) {
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.Keyboard,
             inner: {
                 action: isDown ? KeyAction.Down : KeyAction.Up,
@@ -194,11 +198,11 @@ export class StreamInput {
                 },
                 keyCode: key,
                 modifiers,
-            }
+            },
         })
     }
     sendText(text: string) {
-        // TODO: send text
+        // TODO
     }
 
     // -- Mouse
@@ -254,12 +258,12 @@ export class StreamInput {
     }
 
     sendMouseMove(movementX: number, movementY: number) {
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.MouseMoveRelative,
             inner: {
                 deltaX: movementX,
                 deltaY: movementY,
-            }
+            },
         })
     }
     sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
@@ -269,14 +273,14 @@ export class StreamInput {
         this.sendMouseMove(scaledMovementX, scaledMovementY)
     }
     sendMousePosition(x: number, y: number, referenceWidth: number, referenceHeight: number) {
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.MouseMoveAbsolute,
             inner: {
                 x,
                 y,
                 referenceWidth,
                 referenceHeight,
-            }
+            },
         })
     }
     sendMousePositionClientCoordinates(clientX: number, clientY: number, rect: DOMRect, mouseButton?: number) {
@@ -348,26 +352,26 @@ export class StreamInput {
     }
     // Note: button = StreamMouseButton.
     sendMouseButton(isDown: boolean, button: number) {
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.MouseButton,
             inner: {
                 action: isDown ? MouseButtonAction.Press : MouseButtonAction.Release,
                 button
-            }
+            },
         })
     }
     sendMouseWheelHighRes(deltaX: number, deltaY: number) {
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.MouseScrollHorizontal,
             inner: {
                 scrollX: deltaX
-            }
+            },
         })
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.MouseScrollVertical,
             inner: {
                 scrollY: deltaY
-            }
+            },
         })
     }
     sendMouseWheel(deltaX: number, deltaY: number) {
@@ -827,7 +831,7 @@ export class StreamInput {
         }
         const [x, y] = position
 
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.Touch,
             inner: {
                 eventType,
@@ -838,7 +842,7 @@ export class StreamInput {
                 pressureOrDistance: touch.force,
                 contactAreaMajor: touch.radiusX,
                 contactAreaMinor: touch.radiusY,
-            }
+            },
         })
     }
 
@@ -1121,29 +1125,29 @@ export class StreamInput {
 
     // -- Controller Sending
     sendControllerAdd(id: number, supportedButtons: ControllerButtons, capabilities: ControllerCapabilities) {
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.ControllerConnect,
             inner: {
                 controllerNumber: id,
                 ty: ControllerType.Unknown,
                 capabilities,
                 supportedButtons,
-            }
+            },
         })
     }
     sendControllerRemove(id: number) {
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.ControllerDisconnect,
             inner: {
                 controllerNumber: id,
-            }
+            },
         })
     }
     // Values
     // - Trigger: range 0..1
     // - Stick: range -1..1
     sendController(id: number, state: GamepadState) {
-        this.controlStream.send({
+        this.controlStream?.send({
             tag: ClientInputEvent_Tags.ControllerState,
             inner: {
                 controllerNumber: id,
@@ -1154,8 +1158,7 @@ export class StreamInput {
                 leftStickY: Math.max(-1.0, Math.min(1.0, -state.leftStickY)) * I16_MAX,
                 rightStickX: Math.max(-1.0, Math.min(1.0, state.rightStickX)) * I16_MAX,
                 rightStickY: Math.max(-1.0, Math.min(1.0, -state.rightStickY)) * I16_MAX,
-            }
+            },
         })
     }
-
 }

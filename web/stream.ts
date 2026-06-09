@@ -15,10 +15,14 @@ import { streamStatsToText } from "./stream/stats.js";
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
 
 import "./styles/index.ts"
+import { emptyKeyModifiers } from "./stream/keyboard.js";
+import { uniffiInitAsync } from "./uniffi/entry.js";
 
 let I = getTranslations(getCurrentLanguage())
 
 async function startApp() {
+    const uniffiInit = uniffiInitAsync()
+
     const api = await getApi()
 
     const bootstrapRole = await apiGetRole(api, { id: null })
@@ -55,6 +59,9 @@ async function startApp() {
     if (modalBackground) {
         stopPropagationOn(modalBackground)
     }
+
+    // Wait for uniffi to finish it's initialization
+    await uniffiInit
 
     // Start and Mount App
     const app = new ViewerApp(api, hostId, appId, bootstrapRole.role)
@@ -779,8 +786,8 @@ class ViewerSidebar implements Component, Sidebar {
                 return
             }
 
-            this.app.getStream()?.getInput().sendKey(true, key, 0)
-            this.app.getStream()?.getInput().sendKey(false, key, 0)
+            this.app.getStream()?.getInput().sendKey(true, key, emptyKeyModifiers())
+            this.app.getStream()?.getInput().sendKey(false, key, emptyKeyModifiers())
         })
         this.buttonDiv.appendChild(this.sendKeycodeButton)
 

@@ -37,7 +37,7 @@ use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
 use tokio::spawn;
 use tokio::sync::mpsc::{Sender, channel};
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, oneshot};
 use tokio::time::sleep;
 use tracing::{Instrument, debug, info, instrument, trace, warn};
 use webrtc::api::APIBuilder;
@@ -450,6 +450,7 @@ pub async fn whep_post(
     debug!(req = ?req, session_description = ?session_description, "whep request");
 
     let session = MoonlightWebRtcSession::from_str(&session_description).unwrap();
+    debug!(moonlight_session = ?session, "moonlight session extensions", );
 
     let Some(host_id) = session.host_id else {
         return Err(AppError::HostNotFound);
@@ -468,9 +469,8 @@ pub async fn whep_post(
     let offer = RTCSessionDescription::offer(session_description).unwrap();
 
     // Look for supported Moonlight extensions
-    let mut supports_control_stream_simple = false;
-    let mut supports_control_stream_enet = false;
-    // TODO
+    let mut supports_control_stream_simple = session.control_simple;
+    let mut supports_control_stream_enet = session.control_enet;
 
     // -- Create WebRtc peer
     // Create settings
@@ -659,7 +659,7 @@ pub async fn whep_post(
     // Start moonlight stream
     info!(settings = ?settings, "starting stream");
 
-    let (client_control_sender, mut client_control_receiver) = channel(10);
+    let (client_control_sender, mut client_control_receiver) = channel(50);
 
     let moonlight_handler = StreamHandler {
         audio_track: Default::default(),
@@ -732,6 +732,8 @@ pub async fn whep_post(
         }
         (true, false) => {
             let control = peer.create_data_channel("control", None).await.unwrap();
+            debug!("added simple control channel");
+
             let stream = moonlight_stream.clone();
 
             // Spawn from client to host relay
@@ -749,11 +751,35 @@ pub async fn whep_post(
                             &control_config,
                             &message.data,
                         ) else {
+                            warn!(packet = ?message.data, "failed to deserialize client packet");
                             return;
                         };
 
+                        debug!(packet = ?packet, "relaying packet from client to host");
+
                         if let Err(err) = stream.send_input_raw(packet).await {
                             warn!(error = %err, "failed to relay input from client to host");
+                        }
+                    })
+                })
+            });
+
+            // Wait for the channel to open
+            let (on_control_open_sender, on_control_open) = oneshot::channel::<()>();
+            control.on_open({
+                let control = control.clone();
+                Box::new(move || {
+                    let control = control.clone();
+
+                    Box::pin(async move {
+                        let ready_state = control.ready_state();
+                        debug!(ready_state = ?ready_state, "control channel ready state");
+
+                        if ready_state == RTCDataChannelState::Open {
+                            debug!(
+                                "notifying host to client relay that the control channel is open"
+                            );
+                            let _ = on_control_open_sender.send(());
                         }
                     })
                 })
@@ -763,6 +789,8 @@ pub async fn whep_post(
             spawn({
                 let control_config = control_config.clone();
                 async move {
+                    let _ = on_control_open.await;
+
                     while let Some(packet) = client_control_receiver.recv().await
                         && !matches!(control.ready_state(), RTCDataChannelState::Closed)
                     {
@@ -784,7 +812,10 @@ pub async fn whep_post(
                     debug!("stopping relaying from host to client");
                 }
             });
+
+            debug!("added events for simple control channel");
         }
+        // TODO: make this to false,false
         (false, false) => {
             // do nothing because the peer doesn't support control channel
         }

@@ -131,7 +131,7 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
                 .expect("failed to add mio tracing directive"),
         )
         .add_directive(
-            "rtc::peer_connection::handler=off"
+            "webrtc_sctp=off"
                 .parse()
                 .expect("failed to add rtc tracing directive"),
         );

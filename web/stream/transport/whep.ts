@@ -1,12 +1,13 @@
 import { WHEPResponse } from "../../api.js";
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, MoonlightWebRtcSession, PacketDirection, ServerType, VideoFormats, webrtcSessionApply } from "../../uniffi/moonlight_common_bindings.js";
+import { ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, MoonlightWebRtcSession, PacketDirection, ServerType, VideoFormats, webrtcSessionApply } from "../../uniffi/moonlight_common_bindings.js";
+import { wait } from "../../util.js";
 import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
 import { StatValue } from "../stats.js";
 import { emptyVideoCodecs, VideoCodecSupport } from "../video.js";
 import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
-import { IControlStream, Transport, TransportAudioType, TransportShutdown, TransportVideoType } from "./index.js";
+import { IControlStream, Transport, TransportAudioType, TransportConnectData, TransportShutdown, TransportVideoType } from "./index.js";
 
 export type WebRTCWHEPOptions = {
     appId: number,
@@ -26,7 +27,7 @@ export class WebRTCTransport implements Transport {
     readonly implementationName: string = "webrtc-whep"
 
     readonly controlStream = new WebRtcControlStream()
-    onconnect: (() => void) | null = null
+    onconnect: ((connectData: TransportConnectData) => void) | null = null
     onclose: ((shutdown: TransportShutdown) => void) | null = null
 
     private logger?: Logger
@@ -44,6 +45,9 @@ export class WebRTCTransport implements Transport {
         // Add Media
         this.peer.addTransceiver("video", { direction: "recvonly" })
         this.peer.addTransceiver("audio", { direction: "recvonly" })
+
+        // Dummy data channel required so that the answerer knows we accept data channels
+        this.peer.createDataChannel("dummy")
     }
 
     async createOffer(options: WebRTCWHEPOptions): Promise<string> {
@@ -60,7 +64,8 @@ export class WebRTCTransport implements Transport {
         // Insert custom options
         const sdpOptions: MoonlightWebRtcSession = {
             controlSimple: true,
-            controlEnet: true,
+            // TODO: control enet
+            controlEnet: false,
             ...options
         }
         const sdp = webrtcSessionApply(offer.sdp ?? "", sdpOptions)
@@ -85,14 +90,56 @@ export class WebRTCTransport implements Transport {
         })
     }
 
+    private connectData: TransportConnectData | null = null
+    private async collectConnectData(): Promise<TransportConnectData> {
+        if (this.connectData) {
+            return this.connectData
+        }
+
+        if (!this.videoStream || !this.audioStream) {
+            throw `WebRTC WHEP response didn't contain a video and audio stream! Video: ${this.videoStream != null}, Audio: ${this.audioStream != null}`
+        }
+
+        // Wait for the stream to receive any video data
+        const videoSettings = this.videoStream.getSettings()
+        const audioSettings = this.audioStream.getSettings()
+
+        this.connectData = {
+            capabilities: {
+                touch: false
+            },
+            videoType: "videotrack",
+            videoSetup: {
+                width: videoSettings.width ?? -1,
+                height: videoSettings.height ?? -1,
+                fps: videoSettings.frameRate ?? -1,
+                // TODO: gather codec using stats
+                codec: "H264",
+            },
+            audioType: "audiotrack",
+            audioSetup: {
+                channels: audioSettings.channelCount ?? 2,
+                sampleRate: audioSettings.sampleRate ?? 48000,
+                // TODO
+                streams: 0,
+                coupledStreams: 0,
+                samplesPerFrame: 0,
+                mapping: []
+            }
+        }
+        return this.connectData
+    }
+
     private wasConnected = false
     private onStateChange() {
         if (this.peer.connectionState == "connected") {
             this.wasConnected = true
 
-            if (this.onconnect) {
-                this.onconnect()
-            }
+            this.collectConnectData().then(connectData => {
+                if (this.onconnect) {
+                    this.onconnect(connectData)
+                }
+            })
         } else if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
             const shutdown = this.wasConnected ? "failed" : "failednoconnect"
 
@@ -105,6 +152,9 @@ export class WebRTCTransport implements Transport {
     // -- Control Stream / Media
     private onDataChannel(event: RTCDataChannelEvent) {
         const channel = event.channel
+
+        this.logger?.debug(`received data channel with label: ${channel.label}, protocol: ${channel.protocol}`)
+
         if (channel.label == "control") {
             const config = controlPacketConfigNew(
                 { major: 7, minor: 0, patch: 0, sunshineIdentifier: -1, serverType: ServerType.Sunshine },
@@ -158,22 +208,14 @@ export class WebRTCTransport implements Transport {
     setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>;
     setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>;
     async setVideoPipeline(type: TransportVideoType, pipeline: unknown): Promise<void> {
-        if (!this.videoStream) {
+        if (!this.videoStream || !this.connectData) {
             throw "the stream must be connected!"
         }
 
         if (type == "videotrack") {
             const trackPipeline = pipeline as (TrackVideoRenderer & VideoRenderer)
 
-            const settings = this.videoStream.getSettings()
-
-            await trackPipeline.setup({
-                width: settings.width ?? 0,
-                height: settings.height ?? 0,
-                fps: settings.frameRate ?? 0,
-                // TODO: gather codec using stats
-                codec: "H264",
-            })
+            await trackPipeline.setup(this.connectData.videoSetup)
             trackPipeline.setTrack(this.videoStream)
         } else if (type == "data") {
             throw "unimplemented"
@@ -189,24 +231,14 @@ export class WebRTCTransport implements Transport {
     setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
     setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
     async setAudioPipeline(type: TransportAudioType, pipeline: AudioPlayer): Promise<void> {
-        if (!this.audioStream) {
+        if (!this.audioStream || !this.connectData) {
             throw "the stream must be connected!"
         }
 
         if (type == "audiotrack") {
             const trackPipeline = pipeline as (TrackAudioPlayer & AudioPlayer)
 
-            const settings = this.audioStream.getSettings()
-
-            await trackPipeline.setup({
-                channels: settings.channelCount ?? 2,
-                sampleRate: settings.sampleRate ?? 48000,
-                // TODO
-                streams: 0,
-                coupledStreams: 0,
-                samplesPerFrame: 0,
-                mapping: []
-            })
+            await trackPipeline.setup(this.connectData.audioSetup)
             trackPipeline.setTrack(this.audioStream)
         } else if (type == "data") {
             throw "unimplemented"
@@ -246,13 +278,13 @@ class WebRtcControlStream implements IControlStream {
             this.config = config
 
             this.channel.binaryType = "arraybuffer"
+
+            this.channel.addEventListener("open", this.boundChannelOpen)
             this.channel.addEventListener("message", this.boundMessage)
 
-            // Send buffered packets
-            for (const packet of this.packetBuffer.splice(0)) {
-                this.sendRaw(packet)
-            }
+            this.trySendBufferedPackets()
         } else {
+            this.channel?.removeEventListener("open", this.boundChannelOpen)
             this.channel?.removeEventListener("message", this.boundMessage)
         }
     }
@@ -266,12 +298,42 @@ class WebRtcControlStream implements IControlStream {
         }
 
         const packet = controlPacketDeserialize(this.config, PacketDirection.ClientBound, event.data)
+        if (packet) {
+            if (this.onreceive) {
+                this.onreceive(packet)
+            }
+        } else {
+            this.logger?.debug("failed to deserialize packet")
+            console.debug("failed to deserialize packet", event.data)
+        }
+    }
+
+    private boundChannelOpen = this.onDataChannelOpen.bind(this)
+    private onDataChannelOpen() {
+        this.trySendBufferedPackets()
+    }
+    private trySendBufferedPackets() {
+        if (!this.channel || this.channel.readyState != "open") {
+            return
+        }
+
+        // Send buffered packets
+        for (const packet of this.packetBuffer.splice(0)) {
+            this.sendRaw(packet)
+        }
     }
 
     send(input: ClientInputEvent): void {
-        // TODO
+        if (input.tag == ClientInputEvent_Tags.MouseMoveRelative) {
+            this.sendRaw(new ControlPacket.MouseMoveRelative({
+                deltaX: input.inner.deltaX,
+                deltaY: input.inner.deltaY,
+            }))
+        }
     }
     sendRaw(packet: ControlPacket): void {
+        console.debug(packet, "sending control packet")
+
         if (!this.channel || this.channel.readyState != "open") {
             this.packetBuffer.push(packet)
             return
@@ -280,8 +342,11 @@ class WebRtcControlStream implements IControlStream {
             throw "packet config not configured, but a packet was sent"
         }
 
+        this.trySendBufferedPackets()
+
         const data = controlPacketSerialize(this.config, packet)
         if (data) {
+            console.debug(data, "sending control data")
             this.channel.send(data)
         } else {
             this.logger?.debug(`failed to send control packet ${JSON.stringify(packet)}`)

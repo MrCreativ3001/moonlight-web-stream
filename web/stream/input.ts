@@ -1,5 +1,5 @@
 import { StreamCapabilities, StreamMouseButton } from "../api_bindings.js"
-import { ClientInputEvent_Tags, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
+import { ClientInputEvent, ClientInputEvent_Tags, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers, emptyKeyModifiers } from "./keyboard.js"
@@ -188,18 +188,15 @@ export class StreamInput {
 
     // Note: key = StreamKeys.VK_, modifiers = StreamKeyModifiers.
     sendKey(isDown: boolean, key: number, modifiers: KeyModifiers) {
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.Keyboard,
-            inner: {
-                action: isDown ? KeyAction.Down : KeyAction.Up,
-                flags: {
-                    // TODO: what is this?
-                    sunshineNonNormalized: false
-                },
-                keyCode: key,
-                modifiers,
+        this.controlStream?.send(new ClientInputEvent.Keyboard({
+            action: isDown ? KeyAction.Down : KeyAction.Up,
+            flags: {
+                // TODO: what is this?
+                sunshineNonNormalized: false
             },
-        })
+            keyCode: key,
+            modifiers,
+        }))
     }
     sendText(text: string) {
         // TODO
@@ -258,13 +255,10 @@ export class StreamInput {
     }
 
     sendMouseMove(movementX: number, movementY: number) {
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.MouseMoveRelative,
-            inner: {
-                deltaX: movementX,
-                deltaY: movementY,
-            },
-        })
+        this.controlStream?.send(new ClientInputEvent.MouseMoveRelative({
+            deltaX: movementX,
+            deltaY: movementY,
+        }))
     }
     sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
         const scaledMovementX = movementX / rect.width * this.streamerSize[0];
@@ -273,15 +267,12 @@ export class StreamInput {
         this.sendMouseMove(scaledMovementX, scaledMovementY)
     }
     sendMousePosition(x: number, y: number, referenceWidth: number, referenceHeight: number) {
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.MouseMoveAbsolute,
-            inner: {
-                x,
-                y,
-                referenceWidth,
-                referenceHeight,
-            },
-        })
+        this.controlStream?.send(new ClientInputEvent.MouseMoveAbsolute({
+            x,
+            y,
+            referenceWidth,
+            referenceHeight,
+        }))
     }
     sendMousePositionClientCoordinates(clientX: number, clientY: number, rect: DOMRect, mouseButton?: number) {
         const position = this.calcNormalizedPosition(clientX, clientY, rect)
@@ -352,27 +343,18 @@ export class StreamInput {
     }
     // Note: button = StreamMouseButton.
     sendMouseButton(isDown: boolean, button: number) {
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.MouseButton,
-            inner: {
-                action: isDown ? MouseButtonAction.Press : MouseButtonAction.Release,
-                button
-            },
-        })
+        this.controlStream?.send(new ClientInputEvent.MouseButton({
+            action: isDown ? MouseButtonAction.Press : MouseButtonAction.Release,
+            button
+        }))
     }
     sendMouseWheelHighRes(deltaX: number, deltaY: number) {
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.MouseScrollHorizontal,
-            inner: {
-                scrollX: deltaX
-            },
-        })
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.MouseScrollVertical,
-            inner: {
-                scrollY: deltaY
-            },
-        })
+        this.controlStream?.send(new ClientInputEvent.MouseScrollHorizontal({
+            scrollX: deltaX
+        }))
+        this.controlStream?.send(new ClientInputEvent.MouseScrollVertical({
+            scrollY: deltaY
+        }))
     }
     sendMouseWheel(deltaX: number, deltaY: number) {
         this.sendMouseWheel(
@@ -831,19 +813,16 @@ export class StreamInput {
         }
         const [x, y] = position
 
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.Touch,
-            inner: {
-                eventType,
-                rotation: touch.rotationAngle,
-                pointerId: touch.identifier,
-                x,
-                y,
-                pressureOrDistance: touch.force,
-                contactAreaMajor: touch.radiusX,
-                contactAreaMinor: touch.radiusY,
-            },
-        })
+        this.controlStream?.send(new ClientInputEvent.Touch({
+            eventType,
+            rotation: touch.rotationAngle,
+            pointerId: touch.identifier,
+            x,
+            y,
+            pressureOrDistance: touch.force,
+            contactAreaMajor: touch.radiusX,
+            contactAreaMinor: touch.radiusY,
+        }))
     }
 
     isTouchSupported(): boolean | null {
@@ -1125,40 +1104,32 @@ export class StreamInput {
 
     // -- Controller Sending
     sendControllerAdd(id: number, supportedButtons: ControllerButtons, capabilities: ControllerCapabilities) {
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.ControllerConnect,
-            inner: {
-                controllerNumber: id,
-                ty: ControllerType.Unknown,
-                capabilities,
-                supportedButtons,
-            },
-        })
+        // TODO: add all controller when a new control stream is set
+        this.controlStream?.send(new ClientInputEvent.ControllerConnect({
+            controllerNumber: id,
+            ty: ControllerType.Unknown,
+            capabilities,
+            supportedButtons,
+        }))
     }
     sendControllerRemove(id: number) {
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.ControllerDisconnect,
-            inner: {
-                controllerNumber: id,
-            },
-        })
+        this.controlStream?.send(new ClientInputEvent.ControllerDisconnect({
+            controllerNumber: id,
+        }))
     }
     // Values
     // - Trigger: range 0..1
     // - Stick: range -1..1
     sendController(id: number, state: GamepadState) {
-        this.controlStream?.send({
-            tag: ClientInputEvent_Tags.ControllerState,
-            inner: {
-                controllerNumber: id,
-                pressedButtons: state.buttonFlags,
-                leftTrigger: Math.max(0.0, Math.min(1.0, state.leftTrigger)) * U8_MAX,
-                rightTrigger: Math.max(0.0, Math.min(1.0, state.rightTrigger)) * U8_MAX,
-                leftStickX: Math.max(-1.0, Math.min(1.0, state.leftStickX)) * I16_MAX,
-                leftStickY: Math.max(-1.0, Math.min(1.0, -state.leftStickY)) * I16_MAX,
-                rightStickX: Math.max(-1.0, Math.min(1.0, state.rightStickX)) * I16_MAX,
-                rightStickY: Math.max(-1.0, Math.min(1.0, -state.rightStickY)) * I16_MAX,
-            },
-        })
+        this.controlStream?.send(new ClientInputEvent.ControllerState({
+            controllerNumber: id,
+            pressedButtons: state.buttonFlags,
+            leftTrigger: Math.max(0.0, Math.min(1.0, state.leftTrigger)) * U8_MAX,
+            rightTrigger: Math.max(0.0, Math.min(1.0, state.rightTrigger)) * U8_MAX,
+            leftStickX: Math.max(-1.0, Math.min(1.0, state.leftStickX)) * I16_MAX,
+            leftStickY: Math.max(-1.0, Math.min(1.0, -state.leftStickY)) * I16_MAX,
+            rightStickX: Math.max(-1.0, Math.min(1.0, state.rightStickX)) * I16_MAX,
+            rightStickY: Math.max(-1.0, Math.min(1.0, -state.rightStickY)) * I16_MAX,
+        }))
     }
 }

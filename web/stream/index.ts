@@ -181,17 +181,16 @@ export class Stream implements Component {
 
     private transport: Transport | null = null
 
-    private restartWithTransport(transport: TransportType) {
-        // TODO
-    }
-
     private setTransport(transport: Transport) {
         if (this.transport) {
+            this.debugLog("Closing old transport")
             this.transport.close()
         }
+        this.debugLog("Setting new transport")
 
         this.transport = transport
 
+        this.input.setControlStream(this.transport.controlStream)
         this.stats.setTransport(this.transport)
     }
 
@@ -228,7 +227,9 @@ export class Stream implements Component {
             })
 
             // Send Request
+            this.debugLog("Sending WHEP Offer")
             const answer = await apiWHEPOffer(this.api, offer)
+            this.debugLog("Got WHEP Response")
 
             // Apply answer
             await transport.setAnswer(answer)
@@ -259,6 +260,12 @@ export class Stream implements Component {
         }
 
         // -- Connection successful
+        // Set input
+        // TODO: fix input
+        this.input.onStreamStart({
+            touch: true,
+        }, [1, 1])
+
         // Create pipelines
         const videoCodecSupport = await this.createPipelines()
         if (!videoCodecSupport) {
@@ -267,6 +274,16 @@ export class Stream implements Component {
             await transport.close()
             return "failednoconnect"
         }
+
+        const event: InfoEvent = new CustomEvent("stream-info", {
+            detail: {
+                type: "connectionComplete", capabilities: {
+                    // TODO
+                    touch: true
+                }
+            }
+        })
+        this.eventTarget.dispatchEvent(event)
 
         return await onClose
     }
@@ -414,7 +431,7 @@ export class Stream implements Component {
 
             audioPlayer.mount(this.divElement)
 
-            this.transport.setAudioPipeline("audiotrack", audioPlayer)
+            await this.transport.setAudioPipeline("audiotrack", audioPlayer)
 
             this.audioPlayer = audioPlayer
         } else if (audioType == "data") {
@@ -426,7 +443,7 @@ export class Stream implements Component {
 
             audioPlayer.mount(this.divElement)
 
-            this.transport.setAudioPipeline("data", audioPlayer)
+            await this.transport.setAudioPipeline("data", audioPlayer)
 
             this.audioPlayer = audioPlayer
         } else {

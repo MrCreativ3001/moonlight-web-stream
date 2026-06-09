@@ -329,6 +329,11 @@ class WebRtcControlStream implements IControlStream {
                 deltaX: input.inner.deltaX,
                 deltaY: input.inner.deltaY,
             }))
+        } else if (input.tag == ClientInputEvent_Tags.MouseButton) {
+            this.sendRaw(new ControlPacket.MouseButton({
+                action: input.inner.action,
+                button: input.inner.button,
+            }))
         }
     }
     sendRaw(packet: ControlPacket): void {

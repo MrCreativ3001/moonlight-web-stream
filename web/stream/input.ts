@@ -64,8 +64,6 @@ export class StreamInput {
     private connected = false
     private config: StreamInputConfig
     private capabilities: StreamCapabilities = { touch: true }
-    // Size of the streamer device
-    private streamerSize: [number, number] = [0, 0]
 
     private controlStream: IControlStream | null = null
 
@@ -108,11 +106,10 @@ export class StreamInput {
     }
 
     // -- On Stream Start
-    onStreamStart(capabilities: StreamCapabilities, streamerSize: [number, number]) {
+    onStreamStart(capabilities: StreamCapabilities) {
         this.connected = true
 
         this.capabilities = capabilities
-        this.streamerSize = streamerSize
         this.registerBufferedControllers()
     }
 
@@ -261,8 +258,8 @@ export class StreamInput {
         }))
     }
     sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
-        const scaledMovementX = movementX / rect.width * this.streamerSize[0];
-        const scaledMovementY = movementY / rect.height * this.streamerSize[1];
+        const scaledMovementX = movementX
+        const scaledMovementY = movementY
 
         this.sendMouseMove(scaledMovementX, scaledMovementY)
     }

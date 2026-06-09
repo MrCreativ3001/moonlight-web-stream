@@ -123,12 +123,16 @@ export class WebRTCTransport implements Transport {
         if ("playoutDelayHint" in event.receiver) {
             event.receiver.playoutDelayHint = 0
         }
-
         const track = event.track
+
+        this.logger?.debug(`received track with label: ${track.label}, kind: ${track.kind}`)
+
         if (track.kind == "video") {
+            track.contentHint = "motion"
+
             this.videoStream = track
         } else if (track.kind == "audio") {
-
+            this.audioStream = track
         }
     }
 
@@ -177,13 +181,36 @@ export class WebRTCTransport implements Transport {
     }
 
     // Audio
+    private audioStream: MediaStreamTrack | null = null
+
     getRequiredAudioPipelineType(): TransportAudioType {
         return "audiotrack"
     }
     setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
     setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
     async setAudioPipeline(type: TransportAudioType, pipeline: AudioPlayer): Promise<void> {
+        if (!this.audioStream) {
+            throw "the stream must be connected!"
+        }
 
+        if (type == "audiotrack") {
+            const trackPipeline = pipeline as (TrackAudioPlayer & AudioPlayer)
+
+            const settings = this.audioStream.getSettings()
+
+            await trackPipeline.setup({
+                channels: settings.channelCount ?? 2,
+                sampleRate: settings.sampleRate ?? 48000,
+                // TODO
+                streams: 0,
+                coupledStreams: 0,
+                samplesPerFrame: 0,
+                mapping: []
+            })
+            trackPipeline.setTrack(this.audioStream)
+        } else if (type == "data") {
+            throw "unimplemented"
+        }
     }
 
     async close(): Promise<void> {

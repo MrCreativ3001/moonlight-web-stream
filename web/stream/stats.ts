@@ -1,8 +1,7 @@
-import { StreamerStatsUpdate, TransportChannelId } from "../api_bindings.js"
 import { BIG_BUFFER, ByteBuffer } from "./buffer.js"
 import { Logger } from "./log.js"
 import { Pipe } from "./pipeline/index.js"
-import { DataTransportChannel, Transport } from "./transport/index.js"
+import { Transport } from "./transport/index.js"
 
 export type StatValue = string | number
 

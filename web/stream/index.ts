@@ -489,10 +489,18 @@ export class Stream implements Component {
 
     private boundReceivePacket = this.onReceivePacket.bind(this)
     private onReceivePacket(packet: ControlPacket) {
-        if (packet.tag == ControlPacket_Tags.HdrMode) {
-            if (this.videoRenderer && this.videoRenderer.setHdrMode) {
-                this.videoRenderer?.setHdrMode(packet.inner.enabled)
-            }
+        switch (packet.tag) {
+            case ControlPacket_Tags.HdrMode:
+                if (this.videoRenderer && this.videoRenderer.setHdrMode) {
+                    this.videoRenderer?.setHdrMode(packet.inner.enabled)
+                }
+                break
+            case ControlPacket_Tags.ControllerRumbleData:
+                // TODO
+                break
+            case ControlPacket_Tags.ControllerRumbleTriggers:
+                // TODO
+                break
         }
         // TODO
     }

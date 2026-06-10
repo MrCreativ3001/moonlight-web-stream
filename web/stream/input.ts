@@ -1,5 +1,5 @@
 import { StreamCapabilities, StreamMouseButton } from "../api_bindings.js"
-import { ClientInputEvent, ClientInputEvent_Tags, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
+import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers, emptyKeyModifiers } from "./keyboard.js"
@@ -33,7 +33,6 @@ export type TouchMode = "touch" | "mouseRelative" | "localCursor" | "pointAndDra
 
 export type StreamInputConfig = {
     mouseMode: MouseMode
-    mouseScrollMode: MouseScrollMode
     touchMode: TouchMode
     localCursorSensitivity: number
     controllerConfig: ControllerConfig
@@ -42,7 +41,6 @@ export type StreamInputConfig = {
 export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         mouseMode: "follow",
-        mouseScrollMode: "highres",
         touchMode: "mouseRelative",
         localCursorSensitivity: 1,
         controllerConfig: {
@@ -70,6 +68,8 @@ export class StreamInput {
     private touchSupported: boolean | null = null
     private localCursorPosition: [number, number] | null = null
     buffer: any
+
+    private desktopSize: [number, number] = [0, 0]
 
     constructor(config?: StreamInputConfig) {
         this.config = defaultStreamInputConfig()
@@ -106,8 +106,10 @@ export class StreamInput {
     }
 
     // -- On Stream Start
-    onStreamStart(capabilities: StreamCapabilities) {
+    onStreamStart(capabilities: StreamCapabilities, desktopSize: [number, number]) {
         this.connected = true
+
+        this.desktopSize = desktopSize
 
         this.capabilities = capabilities
         this.registerBufferedControllers()
@@ -244,11 +246,7 @@ export class StreamInput {
         }
     }
     onMouseWheel(event: WheelEvent) {
-        if (this.config.mouseScrollMode == "highres") {
-            this.sendMouseWheelHighRes(event.deltaX, -event.deltaY)
-        } else if (this.config.mouseScrollMode == "normal") {
-            this.sendMouseWheel(event.deltaX, -event.deltaY)
-        }
+        this.sendMouseWheel(event.deltaX, -event.deltaY)
     }
 
     sendMouseMove(movementX: number, movementY: number) {
@@ -258,11 +256,8 @@ export class StreamInput {
         }))
     }
     sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
-        // TODO: scale them like before?
-        // const scaledMovementX = movementX / rect.width * this.streamerSize[0];
-        // const scaledMovementY = movementY / rect.height * this.streamerSize[1];
-        const scaledMovementX = movementX
-        const scaledMovementY = movementY
+        const scaledMovementX = movementX / rect.width * this.desktopSize[0];
+        const scaledMovementY = movementY / rect.height * this.desktopSize[1];
 
         this.sendMouseMove(scaledMovementX, scaledMovementY)
     }
@@ -294,16 +289,16 @@ export class StreamInput {
             const position = this.calcNormalizedPosition(clientX, clientY, rect)
             if (position) {
                 this.localCursorPosition = [
-                    position[0] * this.streamerSize[0],
-                    position[1] * this.streamerSize[1],
+                    position[0] * this.desktopSize[0],
+                    position[1] * this.desktopSize[1],
                 ]
                 return
             }
         }
 
         this.localCursorPosition = [
-            this.streamerSize[0] / 2,
-            this.streamerSize[1] / 2,
+            this.desktopSize[0] / 2,
+            this.desktopSize[1] / 2,
         ]
     }
     private clampLocalCursorPosition() {
@@ -311,8 +306,8 @@ export class StreamInput {
             return
         }
 
-        this.localCursorPosition[0] = Math.min(Math.max(this.localCursorPosition[0], 0), this.streamerSize[0])
-        this.localCursorPosition[1] = Math.min(Math.max(this.localCursorPosition[1], 0), this.streamerSize[1])
+        this.localCursorPosition[0] = Math.min(Math.max(this.localCursorPosition[0], 0), this.desktopSize[0])
+        this.localCursorPosition[1] = Math.min(Math.max(this.localCursorPosition[1], 0), this.desktopSize[1])
     }
     private sendLocalCursorPosition() {
         if (!this.localCursorPosition) {
@@ -322,12 +317,12 @@ export class StreamInput {
         this.sendMousePosition(
             this.localCursorPosition[0],
             this.localCursorPosition[1],
-            this.streamerSize[0],
-            this.streamerSize[1],
+            this.desktopSize[0],
+            this.desktopSize[1],
         )
     }
     private moveLocalCursorClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
-        if (this.streamerSize[0] <= 0 || this.streamerSize[1] <= 0 || rect.width <= 0 || rect.height <= 0) {
+        if (this.desktopSize[0] <= 0 || this.desktopSize[1] <= 0 || rect.width <= 0 || rect.height <= 0) {
             return
         }
 
@@ -336,8 +331,8 @@ export class StreamInput {
             return
         }
 
-        this.localCursorPosition[0] += movementX / rect.width * this.streamerSize[0] * this.config.localCursorSensitivity
-        this.localCursorPosition[1] += movementY / rect.height * this.streamerSize[1] * this.config.localCursorSensitivity
+        this.localCursorPosition[0] += movementX / rect.width * this.desktopSize[0] * this.config.localCursorSensitivity
+        this.localCursorPosition[1] += movementY / rect.height * this.desktopSize[1] * this.config.localCursorSensitivity
         this.clampLocalCursorPosition()
         this.sendLocalCursorPosition()
     }
@@ -348,20 +343,13 @@ export class StreamInput {
             button
         }))
     }
-    sendMouseWheelHighRes(deltaX: number, deltaY: number) {
+    sendMouseWheel(deltaX: number, deltaY: number) {
         this.controlStream?.send(new ClientInputEvent.MouseScrollHorizontal({
             scrollX: deltaX
         }))
         this.controlStream?.send(new ClientInputEvent.MouseScrollVertical({
             scrollY: deltaY
         }))
-    }
-    sendMouseWheel(deltaX: number, deltaY: number) {
-        this.sendMouseWheel(
-            // TODO: what multiplier
-            deltaX * 40,
-            deltaY * 40,
-        )
     }
 
     // -- Touch
@@ -399,16 +387,16 @@ export class StreamInput {
         if (
             (this.config.touchMode != "localCursor" && this.config.mouseMode != "localCursor") ||
             !this.localCursorPosition ||
-            this.streamerSize[0] <= 0 ||
-            this.streamerSize[1] <= 0
+            this.desktopSize[0] <= 0 ||
+            this.desktopSize[1] <= 0
         ) {
             return { visible: false, x: 0, y: 0 }
         }
 
         return {
             visible: true,
-            x: this.localCursorPosition[0] / this.streamerSize[0],
-            y: this.localCursorPosition[1] / this.streamerSize[1],
+            x: this.localCursorPosition[0] / this.desktopSize[0],
+            y: this.localCursorPosition[1] / this.desktopSize[1],
         }
     }
 
@@ -633,11 +621,7 @@ export class StreamInput {
                     }
                 } else if (this.touchMouseAction == "scroll") {
                     // inverting horizontal scroll
-                    if (this.config.mouseScrollMode == "highres") {
-                        this.sendMouseWheelHighRes(-movementX * TOUCH_HIGH_RES_SCROLL_MULTIPLIER, movementY * TOUCH_HIGH_RES_SCROLL_MULTIPLIER)
-                    } else if (this.config.mouseScrollMode == "normal") {
-                        this.sendMouseWheel(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
-                    }
+                    this.sendMouseWheel(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
                 } else if (this.touchMouseAction == "screenKeyboard") {
                     // calculate if we should open the screen keyboard
                     const distanceY = touch.clientY - oldTouch.originY

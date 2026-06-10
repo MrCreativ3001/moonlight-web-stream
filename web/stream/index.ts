@@ -264,6 +264,7 @@ export class Stream implements Component {
         ])
         if (typeof connectData == "string") {
             this.debugLog(`webrtc connection failed: ${connectData}`)
+            await transport.close()
             // connection failed
             return connectData
         }

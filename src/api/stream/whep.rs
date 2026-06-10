@@ -352,7 +352,6 @@ impl MoonlightStreamHandler for StreamHandler {
 
         // Create audio track
         let mut codec = opus_codec();
-        codec.clock_rate = opus_config.sample_rate;
         codec.channels = opus_config.channel_count as u16;
 
         let audio_track = Arc::new(TrackLocalStaticRTP::new(
@@ -409,7 +408,10 @@ impl MoonlightStreamHandler for StreamHandler {
                     },
                     payload: Bytes::copy_from_slice(frame.buffer),
                 },
-                &[],
+                &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
+                    min_delay: 0,
+                    max_delay: 0,
+                })],
             )
             .await
         {

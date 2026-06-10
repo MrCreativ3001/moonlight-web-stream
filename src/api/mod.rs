@@ -78,11 +78,11 @@ pub fn api_service() -> impl HttpServiceFactory {
             // -- Stream
             web::scope("/host/stream/whep")
                 .wrap_fn(|req, service| {
-                    // Allow access for other browser based services to call the whep apis
                     let fut = service.call(req);
                     async {
                         let mut res = fut.await?;
 
+                        // Allow access for other browser based services to call the whep apis
                         let headers = res.response_mut().headers_mut();
                         headers.append(
                             header::ACCESS_CONTROL_ALLOW_ORIGIN,

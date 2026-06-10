@@ -168,7 +168,6 @@ export class Stream implements Component {
             if (shutdownReason == "failednoconnect") {
                 this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.", { type: "ifErrorDescription" })
                 await this.tryWebSocketTransport()
-                return
             }
         } else if (desiredTransport == "webrtc") {
             await this.tryWebRTCTransport()
@@ -236,7 +235,7 @@ export class Stream implements Component {
             })
 
             // Send Request
-            this.debugLog("Sending WHEP Offer")
+            this.debugLog("Sending WHEP Offer and waiting for Answer")
             const answer = await apiWHEPOffer(this.api, offer)
             this.debugLog("Got WHEP Response")
 

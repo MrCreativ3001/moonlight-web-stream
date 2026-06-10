@@ -449,6 +449,16 @@ pub async fn whep_post(
     req: HttpRequest,
     session_description: String,
 ) -> Result<HttpResponse, AppError> {
+    if !user
+        .role()
+        .await?
+        .permissions()
+        .await?
+        .allow_transport_webrtc
+    {
+        return Err(AppError::Forbidden);
+    }
+
     debug!(req = ?req, session_description = ?session_description, "whep request");
 
     let session = MoonlightWebRtcSession::from_str(&session_description).unwrap();
@@ -647,6 +657,7 @@ pub async fn whep_post(
         gamepads_persist_after_disconnect: false,
         enable_mic: microphone_enabled,
     };
+    // TODO: apply permissions to settings
 
     let server_version = host.version().await.unwrap();
     let gfe_version = host.gfe_version().await.unwrap();

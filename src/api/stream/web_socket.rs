@@ -37,7 +37,16 @@ pub async fn web_socket_stream(
     req: HttpRequest,
     body_stream: Payload,
 ) -> Result<HttpResponse, Error> {
-    // TODO
+    if !user
+        .role()
+        .await?
+        .permissions()
+        .await?
+        .allow_transport_websockets
+    {
+        return Err(AppError::Forbidden.into());
+    }
+
     let host_id = 0;
     let host_id = HostId(host_id);
 
@@ -111,6 +120,7 @@ async fn handle_ws(
         // TODO: mic?
         enable_mic: false,
     };
+    // TODO: apply permissions to settings
 
     // encryption
     let aes_key = AesKey::new_random(&RustCryptoBackend)?;

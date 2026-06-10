@@ -282,6 +282,7 @@ impl MoonlightStreamHandler for StreamHandler {
         let mut video_guard = self.video.lock().await;
         let video = video_guard.as_mut().expect("video track");
 
+        // TODO: don't drop the frame, if we drop it -> idr which is bad
         if video.track.all_binding_paused().await {
             trace!("audio track all binding paused");
             // Don't send any packets when the track is paused because we don't want to increment the sequence number

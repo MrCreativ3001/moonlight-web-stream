@@ -1,21 +1,18 @@
 import { Api, apiWHEPOffer } from "../api.js"
-import { App, ConnectionStatus, StreamCapabilities, StreamClientMessage, StreamPermissions, StreamSettings, TransportChannelId } from "../api_bindings.js"
-import { showErrorPopup } from "../component/error.js"
+import { App, StreamCapabilities, StreamPermissions, } from "../api_bindings.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
-import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings.js"
+import { ControlPacket, ControlPacket_Tags } from "../uniffi/moonlight_common_bindings.js"
 import { wait } from "../util.js"
 import { AudioPlayer } from "./audio/index.js"
 import { buildAudioPipeline } from "./audio/pipeline.js"
-import { BIG_BUFFER, ByteBuffer } from "./buffer.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
 import { Logger, LogMessageInfo } from "./log.js"
 import { gatherPipeInfo } from "./pipeline/index.js"
 import { StreamStats } from "./stats.js"
 import { Transport, TransportAudioType, TransportConnectData, TransportShutdown, TransportVideoType } from "./transport/index.js"
-import { WebSocketTransport } from "./transport/web_socket.js"
 import { WebRTCTransport } from "./transport/whep.js"
-import { allVideoCodecs, andVideoCodecs, createSupportedVideoFormatsBits, emptyVideoCodecs, hasAnyCodec, VideoCodecSupport } from "./video.js"
+import { allVideoCodecs, emptyVideoCodecs, hasAnyCodec, VideoCodecSupport } from "./video.js"
 import { VideoRenderer } from "./video/index.js"
 import { buildVideoPipeline, VideoPipelineOptions } from "./video/pipeline.js"
 
@@ -28,7 +25,6 @@ export type InfoEvent = CustomEvent<
     { type: "app", app: App } |
     { type: "serverMessage", message: string } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
-    { type: "connectionStatus", status: ConnectionStatus } |
     { type: "addDebugLine", line: string, additional?: LogMessageInfo }
 >
 export type InfoEventListener = (event: InfoEvent) => void

@@ -1,13 +1,11 @@
-import { StreamCapabilities, StreamMouseButton } from "../api_bindings.js"
-import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
+import { StreamCapabilities } from "../api_bindings.js"
+import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButton, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
 import { convertToKey, convertToModifiers, emptyKeyModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 import { IControlStream } from "./transport/index.js"
 
-// Smooth scrolling multiplier
-const TOUCH_HIGH_RES_SCROLL_MULTIPLIER = 10
 // Normal scrolling multiplier
 const TOUCH_SCROLL_MULTIPLIER = 1
 // Distance until a touch cannot be a click anymore
@@ -69,7 +67,7 @@ export class StreamInput {
     private localCursorPosition: [number, number] | null = null
     buffer: any
 
-    private desktopSize: [number, number] = [0, 0]
+    private streamSize: [number, number] = [0, 0]
 
     constructor(config?: StreamInputConfig) {
         this.config = defaultStreamInputConfig()
@@ -109,7 +107,7 @@ export class StreamInput {
     onStreamStart(capabilities: StreamCapabilities, desktopSize: [number, number]) {
         this.connected = true
 
-        this.desktopSize = desktopSize
+        this.streamSize = desktopSize
 
         this.capabilities = capabilities
         this.registerBufferedControllers()
@@ -256,8 +254,8 @@ export class StreamInput {
         }))
     }
     sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
-        const scaledMovementX = movementX / rect.width * this.desktopSize[0];
-        const scaledMovementY = movementY / rect.height * this.desktopSize[1];
+        const scaledMovementX = movementX / rect.width * this.streamSize[0];
+        const scaledMovementY = movementY / rect.height * this.streamSize[1];
 
         this.sendMouseMove(scaledMovementX, scaledMovementY)
     }
@@ -289,16 +287,16 @@ export class StreamInput {
             const position = this.calcNormalizedPosition(clientX, clientY, rect)
             if (position) {
                 this.localCursorPosition = [
-                    position[0] * this.desktopSize[0],
-                    position[1] * this.desktopSize[1],
+                    position[0] * this.streamSize[0],
+                    position[1] * this.streamSize[1],
                 ]
                 return
             }
         }
 
         this.localCursorPosition = [
-            this.desktopSize[0] / 2,
-            this.desktopSize[1] / 2,
+            this.streamSize[0] / 2,
+            this.streamSize[1] / 2,
         ]
     }
     private clampLocalCursorPosition() {
@@ -306,8 +304,8 @@ export class StreamInput {
             return
         }
 
-        this.localCursorPosition[0] = Math.min(Math.max(this.localCursorPosition[0], 0), this.desktopSize[0])
-        this.localCursorPosition[1] = Math.min(Math.max(this.localCursorPosition[1], 0), this.desktopSize[1])
+        this.localCursorPosition[0] = Math.min(Math.max(this.localCursorPosition[0], 0), this.streamSize[0])
+        this.localCursorPosition[1] = Math.min(Math.max(this.localCursorPosition[1], 0), this.streamSize[1])
     }
     private sendLocalCursorPosition() {
         if (!this.localCursorPosition) {
@@ -317,12 +315,12 @@ export class StreamInput {
         this.sendMousePosition(
             this.localCursorPosition[0],
             this.localCursorPosition[1],
-            this.desktopSize[0],
-            this.desktopSize[1],
+            this.streamSize[0],
+            this.streamSize[1],
         )
     }
     private moveLocalCursorClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
-        if (this.desktopSize[0] <= 0 || this.desktopSize[1] <= 0 || rect.width <= 0 || rect.height <= 0) {
+        if (this.streamSize[0] <= 0 || this.streamSize[1] <= 0 || rect.width <= 0 || rect.height <= 0) {
             return
         }
 
@@ -331,13 +329,12 @@ export class StreamInput {
             return
         }
 
-        this.localCursorPosition[0] += movementX / rect.width * this.desktopSize[0] * this.config.localCursorSensitivity
-        this.localCursorPosition[1] += movementY / rect.height * this.desktopSize[1] * this.config.localCursorSensitivity
+        this.localCursorPosition[0] += movementX / rect.width * this.streamSize[0] * this.config.localCursorSensitivity
+        this.localCursorPosition[1] += movementY / rect.height * this.streamSize[1] * this.config.localCursorSensitivity
         this.clampLocalCursorPosition()
         this.sendLocalCursorPosition()
     }
-    // Note: button = StreamMouseButton.
-    sendMouseButton(isDown: boolean, button: number) {
+    sendMouseButton(isDown: boolean, button: MouseButton) {
         this.controlStream?.send(new ClientInputEvent.MouseButton({
             action: isDown ? MouseButtonAction.Press : MouseButtonAction.Release,
             button
@@ -359,8 +356,7 @@ export class StreamInput {
         originY: number
         x: number
         y: number
-        // number is StreamMouseButton
-        mouseClicked: null | number,
+        mouseClicked: null | MouseButton,
         // point and drag: if we've moved the mouse to the touch
         // mouse relative: we've moved the mouse enough that it shouldn't be a click anymore
         mouseMoved: boolean
@@ -387,16 +383,16 @@ export class StreamInput {
         if (
             (this.config.touchMode != "localCursor" && this.config.mouseMode != "localCursor") ||
             !this.localCursorPosition ||
-            this.desktopSize[0] <= 0 ||
-            this.desktopSize[1] <= 0
+            this.streamSize[0] <= 0 ||
+            this.streamSize[1] <= 0
         ) {
             return { visible: false, x: 0, y: 0 }
         }
 
         return {
             visible: true,
-            x: this.localCursorPosition[0] / this.desktopSize[0],
-            y: this.localCursorPosition[1] / this.desktopSize[1],
+            x: this.localCursorPosition[0] / this.streamSize[0],
+            y: this.localCursorPosition[1] / this.streamSize[1],
         }
     }
 
@@ -476,8 +472,8 @@ export class StreamInput {
             // Detect dragging in mouse relative
             if ((this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor") && primaryTouch && this.nextTouchDoubleTap) {
                 if (primaryTouch.mouseClicked == null) {
-                    this.sendMouseButton(true, StreamMouseButton.LEFT)
-                    primaryTouch.mouseClicked = StreamMouseButton.LEFT
+                    this.sendMouseButton(true, MouseButton.Left)
+                    primaryTouch.mouseClicked = MouseButton.Left
                 }
 
                 this.touchMouseAction = "drag"
@@ -593,8 +589,8 @@ export class StreamInput {
                         }
 
                         if (oldTouch.mouseClicked == null) {
-                            this.sendMouseButton(true, StreamMouseButton.LEFT)
-                            oldTouch.mouseClicked = StreamMouseButton.LEFT
+                            this.sendMouseButton(true, MouseButton.Left)
+                            oldTouch.mouseClicked = MouseButton.Left
                         }
 
                         this.touchMouseAction = "drag"
@@ -603,8 +599,8 @@ export class StreamInput {
                     if (movementX != 0 || movementY != 0) {
                         this.touchMouseAction = "drag"
                         oldTouch.mouseMoved = true
-                        oldTouch.mouseClicked = StreamMouseButton.LEFT
-                        this.sendMouseButton(true, StreamMouseButton.LEFT)
+                        oldTouch.mouseClicked = MouseButton.Left
+                        this.sendMouseButton(true, MouseButton.Left)
 
                         if (this.config.touchMode == "localCursor") {
                             this.moveLocalCursorClientCoordinates(movementX, movementY, rect)
@@ -670,8 +666,8 @@ export class StreamInput {
             for (const touch of event.changedTouches) {
                 if (endingTwoTouchTap) {
                     if (!handledTwoTouchTap && endingTwoTouchTapShouldRightClick) {
-                        this.sendMouseButton(true, StreamMouseButton.RIGHT)
-                        this.sendMouseButton(false, StreamMouseButton.RIGHT)
+                        this.sendMouseButton(true, MouseButton.Right)
+                        this.sendMouseButton(false, MouseButton.Right)
                     }
                     handledTwoTouchTap = true
 
@@ -692,8 +688,8 @@ export class StreamInput {
                     }
 
                     if (this.touchMouseAction == "longPress") {
-                        this.sendMouseButton(true, StreamMouseButton.RIGHT)
-                        this.sendMouseButton(false, StreamMouseButton.RIGHT)
+                        this.sendMouseButton(true, MouseButton.Right)
+                        this.sendMouseButton(false, MouseButton.Right)
                         this.nextTouchDoubleTap = false
                         continue
                     }
@@ -730,9 +726,9 @@ export class StreamInput {
                             // Should we right or left click?
                             let mouseButton
                             if (touchTime > TOUCH_AS_CLICK_MAX_TIME_MS) {
-                                mouseButton = StreamMouseButton.RIGHT
+                                mouseButton = MouseButton.Right
                             } else {
-                                mouseButton = StreamMouseButton.LEFT
+                                mouseButton = MouseButton.Left
                             }
 
                             this.sendMouseButton(true, mouseButton)

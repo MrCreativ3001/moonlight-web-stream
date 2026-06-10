@@ -1,5 +1,5 @@
 use std::{
-    fmt::Display,
+    fmt::{self, Display},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     num::ParseIntError,
     str::FromStr,
@@ -10,8 +10,6 @@ use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
-
-use crate::api_bindings::RtcIceServer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -128,6 +126,29 @@ impl Default for WebRtcConfig {
             network_types: default_network_types(),
             include_loopback_candidates: default_include_loopback_candidates(),
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct RtcIceServer {
+    #[serde(skip)]
+    pub is_default: bool,
+    pub urls: Vec<String>,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub credential: String,
+}
+
+impl Display for RtcIceServer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "urls=[{}], username=\"{}\", credential=\"{}\"",
+            self.urls.join(", "),
+            self.username,
+            self.credential,
+        )
     }
 }
 

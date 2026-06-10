@@ -7,7 +7,6 @@ use crate::api_bindings::{StreamPermissions, StreamSettings};
 pub mod api_bindings;
 pub mod api_bindings_ext;
 pub mod config;
-pub mod ipc;
 
 /// Applies the permissions / restrictions to the current settings of the user.
 /// This won't error, it'll just overwrite it, because the GUI should indicate those restrictions.

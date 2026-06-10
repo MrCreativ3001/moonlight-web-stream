@@ -1,6 +1,6 @@
 import { WHEPResponse } from "../../api.js";
-import { ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, MoonlightWebRtcSession, PacketDirection, ServerType, VideoFormats, webrtcSessionApply } from "../../uniffi/moonlight_common_bindings.js";
-import { wait } from "../../util.js";
+import { ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, InputBatcher, MoonlightWebRtcSession, PacketDirection, ServerType, VideoFormats, webrtcSessionApply } from "../../uniffi/moonlight_common_bindings.js";
+import { globalObject, wait } from "../../util.js";
 import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
@@ -50,6 +50,8 @@ export class WebRTCTransport implements Transport {
         this.peer.createDataChannel("dummy")
     }
 
+    private sdpOfferOptions: MoonlightWebRtcSession | null = null
+
     async createOffer(options: WebRTCWHEPOptions): Promise<string> {
         this.logger?.debug("creating webrtc offer")
 
@@ -62,15 +64,15 @@ export class WebRTCTransport implements Transport {
         await this.peer.setLocalDescription(offer)
 
         // Insert custom options
-        const sdpOptions: MoonlightWebRtcSession = {
+        this.sdpOfferOptions = {
             controlSimple: true,
             // TODO: control enet
             controlEnet: false,
             ...options
         }
-        const sdp = webrtcSessionApply(offer.sdp ?? "", sdpOptions)
+        const sdp = webrtcSessionApply(offer.sdp ?? "", this.sdpOfferOptions)
 
-        this.logger?.debug(`successfully generated webrtc sdp with options ${JSON.stringify(sdpOptions)}`)
+        this.logger?.debug(`successfully generated webrtc sdp with options ${JSON.stringify(this.sdpOfferOptions)}`)
         console.debug("Client Sdp", sdp)
 
         return sdp
@@ -91,7 +93,7 @@ export class WebRTCTransport implements Transport {
     }
 
     private connectData: TransportConnectData | null = null
-    private async collectConnectData(): Promise<TransportConnectData> {
+    private async generateConnectData(): Promise<TransportConnectData> {
         if (this.connectData) {
             return this.connectData
         }
@@ -100,8 +102,6 @@ export class WebRTCTransport implements Transport {
             throw `WebRTC WHEP response didn't contain a video and audio stream! Video: ${this.videoStream != null}, Audio: ${this.audioStream != null}`
         }
 
-        // Wait for the stream to receive any video data
-        const videoSettings = this.videoStream.getSettings()
         const audioSettings = this.audioStream.getSettings()
 
         this.connectData = {
@@ -110,9 +110,10 @@ export class WebRTCTransport implements Transport {
             },
             videoType: "videotrack",
             videoSetup: {
-                width: videoSettings.width ?? -1,
-                height: videoSettings.height ?? -1,
-                fps: videoSettings.frameRate ?? -1,
+                // Assume the requested parameters are correct
+                width: this.sdpOfferOptions?.width ?? -1,
+                height: this.sdpOfferOptions?.height ?? -1,
+                fps: this.sdpOfferOptions?.fps ?? -1,
                 // TODO: gather codec using stats
                 codec: "H264",
             },
@@ -135,7 +136,7 @@ export class WebRTCTransport implements Transport {
         if (this.peer.connectionState == "connected") {
             this.wasConnected = true
 
-            this.collectConnectData().then(connectData => {
+            this.generateConnectData().then(connectData => {
                 if (this.onconnect) {
                     this.onconnect(connectData)
                 }
@@ -263,6 +264,9 @@ class WebRtcControlStream implements IControlStream {
 
     private channel: RTCDataChannel | null = null
 
+    private batcher: InputBatcher = new InputBatcher()
+    private batchSendTimeout: number | null = null
+
     private packetBuffer: Array<ControlPacket> = []
 
     constructor(logger?: Logger) {
@@ -324,18 +328,24 @@ class WebRtcControlStream implements IControlStream {
     }
 
     send(input: ClientInputEvent): void {
-        if (input.tag == ClientInputEvent_Tags.MouseMoveRelative) {
-            this.sendRaw(new ControlPacket.MouseMoveRelative({
-                deltaX: input.inner.deltaX,
-                deltaY: input.inner.deltaY,
-            }))
-        } else if (input.tag == ClientInputEvent_Tags.MouseButton) {
-            this.sendRaw(new ControlPacket.MouseButton({
-                action: input.inner.action,
-                button: input.inner.button,
-            }))
+        for (const packet of this.batcher.batchInput(input)) {
+            this.sendRaw(packet)
+        }
+
+        if (this.batchSendTimeout == null) {
+            this.batchSendTimeout = globalObject().setTimeout(this.boundSendBatchedInputs, 1)
         }
     }
+
+    private boundSendBatchedInputs = this.sendBatchedInputs.bind(this)
+    private sendBatchedInputs() {
+        this.batchSendTimeout = null
+
+        for (const packet of this.batcher.removeBatchedInputs()) {
+            this.sendRaw(packet)
+        }
+    }
+
     sendRaw(packet: ControlPacket): void {
         console.debug(packet, "sending control packet")
 

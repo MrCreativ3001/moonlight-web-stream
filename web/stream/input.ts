@@ -258,6 +258,9 @@ export class StreamInput {
         }))
     }
     sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
+        // TODO: scale them like before?
+        // const scaledMovementX = movementX / rect.width * this.streamerSize[0];
+        // const scaledMovementY = movementY / rect.height * this.streamerSize[1];
         const scaledMovementX = movementX
         const scaledMovementY = movementY
 

@@ -13,10 +13,9 @@ import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
-
-import "./styles/index.ts"
 import { emptyKeyModifiers } from "./stream/keyboard.js";
-import { uniffiInitAsync } from "./uniffi/entry.js";
+import { LogLevel, setLogger as uniffiSetLogger, Logger as UniffiLogger, uniffiInitAsync } from "./uniffi/entry.js";
+import "./styles/index.ts"
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -62,6 +61,30 @@ async function startApp() {
 
     // Wait for uniffi to finish it's initialization
     await uniffiInit
+    // Set Uniffy Logger
+    class CustomUniffiLogger implements UniffiLogger {
+        log(level: LogLevel, message: string): void {
+            switch (level) {
+                case LogLevel.Trace:
+                    console.trace(message)
+                    break;
+                case LogLevel.Debug:
+                    console.debug(message)
+                    break;
+                case LogLevel.Warn:
+                    console.warn(message)
+                    break;
+                case LogLevel.Info:
+                    console.info(message)
+                    break;
+                case LogLevel.Error:
+                    console.error(message)
+                    break;
+            }
+        }
+    }
+    // TODO: check for prod or dev env
+    uniffiSetLogger(new CustomUniffiLogger(), LogLevel.Debug)
 
     // Start and Mount App
     const app = new ViewerApp(api, hostId, appId, bootstrapRole.role)

@@ -55,8 +55,8 @@ macro_rules! video_formats_codec_mapping {
 
 video_formats_codec_mapping!(
     // H264
-    VideoFormat::H264 = MIME_TYPE_H264: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
-    VideoFormat::H264High8_444 = MIME_TYPE_H264: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=f4001f",
+    VideoFormat::H264 = MIME_TYPE_H264: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+    VideoFormat::H264High8_444 = MIME_TYPE_H264: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640032",
 
     // H265
     VideoFormat::H265 = MIME_TYPE_HEVC: "packetization-mode=1",

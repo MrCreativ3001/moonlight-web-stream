@@ -1,6 +1,6 @@
 import { WHEPResponse } from "../../api.js";
-import { ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, InputBatcher, MoonlightWebRtcSession, PacketDirection, ServerType, VideoFormats, webrtcSessionApply } from "../../uniffi/moonlight_common_bindings.js";
-import { globalObject, wait } from "../../util.js";
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, ControlStreamInput, ControlStreamOutput_Tags, InputBatcher, PacketDirection, ServerType, VideoFormats, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
+import { globalObject, uniffiMillisUntil, uniffiNow, wait } from "../../util.js";
 import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
@@ -50,7 +50,7 @@ export class WebRTCTransport implements Transport {
         this.peer.createDataChannel("dummy")
     }
 
-    private sdpOfferOptions: MoonlightWebRtcSession | null = null
+    private sdpOfferOptions: WebRtcSessionOffer | null = null
 
     async createOffer(options: WebRTCWHEPOptions): Promise<string> {
         this.logger?.debug("creating webrtc offer")
@@ -66,11 +66,10 @@ export class WebRTCTransport implements Transport {
         // Insert custom options
         this.sdpOfferOptions = {
             controlSimple: true,
-            // TODO: control enet
-            controlEnet: false,
+            controlEnet: true,
             ...options
         }
-        const sdp = webrtcSessionApply(offer.sdp ?? "", this.sdpOfferOptions)
+        const sdp = webrtcSessionOfferApply(offer.sdp ?? "", this.sdpOfferOptions)
 
         this.logger?.debug(`successfully generated webrtc sdp with options ${JSON.stringify(this.sdpOfferOptions)}`)
         console.debug("Client Sdp", sdp)
@@ -81,6 +80,9 @@ export class WebRTCTransport implements Transport {
         console.debug("Server Sdp", JSON.stringify(response))
 
         this.logger?.debug(`received whep response with location "${response.location}" ice servers ${response.iceServers.flatMap(server => server.urls).concat(",")}`)
+
+        const answer = webrtcSessionAnswerParse(response.answerSdp)
+        this.logger?.debug(`server responded with extensions ${JSON.stringify(answer)}`)
 
         this.peer.setConfiguration({
             iceServers: response.iceServers,
@@ -165,7 +167,12 @@ export class WebRTCTransport implements Transport {
                 throw "generated invalid packet config"
             }
 
-            this.controlStream.setChannel(channel, config)
+            let protocol: "simple" | "enet" = "simple"
+            if (channel.protocol == "enet") {
+                protocol = "enet"
+            }
+
+            this.controlStream.setChannel(channel, protocol, config)
         }
     }
 
@@ -256,6 +263,8 @@ export class WebRTCTransport implements Transport {
     }
 }
 
+const ENET_IP = "192.168.178.2:47999"
+
 class WebRtcControlStream implements IControlStream {
 
     private logger?: Logger
@@ -263,9 +272,16 @@ class WebRtcControlStream implements IControlStream {
     private config: ControlPacketConfig | null = null
 
     private channel: RTCDataChannel | null = null
+    private streamType: "simple" | "enet" = "simple"
 
+    // Simple control stream
     private batcher: InputBatcher = new InputBatcher()
     private batchSendTimeout: number | null = null
+
+    // Enet control stream
+    private controlStream: ControlStream | null = null
+    private controlStreamPollTimeout: number | null = null
+    private enetConnected = false
 
     private packetBuffer: Array<ControlPacket> = []
 
@@ -274,21 +290,46 @@ class WebRtcControlStream implements IControlStream {
     }
 
     setChannel(channel: null): void
-    setChannel(channel: RTCDataChannel, config: ControlPacketConfig): void
-    setChannel(channel: RTCDataChannel | null, config?: ControlPacketConfig): void {
+    setChannel(channel: RTCDataChannel, streamType: "simple" | "enet", config: ControlPacketConfig): void
+    setChannel(channel: RTCDataChannel | null, streamType?: "simple" | "enet", config?: ControlPacketConfig): void {
         this.channel = channel
 
-        if (this.channel && config) {
+        // Clean up the old timeout
+        if (this.batchSendTimeout != null) {
+            globalObject().clearTimeout(this.batchSendTimeout)
+        }
+
+        // Clean up old control stream if present
+        if (this.controlStream) {
+            this.controlStream.uniffiDestroy()
+            this.controlStream = null
+        }
+        if (this.controlStreamPollTimeout != null) {
+            globalObject().clearTimeout(this.controlStreamPollTimeout)
+        }
+        this.enetConnected = false
+
+        if (this.channel && streamType && config) {
             this.config = config
+            this.streamType = streamType
 
             this.channel.binaryType = "arraybuffer"
 
-            this.channel.addEventListener("open", this.boundChannelOpen)
+            this.channel.addEventListener("open", this.boundChannelStateChange)
             this.channel.addEventListener("message", this.boundMessage)
+
+            if (this.streamType == "enet") {
+                this.controlStream = new ControlStream(uniffiNow(), {
+                    serverVersion: this.config.serverVersion,
+                    addr: ENET_IP,
+                })
+                this.onDataChannelStateChange()
+            }
 
             this.trySendBufferedPackets()
         } else {
-            this.channel?.removeEventListener("open", this.boundChannelOpen)
+            this.streamType = "simple"
+            this.channel?.removeEventListener("open", this.boundChannelStateChange)
             this.channel?.removeEventListener("message", this.boundMessage)
         }
     }
@@ -301,23 +342,47 @@ class WebRtcControlStream implements IControlStream {
             throw "packet config not configured, but a packet was received"
         }
 
-        const packet = controlPacketDeserialize(this.config, PacketDirection.ClientBound, event.data)
-        if (packet) {
-            if (this.onreceive) {
+        if (this.streamType == "simple") {
+            const packet = controlPacketDeserialize(this.config, PacketDirection.ClientBound, event.data)
+
+            if (packet && this.onreceive) {
                 this.onreceive(packet)
             }
+        } else if (this.streamType == "enet") {
+            if (!this.controlStream) {
+                throw "dropping packet because enet control stream is not initialized"
+            }
+
+            this.controlStream.handleInput(new ControlStreamInput.Receive({
+                now: uniffiNow(),
+                addr: ENET_IP,
+                data: event.data
+            }))
+
+            this.controlStreamPollOutput(false)
         } else {
             this.logger?.debug("failed to deserialize packet")
             console.debug("failed to deserialize packet", event.data)
         }
     }
 
-    private boundChannelOpen = this.onDataChannelOpen.bind(this)
-    private onDataChannelOpen() {
-        this.trySendBufferedPackets()
+    private boundChannelStateChange = this.onDataChannelStateChange.bind(this)
+    private onDataChannelStateChange() {
+        if (this.channel?.readyState == "open") {
+            this.trySendBufferedPackets()
+
+            if (this.streamType == "enet" && this.controlStreamPollTimeout == null) {
+                // Start loop
+                this.controlStreamPollOutput()
+            }
+        }
     }
     private trySendBufferedPackets() {
         if (!this.channel || this.channel.readyState != "open") {
+            return
+        }
+
+        if (this.streamType == "enet" && !this.enetConnected) {
             return
         }
 
@@ -337,19 +402,13 @@ class WebRtcControlStream implements IControlStream {
         }
     }
 
-    private boundSendBatchedInputs = this.sendBatchedInputs.bind(this)
-    private sendBatchedInputs() {
-        this.batchSendTimeout = null
-
-        for (const packet of this.batcher.removeBatchedInputs()) {
-            this.sendRaw(packet)
-        }
-    }
-
     sendRaw(packet: ControlPacket): void {
         console.debug(packet, "sending control packet")
 
-        if (!this.channel || this.channel.readyState != "open") {
+        if (
+            !this.channel || this.channel.readyState != "open" ||
+            (this.streamType == "enet" && (!this.controlStream || !this.enetConnected))
+        ) {
             this.packetBuffer.push(packet)
             return
         }
@@ -359,12 +418,81 @@ class WebRtcControlStream implements IControlStream {
 
         this.trySendBufferedPackets()
 
-        const data = controlPacketSerialize(this.config, packet)
-        if (data) {
+        if (this.streamType == "simple") {
+            const data = controlPacketSerialize(this.config, packet)
             console.debug(data, "sending control data")
-            this.channel.send(data)
+            if (data) {
+                this.channel.send(data)
+            }
+        } else if (this.streamType == "enet") {
+            this.controlStream?.sendRaw(packet)
+            this.controlStreamPollOutput()
         } else {
             this.logger?.debug(`failed to send control packet ${JSON.stringify(packet)}`)
+        }
+    }
+
+    private boundSendBatchedInputs = this.sendBatchedInputs.bind(this)
+    private sendBatchedInputs() {
+        this.batchSendTimeout = null
+
+        for (const packet of this.batcher.removeBatchedInputs()) {
+            this.sendRaw(packet)
+        }
+    }
+
+    private boundPollOutput = this.controlStreamPollOutput.bind(this)
+    private controlStreamPollOutput(handleInput = true) {
+        if (this.controlStreamPollTimeout != null) {
+            globalObject().clearTimeout(this.controlStreamPollTimeout)
+        }
+        this.controlStreamPollTimeout = null
+
+
+        if (!this.controlStream) {
+            return
+        }
+        if (!this.channel) {
+            return
+        }
+
+        if (handleInput) {
+            this.controlStream.handleInput(new ControlStreamInput.Timeout(uniffiNow()))
+        }
+
+        while (true) {
+            const output = this.controlStream.pollOutput()
+
+            if (output.tag === ControlStreamOutput_Tags.Send) {
+                console.debug(output.inner.data, "enet send")
+                this.channel.send(output.inner.data)
+
+                continue
+            } else if (output.tag === ControlStreamOutput_Tags.Timeout) {
+                this.controlStreamPollTimeout = globalObject().setTimeout(this.boundPollOutput, uniffiMillisUntil(output.inner[0]))
+            } else if (output.tag === ControlStreamOutput_Tags.Event) {
+                const event = output.inner[0]
+
+                if (event.tag === ControlStreamEvent_Tags.Connect) {
+                    this.enetConnected = true
+
+                    // TODO: remove this, when the impl doesn't require this anymore
+                    this.controlStream.sendRaw(new ControlPacket.StartB())
+
+                    this.trySendBufferedPackets()
+                } else if (event.tag === ControlStreamEvent_Tags.Packet) {
+                    if (this.onreceive) {
+                        this.onreceive(event.inner[0]);
+                    }
+                } else if (event.tag === ControlStreamEvent_Tags.Disconnect) {
+                    // TODO: reconstruct control stream?
+                    this.enetConnected = false
+                }
+
+                continue
+            }
+
+            break
         }
     }
 }

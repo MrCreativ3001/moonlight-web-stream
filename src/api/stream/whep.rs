@@ -28,7 +28,7 @@ use moonlight_common::stream::video::{
 use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
 };
-use moonlight_common::webrtc::MoonlightWebRtcSession;
+use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -70,6 +70,7 @@ use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirecti
 use webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit};
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 
+use crate::api::stream::whep::control::{add_enet_control_channel, add_simple_control_channel};
 use crate::api::stream::whep::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
 use crate::api::stream::whep::dynamic_ice_servers::load_dynamic_ice_servers;
 use crate::api::stream::whep::video::{codec_to_video_format, video_format_to_codec};
@@ -81,10 +82,6 @@ mod control;
 mod convert;
 mod dynamic_ice_servers;
 mod video;
-mod webrtc_wrapper;
-
-// This works very well for testing: https://webrtc.player.eyevinn.technology/?type=whep
-// whep test url, replace appid and hostId: http://localhost:8080/api/host/stream/whep?hostId=4156725524&appid=881448767&mode=1920x1080x60&bitrate=10000
 
 #[options("")]
 pub async fn whep_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
@@ -211,7 +208,7 @@ struct StreamHandler {
     video_sequence_number: AtomicU16,
     video_need_idr: Arc<AtomicBool>,
     peer: Arc<RTCPeerConnection>,
-    client_control_sender: Sender<ControlPacket>,
+    clientbound_control_sender: Sender<ControlPacket>,
 }
 
 #[async_trait]
@@ -282,9 +279,8 @@ impl MoonlightStreamHandler for StreamHandler {
         let mut video_guard = self.video.lock().await;
         let video = video_guard.as_mut().expect("video track");
 
-        // TODO: don't drop the frame, if we drop it -> idr which is bad
         if video.track.all_binding_paused().await {
-            trace!("audio track all binding paused");
+            trace!("video track all binding paused");
             // Don't send any packets when the track is paused because we don't want to increment the sequence number
             return DecodeResult::Ok;
         }
@@ -428,7 +424,7 @@ impl MoonlightStreamHandler for StreamHandler {
             _ => {}
         }
 
-        if let Err(err) = self.client_control_sender.send(packet).await {
+        if let Err(err) = self.clientbound_control_sender.send(packet).await {
             warn!(error = %err, packet = ?err.0, "failed to relay control packet to client");
         }
     }
@@ -462,7 +458,7 @@ pub async fn whep_post(
 
     debug!(req = ?req, session_description = ?session_description, "whep request");
 
-    let session = MoonlightWebRtcSession::from_str(&session_description).unwrap();
+    let session = WebRTCSessionOffer::from_str(&session_description).unwrap();
     debug!(moonlight_session = ?session, "moonlight session extensions", );
 
     let Some(host_id) = session.host_id else {
@@ -673,7 +669,7 @@ pub async fn whep_post(
     // Start moonlight stream
     info!(settings = ?settings, "starting stream");
 
-    let (client_control_sender, mut client_control_receiver) = channel(50);
+    let (clientbound_control_sender, mut clientbound_control_receiver) = channel(50);
 
     let moonlight_handler = StreamHandler {
         audio_track: Default::default(),
@@ -683,7 +679,7 @@ pub async fn whep_post(
         video_need_idr: Default::default(),
         peer: peer.clone(),
         video_formats: supported_video_formats,
-        client_control_sender,
+        clientbound_control_sender,
     };
 
     let config = host
@@ -718,116 +714,22 @@ pub async fn whep_post(
 
     match (supports_control_stream_simple, supports_control_stream_enet) {
         (_, true) => {
-            let control = peer
-                .create_data_channel(
-                    "control",
-                    Some(RTCDataChannelInit {
-                        ordered: Some(false),
-                        max_retransmits: Some(0),
-                        protocol: Some("enet".to_string()),
-                        ..Default::default()
-                    }),
-                )
-                .await
-                .unwrap();
-
-            // TODO
-            // let control_host = ControlHost::new(
-            //     Instant::now(),
-            //     ControlHostConfig {
-            //         peer_channel_count: EnetChannel::CHANNEL_COUNT,
-            //         peer_count: 1,
-            //     },
-            //     DisabledCryptoBackend,
-            // )
-            // .expect("new control host");
-
-            todo!();
+            add_enet_control_channel(
+                &peer,
+                moonlight_stream.clone(),
+                clientbound_control_receiver,
+                &control_config,
+            )
+            .await;
         }
         (true, false) => {
-            let control = peer.create_data_channel("control", None).await.unwrap();
-            debug!("added simple control channel");
-
-            let stream = moonlight_stream.clone();
-
-            // Spawn from client to host relay
-            control.on_message({
-                let control_config = control_config.clone();
-                let stream = stream.clone();
-
-                Box::new(move |message: DataChannelMessage| {
-                    let control_config = control_config.clone();
-                    let stream = stream.clone();
-
-                    Box::pin(async move {
-                        let Some(packet) = ControlPacket::deserialize(
-                            PacketDirection::ServerBound,
-                            &control_config,
-                            &message.data,
-                        ) else {
-                            warn!(packet = ?message.data, "failed to deserialize client packet");
-                            return;
-                        };
-
-                        debug!(packet = ?packet, "relaying packet from client to host");
-
-                        if let Err(err) = stream.send_input_raw(packet).await {
-                            warn!(error = %err, "failed to relay input from client to host");
-                        }
-                    })
-                })
-            });
-
-            // Wait for the channel to open
-            let (on_control_open_sender, on_control_open) = oneshot::channel::<()>();
-            control.on_open({
-                let control = control.clone();
-                Box::new(move || {
-                    let control = control.clone();
-
-                    Box::pin(async move {
-                        let ready_state = control.ready_state();
-                        debug!(ready_state = ?ready_state, "control channel ready state");
-
-                        if ready_state == RTCDataChannelState::Open {
-                            debug!(
-                                "notifying host to client relay that the control channel is open"
-                            );
-                            let _ = on_control_open_sender.send(());
-                        }
-                    })
-                })
-            });
-
-            // Spawn from host to client relay
-            spawn({
-                let control_config = control_config.clone();
-                async move {
-                    let _ = on_control_open.await;
-
-                    while let Some(packet) = client_control_receiver.recv().await
-                        && !matches!(control.ready_state(), RTCDataChannelState::Closed)
-                    {
-                        let mut buffer = [0; _];
-                        let len = match packet.serialize(&control_config, &mut buffer) {
-                            Ok(value) => value,
-                            Err(err) => {
-                                warn!(error = %err, "failed to relay control packet from host to client");
-                                continue;
-                            }
-                        };
-                        let buffer = &buffer[0..len];
-
-                        if let Err(err) = control.send(&Bytes::copy_from_slice(buffer)).await {
-                            warn!(error = %err, "failed to relay control packet from host to client");
-                        }
-                    }
-
-                    debug!("stopping relaying from host to client");
-                }
-            });
-
-            debug!("added events for simple control channel");
+            add_simple_control_channel(
+                &peer,
+                moonlight_stream.clone(),
+                clientbound_control_receiver,
+                &control_config,
+            )
+            .await;
         }
         // TODO: make this to false,false
         (false, false) => {

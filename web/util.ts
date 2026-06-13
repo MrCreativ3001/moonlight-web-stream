@@ -78,3 +78,17 @@ export function numToHex(n: number): string {
     const hex = n.toString(16)
     return hex.length === 1 ? "0" + hex : hex
 }
+
+export function uniffiNow(): bigint {
+    return BigInt(Math.trunc(performance.now() * 1_000_000))
+}
+export function uniffiMillisUntil(until: bigint): number {
+    const now = uniffiNow()
+    const waitTime = until - now
+    if (waitTime <= 0) {
+        return 0
+    } else {
+        // adding 999 will round up to the next millsecond
+        return Number((waitTime + BigInt(999)) / BigInt(1_000_000))
+    }
+}

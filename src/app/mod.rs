@@ -10,8 +10,10 @@ use common::config::Config;
 use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
 use moonlight_common::{
-    crypto::rustcrypto::RustCryptoError, high::MoonlightClientError,
-    http::client::tokio_hyper::TokioHyperClient, stream::tokio::MoonlightStreamError,
+    crypto::rustcrypto::{RustCryptoBackend, RustCryptoError},
+    high::MoonlightClientError,
+    http::{client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
+    stream::tokio::MoonlightStreamError,
 };
 use openssl::error::ErrorStack;
 use thiserror::Error;
@@ -27,6 +29,7 @@ use crate::app::{
         Either, Storage, StorageHostModify, StorageRoleAdd, StorageRoleDefaultSettings,
         StorageRolePermissions, StorageUserAdd, create_storage,
     },
+    stream::{Stream, StreamId},
     user::{Admin, AuthenticatedUser, RoleType, User, UserId},
 };
 
@@ -35,6 +38,7 @@ pub mod host;
 pub mod password;
 pub mod role;
 pub mod storage;
+pub mod stream;
 pub mod user;
 
 #[derive(Debug, Error)]
@@ -59,6 +63,8 @@ pub enum AppError {
     HostNotPaired,
     #[error("the client doesn't support the required codecs")]
     WebRtcClientCodecNotSupported,
+    #[error("the stream was already closed")]
+    StreamClosed,
     // -- Unauthorized
     #[error("the credentials don't exists")]
     CredentialsWrong,
@@ -125,6 +131,9 @@ impl ResponseError for AppError {
             Self::RoleNotFound => {
                 HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("role not found"))
             }
+            Self::StreamClosed => {
+                HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("stream not found"))
+            }
             Self::UserAlreadyExists => HttpResponse::new(StatusCode::CONFLICT),
             Self::CredentialsWrong => HttpResponse::new(StatusCode::UNAUTHORIZED),
             Self::SessionTokenNotFound => HttpResponse::new(StatusCode::UNAUTHORIZED),
@@ -162,6 +171,7 @@ struct AppInner {
     config: Config,
     storage: Arc<dyn Storage + Send + Sync>,
     app_image_cache: RwLock<HashMap<(UserId, HostId, AppId), Bytes>>,
+    streams: RwLock<HashMap<StreamId, Stream>>,
 }
 
 pub type RequestClient = TokioHyperClient;
@@ -176,11 +186,11 @@ impl App {
             storage: create_storage(config.data_storage.clone()).await?,
             config,
             app_image_cache: Default::default(),
+            streams: Default::default(),
         };
+        let inner = Arc::new(app);
 
-        Ok(Self {
-            inner: Arc::new(app),
-        })
+        Ok(Self { inner })
     }
 
     fn new_ref(&self) -> AppRef {
@@ -192,6 +202,33 @@ impl App {
     pub fn config(&self) -> &Config {
         &self.inner.config
     }
+
+    // -- Streams
+
+    async fn insert_stream(&self, f: impl FnOnce(StreamId) -> Stream) -> Result<Stream, AppError> {
+        let mut streams = self.inner.streams.write().await;
+
+        let mut id = StreamId(0);
+        while streams.contains_key(&id) {
+            let mut random = [0; _];
+            RustCryptoBackend.random_bytes(&mut random)?;
+            id = StreamId(u32::from_be_bytes(random));
+        }
+
+        let stream = f(id);
+        streams.insert(id, stream.clone());
+
+        Ok(stream)
+    }
+    pub async fn stream_by_id(&self, id: StreamId) -> Result<Stream, AppError> {
+        let streams = self.inner.streams.read().await;
+
+        let stream = streams.get(&id).ok_or(AppError::StreamClosed)?;
+
+        Ok(stream.clone())
+    }
+
+    // -- Users
 
     /// Handles all logic related to adding the first user:
     /// - Is this even currently allowed?
@@ -406,6 +443,8 @@ impl App {
     pub async fn delete_session(&self, session: SessionToken) -> Result<(), AppError> {
         self.inner.storage.remove_session_token(session).await
     }
+
+    // -- Roles
 
     async fn find_role(
         &self,

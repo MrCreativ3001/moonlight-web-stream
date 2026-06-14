@@ -3,9 +3,8 @@ use std::time::Instant as StdInstant;
 use std::{net::SocketAddr, sync::Arc};
 
 use actix_web::web::Bytes;
-use moonlight_common::ServerVersion;
 use moonlight_common::stream::proto::control::peer::{
-    ControlHostAction, ControlHostEvent, ControlHostOutput, ControlPeerConfig, ControlPeerId, ControlPeerRole
+    ControlHostAction, ControlHostEvent, ControlHostOutput, ControlPeerConfig,  ControlPeerRole
 };
 use moonlight_common::{
     crypto::disabled::DisabledCryptoBackend,
@@ -27,7 +26,7 @@ use tokio::{
     spawn,
     sync::{Notify, mpsc::Receiver, oneshot},
 };
-use tracing::{debug, error, info, warn,trace};
+use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use webrtc::{
     data_channel::{
         data_channel_init::RTCDataChannelInit, data_channel_message::DataChannelMessage,
@@ -119,7 +118,7 @@ pub async fn add_simple_control_channel(
             }
 
             debug!("stopping relaying from host to client");
-        }
+        }.instrument(debug_span!("relay: host to client"))
     });
 
     debug!("added events for simple control channel");
@@ -252,7 +251,7 @@ pub async fn add_enet_control_channel(
             }
 
             debug!("stopping relaying from host to client");
-        }
+        }.instrument(debug_span!("relay: host to client"))
     });
 
     // Spawn ControlHost Driver
@@ -364,6 +363,6 @@ pub async fn add_enet_control_channel(
                     }
                 }
             }
-        }
+        }.instrument(debug_span!("relay: enet driver"))
     });
 }

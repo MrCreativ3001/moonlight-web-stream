@@ -1,7 +1,8 @@
 //! See https://www.ietf.org/archive/id/draft-murillo-whep-03.html
 
 use actix_web::HttpRequest;
-use actix_web::web::{Bytes, Data, Query};
+use actix_web::body::BoxBody;
+use actix_web::web::{Bytes, Data, Path, Query};
 use actix_web::{
     HttpResponse, HttpResponseBuilder, delete, get, http::StatusCode, http::header, options, patch,
     post,
@@ -35,11 +36,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tokio::spawn;
-use tokio::sync::mpsc::{Sender, channel};
+use tokio::sync::mpsc::{self, Sender, channel};
 use tokio::sync::{Mutex, Notify, oneshot};
 use tokio::time::sleep;
-use tracing::{Instrument, debug, info, instrument, trace, warn};
+use tokio::{select, spawn};
+use tracing::{Instrument, debug, debug_span, info, info_span, instrument, trace, warn};
 use webrtc::api::APIBuilder;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_OPUS, MediaEngine};
@@ -76,6 +77,7 @@ use crate::api::stream::whep::dynamic_ice_servers::load_dynamic_ice_servers;
 use crate::api::stream::whep::video::{codec_to_video_format, video_format_to_codec};
 use crate::app::App;
 use crate::app::host::HostId;
+use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
 use crate::app::{AppError, user::AuthenticatedUser};
 
 mod control;
@@ -251,6 +253,7 @@ impl MoonlightStreamHandler for StreamHandler {
                     }
                 }
             }
+            .instrument(debug_span!("video rtcp feedback"))
         });
 
         let payloader = if setup.format.contained_in(VideoFormats::MASK_H264) {
@@ -360,13 +363,16 @@ impl MoonlightStreamHandler for StreamHandler {
         let audio_sender = self.peer.add_track(audio_track.clone()).await.unwrap();
 
         // Feedback
-        spawn(async move {
-            let mut buffer = [0; 1500];
+        spawn(
+            async move {
+                let mut buffer = [0; 1500];
 
-            while let Ok((_packets, _)) = audio_sender.read(&mut buffer).await {
-                // do nothing, because we'll just have to poll packets to dequeue them
+                while let Ok((_packets, _)) = audio_sender.read(&mut buffer).await {
+                    // do nothing, because we'll just have to poll packets to dequeue them
+                }
             }
-        });
+            .instrument(debug_span!("audio rtcp feedback")),
+        );
 
         {
             let mut audio_guard = self.audio_track.lock().await;
@@ -739,16 +745,28 @@ pub async fn whep_post(
 
     // -- Register webrtc peer listeners
     peer.on_peer_connection_state_change(Box::new({
+        let peer = peer.clone();
         let moonlight_stream = moonlight_stream.clone();
 
         move |state: RTCPeerConnectionState| {
+            let peer = peer.clone();
             let moonlight_stream = moonlight_stream.clone();
 
             Box::pin(async move {
-                if matches!(state, RTCPeerConnectionState::Failed) {
+                if matches!(
+                    state,
+                    RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
+                ) {
                     info!("stopping stream because the webrtc peer state is failed");
 
                     moonlight_stream.stop().await;
+                }
+                if matches!(state, RTCPeerConnectionState::Failed) {
+                    info!("closing webrtc peer because the peer connection state is failed");
+
+                    if let Err(err) = peer.close().await {
+                        warn!(error = %err, "failed to close webrtc peer");
+                    }
                 }
             })
         }
@@ -774,25 +792,95 @@ pub async fn whep_post(
 
     info!("ice gathering completed, sending answer to client");
 
+    let (event_sender, mut event_receiver) = mpsc::channel(20);
+    let stream = match Stream::new(&app, &user, event_sender).await {
+        Ok(value) => value,
+        Err(err) => {
+            // TODO: cleanup the stream
+
+            return Err(err);
+        }
+    };
+    let stream_id = stream.id();
+    debug!(stream_id = ?stream_id, "registered stream inside of the app");
+
+    spawn({
+        let peer = peer.clone();
+
+        async move {
+            loop {
+                let event = select! {
+                    _ = sleep(Duration::from_secs(10)) => {
+                        // Check if the connection was closed
+                        if matches!(peer.connection_state(), RTCPeerConnectionState::Closed) {
+                            // Close this thread -> drops receiver -> the stream will be cleaned up on the app
+                            return;
+                        }
+
+                        continue;
+                    }
+                    event = event_receiver.recv() => event
+                };
+                let Some(event) = event else {
+                    // The channel was closed, shouldn't happen
+                    warn!("the external event receiver was closed");
+                    return;
+                };
+
+                match event {
+                    ExternalStreamEvent::WHEPAddIceCandidate {} => {
+                        todo!();
+                    }
+                    ExternalStreamEvent::Stop => {
+                        info!("closing the stream");
+
+                        if let Err(err) = peer.close().await {
+                            warn!(error = %err, "error whilst closing the webrtc peer");
+                        }
+                    }
+                }
+            }
+        }
+        .instrument(debug_span!("external event handler", stream_id = ?stream_id))
+    });
+
     debug!(answer = ?answer, "sending answer to client");
 
     Ok(HttpResponse::Created()
         // TODO: add session location
         // TODO: add ice servers / configuration, see whep
-        .insert_header(("Location", "/api/host/stream/whep/SESSION"))
+        .insert_header(("Location", format!("/api/host/stream/whep/{}", stream_id.0)))
         .content_type("application/sdp")
         .body(answer.sdp))
 }
 
-#[patch("")]
-pub async fn whep_patch(user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
+#[patch("/{stream_id}")]
+pub async fn whep_patch(
+    app: Data<App>,
+    user: AuthenticatedUser,
+    stream_id: Path<u32>,
+) -> Result<HttpResponse, AppError> {
     // TODO: implement trickle ice
 
     todo!()
 }
 
-#[delete("")]
-#[instrument(skip(user), fields(user = %user.id()))]
-pub async fn whep_delete(user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
-    todo!()
+#[delete("/{stream_id}")]
+#[instrument(skip(app, user), fields(user = %user.id()))]
+pub async fn whep_delete(
+    app: Data<App>,
+    mut user: AuthenticatedUser,
+    stream_id: Path<u32>,
+) -> Result<HttpResponse, AppError> {
+    let stream_id = StreamId(stream_id.into_inner());
+
+    let stream = app.stream_by_id(stream_id).await?;
+
+    stream
+        .send_event(&mut user, ExternalStreamEvent::Stop)
+        .await?;
+
+    Ok(HttpResponse::Ok()
+        .finish()
+        .set_body(BoxBody::new("stream not found")))
 }

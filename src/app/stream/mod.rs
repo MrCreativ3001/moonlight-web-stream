@@ -11,7 +11,9 @@ use crate::app::{
 };
 
 pub enum ExternalStreamEvent {
-    WHEPAddIceCandidate {},
+    WHEPAddIceCandidate {
+        ice_sdp_frag: String,
+    },
     Stop,
 }
 

@@ -1,4 +1,4 @@
-import { WHEPResponse } from "../../api.js";
+import { Api, apiWHEPIceSdpFrag, WHEPResponse } from "../../api.js";
 import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, ControlStreamInput, ControlStreamOutput_Tags, InputBatcher, PacketDirection, ServerType, VideoFormats, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject, uniffiMillisUntil, uniffiNow, wait } from "../../util.js";
 import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
@@ -31,13 +31,17 @@ export class WebRTCTransport implements Transport {
     onclose: ((shutdown: TransportShutdown) => void) | null = null
 
     private logger?: Logger
+    private api: Api
 
     private peer = new RTCPeerConnection()
 
-    constructor(logger?: Logger) {
+    constructor(api: Api, logger?: Logger) {
         this.logger = logger
 
+        this.api = api
+
         // Set Event Listeners
+        this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
         this.peer.addEventListener("connectionstatechange", this.onStateChange.bind(this))
         this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
         this.peer.addEventListener("track", this.onTrack.bind(this))
@@ -51,6 +55,7 @@ export class WebRTCTransport implements Transport {
     }
 
     private sdpOfferOptions: WebRtcSessionOffer | null = null
+    private sessionLocation: string | null = null
 
     async createOffer(options: WebRTCWHEPOptions): Promise<string> {
         this.logger?.debug("creating webrtc offer")
@@ -81,9 +86,12 @@ export class WebRTCTransport implements Transport {
 
         this.logger?.debug(`received whep response with location "${response.location}" ice servers ${response.iceServers.flatMap(server => server.urls).concat(",")}`)
 
+        this.sessionLocation = response.location
+
         const answer = webrtcSessionAnswerParse(response.answerSdp)
         this.logger?.debug(`server responded with extensions ${JSON.stringify(answer)}`)
 
+        // Restart ice using the new configuratin
         this.peer.setConfiguration({
             iceServers: response.iceServers,
         })
@@ -150,6 +158,29 @@ export class WebRTCTransport implements Transport {
                 this.onclose(shutdown)
             }
         }
+    }
+
+    // -- Trickle ice
+    private candidates: Array<RTCIceCandidate> = []
+    private onIceCandidate(event: RTCPeerConnectionIceEvent) {
+        if (event.candidate) {
+            this.candidates.push(event.candidate)
+        } else {
+            this.sendIceCandidates()
+        }
+    }
+
+    private async sendIceCandidates() {
+        if (!this.sessionLocation || !this.peer.localDescription) {
+            return
+        }
+
+        const sdpFrag = buildTrickleIceFragment(this.peer.localDescription.sdp, this.candidates)
+        console.debug("built sdp fragment for patch", sdpFrag)
+
+        this.candidates = []
+
+        await apiWHEPIceSdpFrag(this.api, this.sessionLocation, sdpFrag)
     }
 
     // -- Control Stream / Media
@@ -495,4 +526,62 @@ class WebRtcControlStream implements IControlStream {
             break
         }
     }
+}
+
+function buildTrickleIceFragment(sdp: string, candidates: Array<RTCIceCandidate>): string {
+    const sdpLines = sdp.split(/\r?\n/)
+
+    const mids = new Map<
+        string,
+        { media: string, candidates: Array<RTCIceCandidate> }
+    >()
+
+    // Extract ufrag and pwd
+    const ufrag = sdpLines.find(line => line.startsWith("a=ice-ufrag:"))
+    const pwd = sdpLines.find(line => line.startsWith("a=ice-pwd:"))
+
+    // Find out the media lines of each mid
+    let currentMediaLine = null
+    for (const line of sdpLines) {
+        if (line.startsWith("m=")) {
+            currentMediaLine = line
+        } else if (line.startsWith("a=mid:") && currentMediaLine) {
+            const mid = line.substring("a=mid:".length)
+
+            mids.set(mid, {
+                media: currentMediaLine,
+                candidates: []
+            })
+        }
+    }
+
+    // Add candidates to mid
+    for (const candidate of candidates) {
+        const mid = candidate.sdpMid
+
+        if (!mid || !mids.has(mid)) {
+            continue
+        }
+
+        mids.get(mid)?.candidates.push(candidate)
+    }
+
+    // -- Build fragment
+    let fragment = ""
+
+    // Add ufrag and pwd
+    fragment += ufrag + '\r\n'
+    fragment += pwd + '\r\n'
+
+    // Add candidates by media line
+    for (const [mid, { media, candidates }] of mids) {
+        fragment += media + '\r\n'
+        fragment += `a=mid:${mid}\r\n`
+
+        for (const candidate of candidates) {
+            fragment += `a=${candidate.candidate}\r\n`
+        }
+    }
+
+    return fragment
 }

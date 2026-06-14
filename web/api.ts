@@ -84,12 +84,13 @@ export type Api = {
 }
 
 export type ApiFetchInit = {
+    noUrlModify?: boolean,
     query?: any,
     noTimeout?: boolean,
 } & (
         { json?: any, }
-        |
-        { sdp?: string }
+        | { sdp?: string }
+        | { trickleIceSdpFrag?: string }
     )
 
 export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
@@ -109,7 +110,12 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
     }
     const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-    const url = `${api.host_url}${endpoint}${queryString}`
+    let url
+    if (init?.noUrlModify) {
+        url = `${endpoint}${queryString}`
+    } else {
+        url = `${api.host_url}${endpoint}${queryString}`
+    }
 
     const headers: any = {
     };
@@ -120,12 +126,15 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
 
     let body = null
     if (init) {
-        if ("sdp" in init) {
-            headers["Content-Type"] = "application/sdp"
-            body = init.sdp
-        } else if ("json" in init) {
+        if ("json" in init) {
             headers["Content-Type"] = "application/json"
             body = JSON.stringify(init.json)
+        } else if ("sdp" in init) {
+            headers["Content-Type"] = "application/sdp"
+            body = init.sdp
+        } else if ("trickleIceSdpFrag" in init) {
+            headers["Content-Type"] = "application/trickle-ice-sdpfrag"
+            body = init.trickleIceSdpFrag
         }
     }
 
@@ -509,6 +518,8 @@ function parseLinkHeader(value: string): RTCIceServer | null {
 function parseWHEPExtensionHeader(
     value: string,
 ): { uri: string; params: Record<string, string> } {
+    // See https://www.rfc-editor.org/info/rfc8288/#appendix-B
+
     const parts = value.split(";").map(p => p.trim());
 
     const uriPart = parts.shift();
@@ -549,4 +560,12 @@ function parseWHEPExtensionHeader(
     }
 
     return { uri, params };
+}
+
+export async function apiWHEPIceSdpFrag(api: Api, location: string, sdpFrag: string) {
+    await fetchApi(api, location, PATCH, {
+        noUrlModify: true,
+        response: "ignore",
+        trickleIceSdpFrag: sdpFrag,
+    })
 }

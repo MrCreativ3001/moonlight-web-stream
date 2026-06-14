@@ -1,13 +1,10 @@
-import { StreamCapabilities, TransportChannelId } from "../../api_bindings.js"
+import { StreamCapabilities } from "../../api_bindings.js"
 import { ClientInputEvent, ControlPacket } from "../../uniffi/moonlight_common_bindings.js"
 import { AudioPlayer, AudioPlayerSetup, TrackAudioPlayer } from "../audio/index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { StatValue } from "../stats.js"
 import { VideoCodecSupport } from "../video.js"
 import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index.js"
-
-export type TransportChannelIdKey = keyof typeof TransportChannelId
-export type TransportChannelIdValue = typeof TransportChannelId[TransportChannelIdKey]
 
 export type TransportVideoType = "videotrack" // TrackTransportChannel
     | "data" // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298

@@ -1,4 +1,4 @@
-import { Api, apiWHEPOffer } from "../api.js"
+import { Api, apiWebRTCOffer } from "../api.js"
 import { App, StreamCapabilities, StreamPermissions, } from "../api_bindings.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
@@ -11,7 +11,7 @@ import { Logger, LogMessageInfo } from "./log.js"
 import { gatherPipeInfo } from "./pipeline/index.js"
 import { StreamStats } from "./stats.js"
 import { Transport, TransportAudioType, TransportConnectData, TransportShutdown, TransportVideoType } from "./transport/index.js"
-import { WebRTCTransport } from "./transport/whep.js"
+import { WebRTCTransport } from "./transport/webrtc.js"
 import { allVideoCodecs, emptyVideoCodecs, hasAnyCodec, VideoCodecSupport } from "./video.js"
 import { VideoRenderer } from "./video/index.js"
 import { buildVideoPipeline, VideoPipelineOptions } from "./video/pipeline.js"
@@ -198,7 +198,7 @@ export class Stream implements Component {
         this.debugLog("Trying WebRTC transport")
 
         // Create and configure transport
-        const transport = new WebRTCTransport(this.logger)
+        const transport = new WebRTCTransport(this.api, this.logger)
         transport.controlStream.onreceive = this.boundReceivePacket
 
         const onConnect = new Promise<TransportConnectData>(resolve => {
@@ -217,7 +217,7 @@ export class Stream implements Component {
         }
 
         try {
-            // Create WHEP offer
+            // Create offer
             const offer = await transport.createOffer({
                 hostId: this.hostId,
                 appId: this.appId,
@@ -231,9 +231,9 @@ export class Stream implements Component {
             })
 
             // Send Request
-            this.debugLog("Sending WHEP Offer and waiting for Answer")
-            const answer = await apiWHEPOffer(this.api, offer)
-            this.debugLog("Got WHEP Response")
+            this.debugLog("Sending Offer and waiting for Answer")
+            const answer = await apiWebRTCOffer(this.api, offer)
+            this.debugLog("Got Response")
 
             // Apply answer
             await transport.setAnswer(answer)

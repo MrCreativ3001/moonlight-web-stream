@@ -11,7 +11,7 @@ use crate::app::{
 };
 
 pub enum ExternalStreamEvent {
-    WHEPAddIceCandidate {
+    WebRTCAddIceCandidate {
         ice_sdp_frag: String,
     },
     Stop,

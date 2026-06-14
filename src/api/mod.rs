@@ -1,9 +1,8 @@
 use actix_web::{
-    dev::{HttpServiceFactory, Service, ServiceResponse},
-    http::header::{self, HeaderValue},
+    dev::HttpServiceFactory,
     middleware::from_fn,
     services,
-    web::{self, Header},
+    web::{self},
 };
 
 use crate::api::{
@@ -14,7 +13,7 @@ use crate::api::{
     },
     role::{add_role, delete_role, get_role, list_roles, patch_role},
     settings::{get_default_settings, get_permissions},
-    stream::whep::{whep_delete, whep_get, whep_options, whep_patch, whep_post},
+    stream::webrtc::{webrtc_delete, webrtc_get, webrtc_options, webrtc_patch, webrtc_post},
     user::{add_user, delete_user, get_user, list_users, patch_user},
 };
 
@@ -76,26 +75,11 @@ pub fn api_service() -> impl HttpServiceFactory {
         ])
         .service(
             // -- Stream
-            web::scope("/host/stream/whep")
-                .wrap_fn(|req, service| {
-                    let fut = service.call(req);
-                    async {
-                        let mut res = fut.await?;
-
-                        // Allow access for other browser based services to call the whep apis
-                        let headers = res.response_mut().headers_mut();
-                        headers.append(
-                            header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                            HeaderValue::from_static("*"),
-                        );
-
-                        Ok(res)
-                    }
-                })
-                .service(whep_options)
-                .service(whep_get)
-                .service(whep_post)
-                .service(whep_patch)
-                .service(whep_delete),
+            web::scope("/host/stream/webrtc")
+                .service(webrtc_options)
+                .service(webrtc_get)
+                .service(webrtc_post)
+                .service(webrtc_patch)
+                .service(webrtc_delete),
         )
 }

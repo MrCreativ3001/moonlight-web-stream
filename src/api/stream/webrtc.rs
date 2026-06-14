@@ -1,5 +1,3 @@
-//! See https://www.ietf.org/archive/id/draft-murillo-whep-03.html
-
 use actix_web::body::BoxBody;
 use actix_web::web::{Bytes, Data, Path, Query};
 use actix_web::{HttpMessage, HttpRequest};
@@ -73,10 +71,10 @@ use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirecti
 use webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit};
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 
-use crate::api::stream::whep::control::{add_enet_control_channel, add_simple_control_channel};
-use crate::api::stream::whep::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
-use crate::api::stream::whep::dynamic_ice_servers::load_dynamic_ice_servers;
-use crate::api::stream::whep::video::{codec_to_video_format, video_format_to_codec};
+use crate::api::stream::webrtc::control::{add_enet_control_channel, add_simple_control_channel};
+use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
+use crate::api::stream::webrtc::dynamic_ice_servers::load_dynamic_ice_servers;
+use crate::api::stream::webrtc::video::{codec_to_video_format, video_format_to_codec};
 use crate::app::App;
 use crate::app::host::HostId;
 use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
@@ -88,9 +86,7 @@ mod dynamic_ice_servers;
 mod video;
 
 #[options("")]
-pub async fn whep_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
-    // https://www.ietf.org/archive/id/draft-murillo-whep-03.html#section-4-10
-
+pub async fn webrtc_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
     Ok(HttpResponseBuilder::new(StatusCode::OK)
         // allow making requests for websites / services
         .insert_header((
@@ -109,7 +105,7 @@ pub async fn whep_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppE
 }
 
 #[get("")]
-pub async fn whep_get() -> HttpResponse {
+pub async fn webrtc_get() -> HttpResponse {
     HttpResponseBuilder::new(StatusCode::METHOD_NOT_ALLOWED).finish()
 }
 
@@ -448,7 +444,7 @@ impl MoonlightStreamHandler for StreamHandler {
 
 #[post("")]
 #[instrument(skip(app, user, req, session_description), fields(user = %user.id()))]
-pub async fn whep_post(
+pub async fn webrtc_post(
     app: Data<App>,
     mut user: AuthenticatedUser,
     req: HttpRequest,
@@ -464,7 +460,7 @@ pub async fn whep_post(
         return Err(AppError::Forbidden);
     }
 
-    debug!(req = ?req, session_description = ?session_description, "whep request");
+    debug!(req = ?req, session_description = ?session_description, "webrtc request");
 
     let session = WebRTCSessionOffer::from_str(&session_description).unwrap();
     debug!(moonlight_session = ?session, "moonlight session extensions", );
@@ -529,7 +525,6 @@ pub async fn whep_post(
     // Load dynamic ice servers and append them to the current ice servers
     let dynamic_ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
     ice_servers.extend_from_slice(&dynamic_ice_servers);
-    // TODO: turn / stun creds: https://www.ietf.org/archive/id/draft-murillo-whep-03.html#section-4.4
 
     // Interceptor Registry
     let interceptor_registry =
@@ -830,7 +825,7 @@ pub async fn whep_post(
                 };
 
                 match event {
-                    ExternalStreamEvent::WHEPAddIceCandidate { ice_sdp_frag } => {
+                    ExternalStreamEvent::WebRTCAddIceCandidate { ice_sdp_frag } => {
                         let session = match Session::parse(ice_sdp_frag.as_bytes()) {
                             Ok(value) => value,
                             Err(err) => {
@@ -872,34 +867,13 @@ pub async fn whep_post(
 
     // Set location
     let path_prefix = &app.config().web_server.url_path_prefix;
-    response.insert_header(("Location", format!("{path_prefix}/api/host/stream/whep/{}", stream_id.0)));
-
-    // Add ice servers
-        // See https://datatracker.ietf.org/doc/html/draft-ietf-wish-whip-13#name-stun-turn-server-configurat
-    for ice_server in &ice_servers {
-        let username = quote(&ice_server.username);
-        let credential = quote(&ice_server.credential);
-
-        for url in &ice_server.urls {
-            let value = if !username.is_empty() {
-                format!("<{url}>; rel=\"ice-server\"; username=\"{username}\"; credential=\"{credential}\"; credential-type=\"password\"")
-            } else {
-                format!("<{url}>; rel=\"ice-server\"")
-            };
-
-            response.append_header((header::LINK, value));
-        }
-    }
+    response.insert_header(("Location", format!("{path_prefix}/api/host/stream/webrtc/{}", stream_id.0)));
 
     Ok(response.content_type("application/sdp").body(answer.sdp))
 }
 
-fn quote(text: &str) -> String{
-    text.replace("\\", "\\\\").replace('"', "\\\"")
-}
-
 #[patch("/{stream_id}")]
-pub async fn whep_patch(
+pub async fn webrtc_patch(
     app: Data<App>,
     mut user: AuthenticatedUser,
     stream_id: Path<u32>,
@@ -916,8 +890,6 @@ pub async fn whep_patch(
                 .map(|x| x.starts_with("application/trickle-ice-sdpfrag"))
                 .unwrap_or(false) =>
         {
-            // See https://datatracker.ietf.org/doc/html/draft-ietf-wish-whep-01#name-http-patch-request-usage
-
             // Don't support ice restarts
             // -> ICE restart requests use If-Match: *
             if let Some("*") = request
@@ -930,7 +902,7 @@ pub async fn whep_patch(
                 stream
                     .send_event(
                         &mut user,
-                        ExternalStreamEvent::WHEPAddIceCandidate { ice_sdp_frag: body },
+                        ExternalStreamEvent::WebRTCAddIceCandidate { ice_sdp_frag: body },
                     )
                     .await?;
 
@@ -943,7 +915,7 @@ pub async fn whep_patch(
 
 #[delete("/{stream_id}")]
 #[instrument(skip(app, user), fields(user = %user.id()))]
-pub async fn whep_delete(
+pub async fn webrtc_delete(
     app: Data<App>,
     mut user: AuthenticatedUser,
     stream_id: Path<u32>,

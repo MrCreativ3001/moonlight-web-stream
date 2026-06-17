@@ -31,20 +31,31 @@ export class WebRTCTransport implements Transport {
     onclose: ((shutdown: TransportShutdown) => void) | null = null
 
     private logger?: Logger
-    private api: Api
 
-    private peer = new RTCPeerConnection()
+    private peer: RTCPeerConnection
+    private onIceGatheringComplete: Promise<void>
 
-    constructor(api: Api, logger?: Logger) {
+    constructor(configuration: RTCConfiguration, logger?: Logger) {
         this.logger = logger
 
-        this.api = api
+        // Create peer
+        this.peer = new RTCPeerConnection(configuration)
+
+        this.logger?.debug(`Using ice servers ${JSON.stringify(configuration.iceServers?.flatMap(server => server.urls))}`)
 
         // Set Event Listeners
-        this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
         this.peer.addEventListener("connectionstatechange", this.onStateChange.bind(this))
         this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
         this.peer.addEventListener("track", this.onTrack.bind(this))
+
+        // Ice Gathering
+        this.onIceGatheringComplete = new Promise(resolve => {
+            this.peer.addEventListener("icegatheringstatechange", () => {
+                if (this.peer.iceGatheringState == "complete") {
+                    resolve()
+                }
+            })
+        })
 
         // Add Media
         this.peer.addTransceiver("video", { direction: "recvonly" })
@@ -55,12 +66,11 @@ export class WebRTCTransport implements Transport {
     }
 
     private sdpOfferOptions: WebRtcSessionOffer | null = null
-    private sessionLocation: string | null = null
 
     async createOffer(options: WebRTCWHEPOptions): Promise<string> {
         this.logger?.debug("creating webrtc offer")
 
-        const offer = await this.peer.createOffer()
+        let offer = await this.peer.createOffer()
         if (offer.type != "offer") {
             throw `WHEP offer is of type ${offer.type}`
         }
@@ -68,9 +78,13 @@ export class WebRTCTransport implements Transport {
         this.logger?.debug("setting webrtc local description")
         await this.peer.setLocalDescription(offer)
 
+        // Wait for ice gathering to finish and create sdp with those ice candidates
+        this.logger?.debug("Waiting for ice gathering to finish")
+        await this.onIceGatheringComplete
+        offer.sdp = this.peer.localDescription?.sdp
+
         // Insert custom options
         this.sdpOfferOptions = {
-            controlSimple: true,
             controlEnet: true,
             ...options
         }
@@ -85,8 +99,6 @@ export class WebRTCTransport implements Transport {
         console.debug("Server Sdp", JSON.stringify(response))
 
         this.logger?.debug(`received whep response with location "${response.location}"`)
-
-        this.sessionLocation = response.location
 
         const answer = webrtcSessionAnswerParse(response.answerSdp)
         this.logger?.debug(`server responded with extensions ${JSON.stringify(answer)}`)
@@ -155,31 +167,13 @@ export class WebRTCTransport implements Transport {
         }
     }
 
-    // -- Trickle ice
-    private candidates: Array<RTCIceCandidate> = []
-    private onIceCandidate(event: RTCPeerConnectionIceEvent) {
-        if (event.candidate) {
-            this.candidates.push(event.candidate)
-        } else {
-            this.sendIceCandidates()
-        }
-    }
-
-    private async sendIceCandidates() {
-        if (!this.sessionLocation || !this.peer.localDescription) {
-            return
-        }
-
-        // TODO
-    }
-
     // -- Control Stream / Media
     private onDataChannel(event: RTCDataChannelEvent) {
         const channel = event.channel
 
         this.logger?.debug(`received data channel with label: ${channel.label}, protocol: ${channel.protocol}`)
 
-        if (channel.label == "control") {
+        if (channel.label == "moonlight.control") {
             const config = controlPacketConfigNew(
                 { major: 7, minor: 0, patch: 0, sunshineIdentifier: -1, serverType: ServerType.Sunshine },
                 true

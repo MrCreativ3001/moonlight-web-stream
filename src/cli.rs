@@ -4,9 +4,12 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand};
-use common::config::{
-    Config, ConfigSsl, ForwardedHeaders, PortRange, RtcIceServer, WebRtcNat1To1IceCandidateType,
-    WebRtcNat1To1Mapping, WebRtcNetworkType,
+use common::{
+    api_bindings::RtcIceServer,
+    config::{
+        Config, ConfigSsl, ForwardedHeaders, PortRange, WebRtcNat1To1IceCandidateType,
+        WebRtcNat1To1Mapping, WebRtcNetworkType,
+    },
 };
 use log::LevelFilter;
 

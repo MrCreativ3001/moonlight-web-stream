@@ -4,6 +4,8 @@ use serde::Serialize;
 
 use crate::api_bindings::{StreamPermissions, StreamSettings};
 
+// TODO: fully remove this crate and move it into the main binary
+
 pub mod api_bindings;
 pub mod api_bindings_ext;
 pub mod config;

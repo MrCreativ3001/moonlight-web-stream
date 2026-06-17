@@ -1,4 +1,7 @@
-use common::config::{RtcIceServer, WebRtcNat1To1IceCandidateType, WebRtcNetworkType};
+use common::{
+    api_bindings::RtcIceServer,
+    config::{WebRtcNat1To1IceCandidateType, WebRtcNetworkType},
+};
 use webrtc::{
     ice::network_type::NetworkType,
     ice_transport::{ice_candidate_type::RTCIceCandidateType, ice_server::RTCIceServer},

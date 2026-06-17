@@ -1,4 +1,4 @@
-import { Api, apiWebRTCOffer } from "../api.js"
+import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api.js"
 import { App, StreamCapabilities, StreamPermissions, } from "../api_bindings.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
@@ -197,8 +197,15 @@ export class Stream implements Component {
 
         this.debugLog("Trying WebRTC transport")
 
-        // Create and configure transport
-        const transport = new WebRTCTransport(this.api, this.logger)
+        // Get configuration
+        const config = await apiWebRTCConfiguration(this.api)
+
+        this.debugLog("Received WebRTC Config, Creating Transport")
+
+        // Create transport
+        const transport = new WebRTCTransport({
+            iceServers: config.ice_servers,
+        }, this.logger)
         transport.controlStream.onreceive = this.boundReceivePacket
 
         const onConnect = new Promise<TransportConnectData>(resolve => {

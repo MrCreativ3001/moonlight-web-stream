@@ -1,3 +1,5 @@
+use std::fmt::{self, Display};
+
 use moonlight_common::{
     ServerState,
     stream::video::{ColorSpace, VideoFormats},
@@ -378,6 +380,36 @@ pub struct GetRolesResponse {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct StreamCapabilities {
     pub touch: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct RtcIceServer {
+    #[serde(skip)]
+    pub is_default: bool,
+    pub urls: Vec<String>,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub credential: String,
+}
+
+impl Display for RtcIceServer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "urls=[{}], username=\"{}\", credential=\"{}\"",
+            self.urls.join(", "),
+            self.username,
+            self.credential,
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetWebRTCConfigurationResponse {
+    pub ice_servers: Vec<RtcIceServer>,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

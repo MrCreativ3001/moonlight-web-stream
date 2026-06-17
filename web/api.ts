@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole } from "./api_bindings.js";
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, GetWebRTCConfigurationResponse } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -90,7 +90,6 @@ export type ApiFetchInit = {
 } & (
         { json?: any, }
         | { sdp?: string }
-        | { trickleIceSdpFrag?: string }
     )
 
 export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
@@ -132,9 +131,6 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
         } else if ("sdp" in init) {
             headers["Content-Type"] = "application/sdp"
             body = init.sdp
-        } else if ("trickleIceSdpFrag" in init) {
-            headers["Content-Type"] = "application/trickle-ice-sdpfrag"
-            body = init.trickleIceSdpFrag
         }
     }
 
@@ -443,9 +439,13 @@ export async function apiHostCancel(api: Api, request: PostCancelRequest): Promi
     return response as PostCancelResponse
 }
 
+export async function apiWebRTCConfiguration(api: Api): Promise<GetWebRTCConfigurationResponse> {
+    return await fetchApi(api, "/host/stream/webrtc", GET)
+}
+
 export type WebRTCAnswer = {
     answerSdp: string,
-    location: string,
+    location: string | null,
 }
 
 export async function apiWebRTCOffer(api: Api, offerSdp: string): Promise<WebRTCAnswer> {
@@ -469,16 +469,12 @@ export async function apiWebRTCOffer(api: Api, offerSdp: string): Promise<WebRTC
     // Get sdp
     const answerSdp = await response.text()
 
-    // Parse ice servers from response
+    // get location, if set
     let location = null
     for (const [name, value] of response.headers) {
         if (name.trim().toLowerCase() == "location") {
             location = value
         }
-    }
-
-    if (location == null) {
-        throw "WebRTC response didn't contain a \"Location\" header"
     }
 
     return {

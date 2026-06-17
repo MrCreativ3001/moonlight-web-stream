@@ -1,12 +1,13 @@
 use actix_web::body::BoxBody;
-use actix_web::web::{Bytes, Data, Path, Query};
+use actix_web::web::{Bytes, Data, Json, Path, Query};
 use actix_web::{HttpMessage, HttpRequest};
 use actix_web::{
     HttpResponse, HttpResponseBuilder, delete, get, http::StatusCode, http::header, options, patch,
     post,
 };
 use async_trait::async_trait;
-use common::config::{PortRange, RtcIceServer};
+use common::api_bindings::{GetWebRTCConfigurationResponse, RtcIceServer};
+use common::config::{PortRange};
 use moonlight_common::ServerVersion;
 use moonlight_common::crypto::disabled::DisabledCryptoBackend;
 use moonlight_common::crypto::rustcrypto::RustCryptoBackend;
@@ -71,6 +72,7 @@ use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirecti
 use webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit};
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 
+use crate::api::stream::create_control_packet_config;
 use crate::api::stream::webrtc::control::{add_enet_control_channel, add_simple_control_channel};
 use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
 use crate::api::stream::webrtc::dynamic_ice_servers::load_dynamic_ice_servers;
@@ -88,25 +90,26 @@ mod video;
 #[options("")]
 pub async fn webrtc_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
     Ok(HttpResponseBuilder::new(StatusCode::OK)
-        // allow making requests for websites / services
-        .insert_header((
-            header::ACCESS_CONTROL_ALLOW_METHODS,
-            "OPTIONS, GET, POST, PATCH, DELETE",
-        ))
-        .insert_header((header::ACCESS_CONTROL_ALLOW_HEADERS, "*"))
-        .insert_header((
-            header::ACCESS_CONTROL_REQUEST_HEADERS,
-            "Content-Type, Authorization",
-        ))
-        .insert_header((header::ACCESS_CONTROL_EXPOSE_HEADERS, "Location"))
-        // Insert accept post, like the spec says
         .append_header(("Accept-Post", "application/sdp"))
         .finish())
 }
 
+async fn generate_ice_servers(app: &App) -> Result<Vec<RtcIceServer>, AppError> {
+    // Load ice servers
+    let mut ice_servers = app.config().webrtc.ice_servers.clone();
+
+    // Load dynamic ice servers and append them to the current ice servers
+    let dynamic_ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
+    ice_servers.extend_from_slice(&dynamic_ice_servers);
+
+    Ok( ice_servers )
+}
+
 #[get("")]
-pub async fn webrtc_get() -> HttpResponse {
-    HttpResponseBuilder::new(StatusCode::METHOD_NOT_ALLOWED).finish()
+pub async fn webrtc_get(app: Data<App>,_user: AuthenticatedUser) -> Result<Json<GetWebRTCConfigurationResponse>, AppError> {
+    let ice_servers= generate_ice_servers(&app).await?;
+
+    Ok(Json(GetWebRTCConfigurationResponse { ice_servers}))
 }
 
 fn opus_codec() -> RTCRtpCodecCapability {
@@ -481,10 +484,6 @@ pub async fn webrtc_post(
     // Create offer based on the sdp
     let offer = RTCSessionDescription::offer(session_description).unwrap();
 
-    // Look for supported Moonlight extensions
-    let mut supports_control_stream_simple = session.control_simple;
-    let mut supports_control_stream_enet = session.control_enet;
-
     // -- Create WebRtc peer
     // Create settings
     let mut setting_engine = SettingEngine::default();
@@ -519,12 +518,7 @@ pub async fn webrtc_post(
     // Create media engine
     let mut media_engine = create_media_engine();
 
-    // Load ice servers
-    let mut ice_servers = app.config().webrtc.ice_servers.clone();
-
-    // Load dynamic ice servers and append them to the current ice servers
-    let dynamic_ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
-    ice_servers.extend_from_slice(&dynamic_ice_servers);
+    let  ice_servers = generate_ice_servers(&app).await?;
 
     // Interceptor Registry
     let interceptor_registry =
@@ -712,11 +706,9 @@ pub async fn webrtc_post(
     info!("started moonlight stream");
 
     // -- Create control channel based on support
-    let control_config = ControlPacketConfig::new(ServerVersion::new(7, 0, 0, 0), true)
-        .expect("control packet config");
+    let control_config = create_control_packet_config();
 
-    match (supports_control_stream_simple, supports_control_stream_enet) {
-        (_, true) => {
+    if session.control_enet {
             add_enet_control_channel(
                 &peer,
                 moonlight_stream.clone(),
@@ -724,8 +716,7 @@ pub async fn webrtc_post(
                 &control_config,
             )
             .await;
-        }
-        (true, false) => {
+    } else {
             add_simple_control_channel(
                 &peer,
                 moonlight_stream.clone(),
@@ -733,12 +724,7 @@ pub async fn webrtc_post(
                 &control_config,
             )
             .await;
-        }
-        // TODO: make this to false,false
-        (false, false) => {
-            // do nothing because the peer doesn't support control channel
-        }
-    };
+    }
 
     // -- Register webrtc peer listeners
     peer.on_peer_connection_state_change(Box::new({

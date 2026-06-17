@@ -41,7 +41,7 @@ pub async fn add_simple_control_channel(
     mut clientbound_control_receiver: Receiver<ControlPacket>,
     control_config: &ControlPacketConfig,
 ) {
-    let control = peer.create_data_channel("control", None).await.unwrap();
+    let control = peer.create_data_channel("moonlight.control", None).await.unwrap();
     debug!("added simple control channel");
 
     let stream = moonlight_stream.clone();
@@ -132,7 +132,7 @@ pub async fn add_enet_control_channel(
 ) {
     let control = peer
         .create_data_channel(
-            "control",
+            "moonlight.control",
             Some(RTCDataChannelInit {
                 ordered: Some(false),
                 max_retransmits: Some(0),
@@ -186,7 +186,7 @@ pub async fn add_enet_control_channel(
                     addr,
                     data: &message.data,
                 }) {
-                    warn!(error = %err, "failed to call handle_input with Receive on ControlHost");
+                    warn!(error = ?err, "failed to call handle_input with Receive on ControlHost");
                 }
                 }
 

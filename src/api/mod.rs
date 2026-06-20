@@ -13,7 +13,10 @@ use crate::api::{
     },
     role::{add_role, delete_role, get_role, list_roles, patch_role},
     settings::{get_default_settings, get_permissions},
-    stream::webrtc::{webrtc_delete, webrtc_get, webrtc_options, webrtc_patch, webrtc_post},
+    stream::{
+        web_socket::web_socket_stream,
+        webrtc::{webrtc_delete, webrtc_get, webrtc_options, webrtc_patch, webrtc_post},
+    },
     user::{add_user, delete_user, get_user, list_users, patch_user},
 };
 
@@ -73,8 +76,12 @@ pub fn api_service() -> impl HttpServiceFactory {
             get_default_settings,
             get_permissions
         ])
+        .service(services![
+            // -- Web Socket Stream
+            web_socket_stream,
+        ])
         .service(
-            // -- Stream
+            // -- WebRTC Stream
             web::scope("/host/stream/webrtc")
                 .service(webrtc_options)
                 .service(webrtc_get)

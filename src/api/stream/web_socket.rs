@@ -1,8 +1,12 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
 use async_trait::async_trait;
+use common::api_bindings::{
+    WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage,
+    WebSocketStreamResponse,
+};
 use moonlight_common::{
     ServerVersion,
     crypto::rustcrypto::RustCryptoBackend,
@@ -17,7 +21,8 @@ use moonlight_common::{
         video::{ColorRange, ColorSpace, DecodeResult, VideoDecodeUnit, VideoFormats, VideoSetup},
     },
 };
-use tracing::{instrument, warn};
+use tokio::{select, sync::Mutex, time::sleep};
+use tracing::{error, info, instrument, warn};
 
 use crate::{
     api::stream::create_control_packet_config,
@@ -47,46 +52,24 @@ pub async fn web_socket_stream(
         return Err(AppError::Forbidden.into());
     }
 
-    let host_id = 0;
-    let host_id = HostId(host_id);
-
-    let mut host = user.host(host_id).await?;
-
-    let host = host.use_host(&mut user).await?;
-
-    if !host.is_paired().await.map_err(|err| AppError::from(err))? {
-        return Err(AppError::HostNotPaired.into());
-    }
-
     // upgrade connection to web socket connection
-    let (res, mut ws_sender, ws_receiver) = actix_ws::handle(&req, body_stream)?;
+    let (res, ws_sender, ws_receiver) = actix_ws::handle(&req, body_stream)?;
 
     spawn(async move {
-        // TODO
-        // match handle_ws(query, &host, ws_sender, ws_receiver).await {
-        //     Ok(_) => {}
-        //     Err(err) => {
-        //         // TODO
-        //         todo!();
-        //     }
-        // }
+        match handle_ws(user, ws_sender, ws_receiver).await {
+            Ok(_) => {}
+            Err(err) => {
+                error!(error = %err, "stream failed");
+            }
+        }
     });
 
     Ok(res)
 }
 
 async fn handle_ws(
-    width: u32,
-    height: u32,
-    fps: u32,
-    bitrate_kbps: u32,
-    hdr: bool,
-    supported_codecs: VideoFormats,
-    local_audio_play_mode: bool,
-    audio_config: AudioConfig,
-    app_id: u32,
-    host: &MoonlightHost<RequestClient>,
-    ws_sender: Session,
+    mut user: AuthenticatedUser,
+    mut ws_sender: Session,
     mut ws_receiver: MessageStream,
 ) -> Result<(), AppError> {
     let control_config = create_control_packet_config();
@@ -94,27 +77,74 @@ async fn handle_ws(
     // create moonlight stream handler, will handle sending over the web socket
     let handler = Arc::new(WsStreamHandler {
         control_config: control_config.clone(),
-        ws_sender,
+        ws_sender: ws_sender.clone(),
+        setup: Default::default(),
     });
 
+    // Wait for stream request
+    let stream_request = select! {
+        _ = sleep(Duration::from_secs(10)) => {
+            return Err(AppError::StreamClosed);
+        }
+        request = ws_receiver.recv() => request
+    };
+
+    // Deserialize message
+    let stream_request = match stream_request.expect("stream request") {
+        Ok(Message::Text(text)) => text,
+        Ok(message) => {
+            error!(message = ?message, "web socket received unexpected start message");
+            return Err(AppError::StreamClosed);
+        }
+        Err(err) => {
+            error!(error = %err, "web socket protocol error");
+            return Err(AppError::StreamClosed);
+        }
+    };
+    let stream_request = match serde_json::from_str::<WebSocketServerboundMessage>(&stream_request)
+    {
+        Ok(WebSocketServerboundMessage::Request(request)) => request,
+        Ok(value) => {
+            error!(message = ?value, "web socket received unexpected start message");
+            return Err(AppError::StreamClosed);
+        }
+        Err(err) => {
+            error!(error = %err, "failed to deserialize json");
+            return Err(AppError::StreamClosed);
+        }
+    };
+
+    // TODO: apply role restrictions
+
+    // -- Get host
+    let host_id = HostId(stream_request.host_id);
+    let mut host = user.host(host_id).await?;
+
+    let host = host.use_host(&mut user).await?;
+
+    if !host.is_paired().await.map_err(AppError::from)? {
+        return Err(AppError::HostNotPaired.into());
+    }
+
+    // -- Start stream
     // get settings
     let settings = MoonlightStreamSettings {
-        width,
-        height,
-        fps,
-        fps_x100: fps * 100,
-        bitrate: bitrate_kbps,
+        width: stream_request.width,
+        height: stream_request.height,
+        fps: stream_request.fps,
+        fps_x100: stream_request.fps * 100,
+        bitrate: stream_request.bitrate,
         packet_size: 2048,
         encryption_flags: EncryptionFlags::AUDIO | EncryptionFlags::FOUNDATION_MICROPHONE,
         streaming_remotely: StreamingConfig::Auto,
         sops: true,
-        hdr,
-        supported_video_formats: supported_codecs,
+        hdr: stream_request.hdr,
+        supported_video_formats: VideoFormats::from_bits_retain(stream_request.supported_codecs),
         // TODO: color range?
         color_space: ColorSpace::Rec709,
         color_range: ColorRange::Limited,
-        local_audio_play_mode,
-        audio_config,
+        local_audio_play_mode: stream_request.local_audio_play_mode,
+        audio_config: AudioConfig::STEREO,
         gamepads_attached: ActiveGamepads::empty(),
         gamepads_persist_after_disconnect: false,
         // TODO: mic?
@@ -129,7 +159,7 @@ async fn handle_ws(
     // start stream
     let config = host
         .start_stream(
-            app_id,
+            stream_request.app_id,
             &settings,
             aes_key,
             aes_iv,
@@ -137,9 +167,40 @@ async fn handle_ws(
         )
         .await?;
 
-    let stream =
-        MoonlightStream::connect(config, settings, Arc::new(RustCryptoBackend) as _, handler)
-            .await?;
+    let stream = MoonlightStream::connect(
+        config,
+        settings,
+        Arc::new(RustCryptoBackend) as _,
+        handler.clone(),
+    )
+    .await?;
+
+    // send stream start response
+    let (video_setup, audio_setup) = {
+        let mut setup = handler.setup.lock().await;
+        let audio = setup.audio.take().expect("audio setup");
+        let video = setup.video.expect("video setup");
+
+        (video, audio)
+    };
+
+    let response = WebSocketClientboundMessage::Response(WebSocketStreamResponse {
+        video_codec: video_setup.format as u32,
+        audio_sample_rate: audio_setup.sample_rate,
+        audio_channel_count: audio_setup.channel_count,
+        audio_streams: audio_setup.streams,
+        audio_coupled_streams: audio_setup.coupled_streams,
+        audio_samples_per_frame: audio_setup.samples_per_frame,
+        audio_mapping: audio_setup.mapping,
+    });
+    let response = match serde_json::to_string(&response) {
+        Ok(value) => value,
+        Err(err) => {
+            stream.stop().await;
+            return Err(AppError::StreamClosed);
+        }
+    };
+    let _ = ws_sender.text(response).await;
 
     // handle incoming ws messages
     while let Some(Ok(message)) = ws_receiver.recv().await {
@@ -149,8 +210,7 @@ async fn handle_ws(
                     continue;
                 }
 
-                // TODO: put the channel id into a const
-                if message[0] == 0 {
+                if message[0] == WebSocketChannel::CONTROL {
                     let Some(packet) = ControlPacket::deserialize(
                         PacketDirection::ServerBound,
                         &control_config,
@@ -169,35 +229,55 @@ async fn handle_ws(
         }
     }
 
+    // stop stream
+    info!("stopping stream because the web socket disconnected");
+    stream.stop().await;
+
     Ok(())
 }
 
 struct WsStreamHandler {
     control_config: ControlPacketConfig,
     ws_sender: Session,
+    setup: Mutex<StreamSetup>,
+}
+
+#[derive(Debug, Default)]
+struct StreamSetup {
+    video: Option<VideoSetup>,
+    audio: Option<OpusMultistreamConfig>,
 }
 
 #[async_trait]
 impl MoonlightStreamHandler for WsStreamHandler {
     async fn setup_video(&self, setup: VideoSetup) -> Result<(), MoonlightStreamError> {
-        todo!()
+        let mut stream_setup = self.setup.lock().await;
+
+        stream_setup.video = Some(setup);
+
+        Ok(())
     }
     async fn on_video_frame(&self, frame: VideoDecodeUnit<&[u8]>) -> DecodeResult {
-        todo!()
+        // TODO
+        DecodeResult::Ok
     }
 
     async fn setup_audio(
         &self,
-        audio_config: AudioConfig,
+        _audio_config: AudioConfig,
         opus_config: OpusMultistreamConfig,
     ) -> Result<(), MoonlightStreamError> {
-        todo!()
+        let mut stream_setup = self.setup.lock().await;
+
+        stream_setup.audio = Some(opus_config);
+
+        Ok(())
     }
     async fn on_audio_frame(&self, frame: AudioFrame<&[u8]>) {
         let mut buffer = vec![0; 1 + frame.buffer.len()];
         buffer[1..].copy_from_slice(frame.buffer);
 
-        buffer[0] = 2;
+        buffer[0] = WebSocketChannel::AUDIO;
 
         let _ = self.ws_sender.clone().binary(buffer).await;
     }
@@ -205,8 +285,7 @@ impl MoonlightStreamHandler for WsStreamHandler {
     async fn on_control_packet(&self, packet: ControlPacket) {
         let mut buffer = [0; ControlPacket::MAX_SIZE + 1];
 
-        // TODO: put the channel id into a const
-        buffer[0] = 0;
+        buffer[0] = WebSocketChannel::CONTROL;
 
         #[allow(clippy::unwrap_used)]
         let packet_len = packet

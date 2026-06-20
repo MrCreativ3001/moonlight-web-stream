@@ -412,6 +412,52 @@ pub struct GetWebRTCConfigurationResponse {
     pub ice_servers: Vec<RtcIceServer>,
 }
 
+ts_consts!(
+    pub WebSocketChannel(export_bindings_websocket_channels: EXPORT_PATH) as u8:
+
+    pub const CONTROL: u8 = 0;
+    pub const VIDEO: u8 = 1;
+    pub const AUDIO: u8 = 2;
+);
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum WebSocketServerboundMessage {
+    Request(WebSocketStreamRequest),
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct WebSocketStreamRequest {
+    pub host_id: u32,
+    pub app_id: u32,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub bitrate: u32,
+    pub hdr: bool,
+    pub local_audio_play_mode: bool,
+    pub supported_codecs: u32,
+    pub preferred_codecs: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum WebSocketClientboundMessage {
+    Response(WebSocketStreamResponse),
+}
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct WebSocketStreamResponse {
+    pub video_codec: u32,
+    pub audio_sample_rate: u32,
+    pub audio_channel_count: u32,
+    pub audio_streams: u32,
+    pub audio_coupled_streams: u32,
+    pub audio_samples_per_frame: u32,
+    pub audio_mapping: [u8; 8],
+}
+
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 #[serde(rename_all = "camelCase")]

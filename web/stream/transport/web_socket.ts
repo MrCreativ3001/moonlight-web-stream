@@ -1,145 +1,268 @@
-import { TransportChannelId } from "../../api_bindings.js";
-import { ByteBuffer } from "../buffer.js";
+import { Api } from "../../api.js";
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, InputBatcher, PacketDirection } from "../../uniffi/moonlight_common_bindings.js";
+import { globalObject } from "../../util.js";
+import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
+import { WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse } from "../../api_bindings.js";
 import { Logger } from "../log.js";
+import { DataPipe } from "../pipeline/pipes.js";
 import { StatValue } from "../stats.js";
-import { allVideoCodecs, VideoCodecSupport } from "../video.js";
-import { DataTransportChannel, Transport, TransportAudioSetup, TransportChannel, TransportChannelIdKey, TransportChannelIdValue, TransportShutdown, TransportVideoSetup } from "./index.js";
+import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
+import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index.js";
+import { createSupportedVideoFormatsBits } from "../video.js";
 
 export class WebSocketTransport implements Transport {
     readonly implementationName: string = "web_socket"
 
-    private logger: Logger | null = null
+    private logger?: Logger
+
     private ws: WebSocket
-    private buffer: ByteBuffer
 
-    private channels: Array<TransportChannel> = []
-
-    constructor(ws: WebSocket, buffer: ByteBuffer, logger: Logger | null) {
-        if (logger) {
-            this.logger = logger
-        }
-
-        this.ws = ws
-        this.buffer = buffer
-
-        // Very important, set the binary type to arraybuffer
-        this.ws.binaryType = "arraybuffer"
-
-        this.ws.addEventListener("close", this.onWsClose.bind(this))
-
-        for (const keyRaw in TransportChannelId) {
-            const key = keyRaw as TransportChannelIdKey
-            const id = TransportChannelId[key]
-
-            this.channels[id] = new WebSocketDataTransportChannel(this.ws, id, this.buffer)
-        }
-    }
-
-    getChannel(id: TransportChannelIdValue): TransportChannel {
-        return this.channels[id]
-    }
-
-    async setupHostVideo(setup: TransportVideoSetup): Promise<VideoCodecSupport> {
-        if (setup.type.indexOf("data") == -1) {
-            this.logger?.debug("Cannot use Web Socket Transport: Found no supported video pipeline")
-            throw "Cannot use Web Socket Transport: Found no supported video pipeline"
-        }
-
-        return allVideoCodecs()
-    }
-    async setupHostAudio(setup: TransportAudioSetup): Promise<void> {
-        if (setup.type.indexOf("data") == -1) {
-            this.logger?.debug("Cannot use Web Socket Transport: Found no supported audio pipeline")
-            throw "Cannot use Web Socket Transport: Found no supported audio pipeline"
-        }
-    }
-
+    controlStream: WebSocketControlStream
+    onconnect: ((connectData: TransportConnectData) => void) | null = null
     onclose: ((shutdown: TransportShutdown) => void) | null = null
 
-    private onWsClose(event: CloseEvent) {
-        if (this.onclose) {
-            this.onclose(event.wasClean ? "disconnect" : "failed")
+    private onOpen: Promise<void>
+    private wasConnected: boolean = false
+
+    private connectData: TransportConnectData | null = null
+
+    constructor(api: Api, logger?: Logger) {
+        this.logger = logger
+
+        const wsApiHost = api.host_url.replace(/^http(s)?:/, "ws$1:")
+        this.ws = new WebSocket(`${wsApiHost}/host/stream`)
+
+        // Configure Web Socket
+        this.ws.binaryType = "arraybuffer"
+
+        // Add Event Listeners
+        this.ws.addEventListener("error", this.onError.bind(this))
+        this.onOpen = new Promise((resolve, reject) => {
+            this.ws.addEventListener("error", reject)
+            this.ws.addEventListener("open", () => resolve())
+        })
+        this.ws.addEventListener("close", this.onClose.bind(this))
+        this.ws.addEventListener("message", this.onMessage.bind(this))
+
+        // Create control stream
+        const config = generateControlPacketConfig()
+        this.controlStream = new WebSocketControlStream(this.ws, config)
+    }
+
+    // -- Web Socket Events
+    private onError() {
+        // TODO: log the error
+        this.close()
+    }
+
+    private sendMessage(message: WebSocketServerboundMessage) {
+        this.ws.send(JSON.stringify(message))
+    }
+    private onMessage(event: MessageEvent) {
+        const data = event.data
+
+        if (typeof data == "string") {
+            const message = JSON.parse(data) as WebSocketClientboundMessage
+
+            if ("Response" in message) {
+                this.logger?.debug("Received stream response")
+                const response = message.Response
+
+                if (this.onconnect) {
+                    this.wasConnected = true
+
+                    this.connectData = {
+                        videoType: "data",
+                        videoSetup: {
+                            codec: "h264",
+                            width: 0,
+                            height: 0,
+                            fps: 0
+                        },
+                        audioType: "data",
+                        audioSetup: {
+                            channels: response.audio_channel_count,
+                            sampleRate: response.audio_sample_rate,
+                            streams: response.audio_coupled_streams,
+                            coupledStreams: response.audio_coupled_streams,
+                            samplesPerFrame: response.audio_samples_per_frame,
+                            mapping: response.audio_mapping
+                        },
+                        capabilities: { touch: true }
+                    }
+                    this.onconnect(this.connectData)
+                }
+            }
+        } else if (data instanceof ArrayBuffer) {
+            const view = new Uint8Array(data)
+            const channel = view[0]
+
+            if (channel == WebSocketChannel.CONTROL) {
+                const payload = view.slice(1)
+
+                this.controlStream.onRawPacket(payload.buffer)
+            } else if (channel == WebSocketChannel.VIDEO) {
+                const frame = view.slice(1)
+
+                this.videoPipeline?.submitPacket(frame.buffer)
+            } else if (channel == WebSocketChannel.AUDIO) {
+                const frame = view.slice(1)
+
+                this.audioPipeline?.submitPacket(frame.buffer)
+            }
         }
     }
-    async close(): Promise<void> {
-        // do nothing, we don't own this ws, the stream owns the ws
-        // -> maybe we changed protocol
-        this.logger?.debug("Web Socket transport close called, not closing Web Socket because it might still be needed")
+
+    // -- Connect
+    async startStream(options: TransportOptions): Promise<void> {
+        this.logger?.debug("Waiting for Web Socket to open")
+
+        await this.onOpen
+
+        this.logger?.debug(`Web Socket opened, sending stream request: ${JSON.stringify(options)}`)
+
+        this.sendMessage({
+            Request: {
+                host_id: options.hostId,
+                app_id: options.appId,
+                width: options.width,
+                height: options.height,
+                fps: options.fps,
+                bitrate: options.bitrate,
+                hdr: options.hdr,
+                local_audio_play_mode: options.localAudioPlayMode,
+                supported_codecs: createSupportedVideoFormatsBits(options.supportedCodecs),
+                preferred_codecs: options.preferredCodecs ? createSupportedVideoFormatsBits(options.preferredCodecs) : 0,
+                preferred_audio: options.preferredAudio ?? 0
+            }
+        })
     }
-    async getStats(): Promise<Record<string, StatValue>> {
-        return {}
+
+    private onClose() {
+        this.close()
+    }
+
+    private videoPipeline: DataPipe | null = null
+
+    setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>
+    setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>
+    async setVideoPipeline(type: TransportVideoType, pipeline: unknown): Promise<void> {
+        if (type != "data") {
+            throw `invalid web socket video pipeline type ${type}`
+        }
+
+        this.videoPipeline = pipeline as (DataPipe & AudioPlayer)
+    }
+
+    private audioPipeline: (DataPipe & AudioPlayer) | null = null
+
+    setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
+    setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
+    async setAudioPipeline(type: TransportAudioType, pipeline: unknown): Promise<void> {
+        if (!this.connectData) {
+            throw "web socket stream not yet connected!"
+        }
+        if (type != "data") {
+            throw `invalid web socket audio pipeline type ${type}`
+        }
+
+        this.audioPipeline = pipeline as (DataPipe & AudioPlayer)
+    }
+
+    getStats(): Promise<Record<string, StatValue>> {
+        throw new Error("Method not implemented.");
+    }
+
+    private dispatchedClosed: boolean = false
+    async close(): Promise<void> {
+        this.ws.close()
+        if (!this.dispatchedClosed && this.onclose) {
+            if (this.wasConnected) {
+                this.onclose("failed")
+            } else {
+                this.onclose("failednoconnect")
+            }
+        }
     }
 
 }
-
-class WebSocketDataTransportChannel implements DataTransportChannel {
-    readonly type: "data" = "data"
+class WebSocketControlStream implements IControlStream {
+    onreceive: ((packet: ControlPacket) => void) | null = null
 
     private ws: WebSocket
-    private id: TransportChannelIdValue
-    private buffer: ByteBuffer
 
-    constructor(ws: WebSocket, id: TransportChannelIdValue, buffer: ByteBuffer) {
+    private config: ControlPacketConfig
+
+    private batcher: InputBatcher = new InputBatcher()
+    private batchSendTimeout: number | null = null
+
+    constructor(ws: WebSocket, config: ControlPacketConfig) {
         this.ws = ws
-        this.id = id
-        this.buffer = buffer
-
-        this.ws.addEventListener("message", this.onMessage.bind(this))
+        this.config = config
     }
 
-    canReceive: boolean = true
-    canSend: boolean = true
+    send(input: ClientInputEvent): void {
+        const sendNow = this.batcher.batchInput(input)
+        for (const packet of sendNow) {
+            this.sendRaw(packet)
+        }
 
-    private receiveListeners: Array<(data: ArrayBuffer) => void> = []
-    addReceiveListener(listener: (data: ArrayBuffer) => void): void {
-        this.receiveListeners.push(listener)
-    }
-    removeReceiveListener(listener: (data: ArrayBuffer) => void): void {
-        const index = this.receiveListeners.indexOf(listener)
-        if (index != -1) {
-            this.receiveListeners.splice(index, 1)
+        if (this.batchSendTimeout == null) {
+            globalObject().setTimeout(this.boundSendBatchedInputs, 1)
         }
     }
 
-    private onMessage(event: MessageEvent) {
-        const data = event.data
-        if (!(data instanceof ArrayBuffer)) {
+    private trySendBufferedPackets() {
+        if (this.ws.readyState != WebSocket.OPEN) {
             return
         }
 
-        this.buffer.reset()
+        for (const packet of this.packetBuffer.splice(0)) {
+            this.sendRaw(packet)
+        }
+    }
 
-        this.buffer.putU8Array(new Uint8Array(data))
-
-        this.buffer.flip()
-
-        const id = this.buffer.getU8()
-        if (id != this.id) {
+    private packetBuffer: Array<ControlPacket> = []
+    sendRaw(packet: ControlPacket): void {
+        if (this.ws.readyState != WebSocket.OPEN) {
+            this.packetBuffer.push(packet)
             return
         }
+        this.trySendBufferedPackets()
 
-        const buffer = this.buffer.getRemainingBuffer()
-        for (const listener of this.receiveListeners) {
-            listener(buffer.buffer)
+        const packetBuffer = controlPacketSerialize(this.config, packet)
+        if (!packetBuffer) {
+            console.debug("failed to serialize control packet", packet)
+            return
+        }
+        const packetView = new Uint8Array(packetBuffer)
+
+        const message = new Uint8Array(1 + packetView.length)
+        message.set(packetView, 1)
+
+        this.ws.send(message)
+    }
+
+    onRawPacket(packetBuffer: ArrayBuffer) {
+        const packet = controlPacketDeserialize(this.config, PacketDirection.ClientBound, packetBuffer)
+        if (this.onreceive && packet) {
+            this.onreceive(packet)
+        } else if (!packet) {
+            console.debug("failed to deserialize packet", packetBuffer)
         }
     }
 
-    send(message: ArrayBuffer): void {
-        this.buffer.reset()
+    private boundSendBatchedInputs = this.sendBatchedInputs.bind(this)
+    private sendBatchedInputs() {
+        if (this.batchSendTimeout != null) {
+            globalObject().clearTimeout(this.batchSendTimeout)
+        }
+        this.batchSendTimeout = null
 
-        this.buffer.putU8(this.id)
-        this.buffer.putU8Array(new Uint8Array(message))
+        const packets = this.batcher.removeBatchedInputs()
 
-        this.buffer.flip()
-
-        this.ws.send(this.buffer.getRemainingBuffer())
-    }
-
-    estimatedBufferedBytes(): number | null {
-        return null
-    }
-
-    close() {
-        this.ws.removeEventListener("message", this.onMessage.bind(this))
+        for (const packet of packets) {
+            this.sendRaw(packet)
+        }
     }
 }

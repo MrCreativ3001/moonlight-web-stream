@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Display},
+    fmt::Display,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     num::ParseIntError,
     str::FromStr,

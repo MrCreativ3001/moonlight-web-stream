@@ -2,18 +2,19 @@ import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api.js"
 import { App, StreamCapabilities, StreamPermissions, } from "../api_bindings.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
-import { ControlPacket, ControlPacket_Tags } from "../uniffi/moonlight_common_bindings.js"
+import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings.js"
 import { wait } from "../util.js"
-import { AudioPlayer } from "./audio/index.js"
+import { AudioPlayer, AudioPlayerSetup } from "./audio/index.js"
 import { buildAudioPipeline } from "./audio/pipeline.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
 import { Logger, LogMessageInfo } from "./log.js"
 import { gatherPipeInfo } from "./pipeline/index.js"
 import { StreamStats } from "./stats.js"
 import { Transport, TransportAudioType, TransportConnectData, TransportShutdown, TransportVideoType } from "./transport/index.js"
+import { WebSocketTransport } from "./transport/web_socket.js"
 import { WebRTCTransport } from "./transport/webrtc.js"
-import { allVideoCodecs, emptyVideoCodecs, hasAnyCodec, VideoCodecSupport } from "./video.js"
-import { VideoRenderer } from "./video/index.js"
+import { allVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video.js"
+import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
 import { buildVideoPipeline, VideoPipelineOptions } from "./video/pipeline.js"
 
 export type ExecutionEnvironment = {
@@ -53,22 +54,21 @@ export function getStreamerSize(settings: Settings, viewerScreenSize: [number, n
     return [width, height]
 }
 
-function getVideoCodecHint(settings: Settings): VideoCodecSupport {
+function getVideoCodecHint(settings: Settings): VideoFormats {
     let videoCodecHint = emptyVideoCodecs()
     if (settings.videoCodec == "h264") {
-        videoCodecHint.H264 = true
-        videoCodecHint.H264_HIGH8_444 = true
+        videoCodecHint.h264 = true
+        videoCodecHint.h264High8444 = true
     } else if (settings.videoCodec == "h265") {
-        videoCodecHint.H265 = true
-        videoCodecHint.H265_MAIN10 = true
-        videoCodecHint.H265_REXT8_444 = true
-        videoCodecHint.H265_REXT10_444 = true
+        videoCodecHint.h265 = true
+        videoCodecHint.h265Main10 = true
+        videoCodecHint.h265Rext8444 = true
+        videoCodecHint.h265Rext10444 = true
     } else if (settings.videoCodec == "av1") {
-        videoCodecHint.AV1 = true
-        videoCodecHint.AV1_MAIN8 = true
-        videoCodecHint.AV1_MAIN10 = true
-        videoCodecHint.AV1_REXT8_444 = true
-        videoCodecHint.AV1_REXT10_444 = true
+        videoCodecHint.av1Main8 = true
+        videoCodecHint.av1Main10 = true
+        videoCodecHint.av1High8444 = true
+        videoCodecHint.av1High10444 = true
     } else if (settings.videoCodec == "auto") {
         videoCodecHint = allVideoCodecs()
     }
@@ -234,7 +234,8 @@ export class Stream implements Component {
                 bitrate: this.settings.bitrate,
                 hdr: this.settings.hdr,
                 localAudioPlayMode: this.settings.playAudioLocal,
-                // TODO: use codecHint for preferredCodec
+                supportedCodecs: codecHint,
+                preferredCodecs: codecHint,
             })
 
             // Send Request
@@ -292,26 +293,50 @@ export class Stream implements Component {
             return null
         }
 
+        const transport = new WebSocketTransport(this.api, this.logger)
 
-        // TODO
-        // const transport = new WebSocketTransport(this.ws, BIG_BUFFER, this.logger)
+        // Add listeners
+        transport.controlStream.onreceive = this.boundReceivePacket
 
-        // this.setTransport(transport)
+        const onConnect = new Promise<TransportConnectData>(resolve => {
+            transport.onconnect = resolve
+        })
+        const onClose = new Promise<TransportShutdown>(resolve => {
+            transport.onclose = resolve
+        })
 
-        // const videoCodecSupport = await this.createPipelines()
-        // if (!videoCodecSupport) {
-        //     this.debugLog("Failed to start stream because no video pipeline with support for the specified codec was found!", { type: "fatalDescription" })
-        //     return
-        // }
+        // Start stream
+        await transport.startStream({
+            hostId: this.hostId,
+            appId: this.appId,
+            width: this.streamerSize[0],
+            height: this.streamerSize[1],
+            fps: this.settings.fps,
+            bitrate: this.settings.bitrate,
+            hdr: this.settings.hdr,
+            localAudioPlayMode: this.settings.playAudioLocal,
+            supportedCodecs: codecHint,
+            preferredCodecs: codecHint,
+        })
 
-        // await this.startStream(videoCodecSupport)
+        this.setTransport(transport)
 
-        // return new Promise((resolve) => {
-        //     transport.onclose = (shutdown) => {
-        //         resolve(shutdown)
-        //     }
-        // })
-        return new Promise((resolve, reject) => { })
+        const connectData = await Promise.race([
+            onConnect,
+            onClose,
+        ])
+
+        if (typeof connectData == "string") {
+            this.debugLog(`web socket connection failed: ${connectData}`)
+            await transport.close()
+            // connection failed
+            return connectData
+        }
+
+        // -- Connection successful
+        this.onConnect(transport, connectData)
+
+        return await onClose
     }
 
     private async onConnect(transport: Transport, connectData: TransportConnectData) {
@@ -319,13 +344,7 @@ export class Stream implements Component {
         this.input.onStreamStart(connectData.capabilities, [connectData.videoSetup.width, connectData.videoSetup.height])
 
         // Create pipelines
-        const videoCodecSupport = await this.createPipelines(connectData)
-        if (!videoCodecSupport) {
-            this.debugLog("No video pipeline was found for the codec that was specified. If you're unsure which codecs are supported use H264.", { type: "fatalDescription" })
-
-            await transport.close()
-            return "failednoconnect"
-        }
+        await this.createPipelines(connectData)
 
         const event: InfoEvent = new CustomEvent("stream-info", {
             detail: {
@@ -338,7 +357,7 @@ export class Stream implements Component {
         this.eventTarget.dispatchEvent(event)
     }
 
-    private async createPipelines(connectData: TransportConnectData): Promise<VideoCodecSupport | null> {
+    private async createPipelines(connectData: TransportConnectData): Promise<void> {
         // Print supported pipes
         const pipesInfo = await gatherPipeInfo()
 
@@ -354,9 +373,9 @@ export class Stream implements Component {
         codecSupport[connectData.videoSetup.codec] = true
 
         // Create pipelines
-        const [supportedVideoCodecs] = await Promise.all([
-            this.createVideoRenderer(connectData.videoType, codecSupport),
-            this.createAudioPlayer(connectData.audioType)
+        await Promise.all([
+            this.createVideoRenderer(connectData.videoType, connectData.videoSetup),
+            this.createAudioPlayer(connectData.audioType, connectData.audioSetup)
         ])
 
         const videoPipelineName = `${connectData.videoType} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
@@ -367,10 +386,8 @@ export class Stream implements Component {
 
         this.stats.setVideoPipeline(videoPipelineName, this.videoRenderer)
         this.stats.setAudioPipeline(audioPipelineName, this.audioPlayer)
-
-        return supportedVideoCodecs
     }
-    private async createVideoRenderer(videoType: TransportVideoType, codec: VideoCodecSupport): Promise<VideoCodecSupport | null> {
+    private async createVideoRenderer(videoType: TransportVideoType, videoSetup: VideoRendererSetup): Promise<boolean> {
         if (this.videoRenderer) {
             this.debugLog("Found an old video renderer -> cleaning it up")
 
@@ -380,11 +397,14 @@ export class Stream implements Component {
         }
         if (!this.transport) {
             this.debugLog("Failed to setup video without transport")
-            return null
+            return false
         }
 
+        const supportedVideoCodecs = emptyVideoCodecs()
+        supportedVideoCodecs[videoSetup.codec] = true
+
         const videoSettings: VideoPipelineOptions = {
-            supportedVideoCodecs: codec,
+            supportedVideoCodecs,
             canvasRenderer: this.settings.canvasRenderer,
             forceVideoElementRenderer: this.settings.forceVideoElementRenderer,
             canvasVsync: this.settings.canvasVsync
@@ -395,12 +415,13 @@ export class Stream implements Component {
             const { videoRenderer, supportedCodecs, error } = await buildVideoPipeline("videotrack", videoSettings, this.logger)
 
             if (error) {
-                return null
+                return false
             }
             pipelineCodecSupport = supportedCodecs
 
             videoRenderer.mount(this.divElement)
 
+            await videoRenderer.setup(videoSetup)
             await this.transport.setVideoPipeline("videotrack", videoRenderer)
 
             this.videoRenderer = videoRenderer
@@ -408,23 +429,24 @@ export class Stream implements Component {
             const { videoRenderer, supportedCodecs, error } = await buildVideoPipeline("data", videoSettings, this.logger)
 
             if (error) {
-                return null
+                return false
             }
             pipelineCodecSupport = supportedCodecs
 
             videoRenderer.mount(this.divElement)
 
+            await videoRenderer.setup(videoSetup)
             await this.transport.setVideoPipeline("data", videoRenderer)
 
             this.videoRenderer = videoRenderer
         } else {
             this.debugLog(`Failed to create video pipeline with transport channel of type ${videoType} (${this.transport.implementationName})`)
-            return null
+            return false
         }
 
         return pipelineCodecSupport
     }
-    private async createAudioPlayer(audioType: TransportAudioType): Promise<boolean> {
+    private async createAudioPlayer(audioType: TransportAudioType, audioSetup: AudioPlayerSetup): Promise<boolean> {
         if (this.audioPlayer) {
             this.debugLog("Found an old audio player -> cleaning it up")
 
@@ -445,6 +467,7 @@ export class Stream implements Component {
             }
 
             audioPlayer.mount(this.divElement)
+            await audioPlayer.setup(audioSetup)
 
             await this.transport.setAudioPipeline("audiotrack", audioPlayer)
 
@@ -457,6 +480,7 @@ export class Stream implements Component {
             }
 
             audioPlayer.mount(this.divElement)
+            await audioPlayer.setup(audioSetup)
 
             await this.transport.setAudioPipeline("data", audioPlayer)
 

@@ -18,7 +18,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
 
         // We only know 100% if the codec is supported when we try to play the stream and get the
         // Sps which contains information about the actual h264 codec being used
-        videoCodecs.H264 = "maybe"
+        videoCodecs.h264 = true
 
         // no link
         return {

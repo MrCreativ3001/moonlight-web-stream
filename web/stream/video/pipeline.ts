@@ -4,19 +4,20 @@ import { TrackVideoRenderer, VideoRenderer } from "./index.js"
 import { VideoDecoderPipe } from "./video_decoder_pipe.js"
 import { DepacketizeVideoPipe } from "./depackitize_pipe.js"
 import { Logger } from "../log.js"
-import { andVideoCodecs, hasAnyCodec, VideoCodecSupport } from "../video.js"
+import { andVideoCodecs, hasAnyCodec } from "../video.js"
 import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { workerPipe } from "../pipeline/worker_pipe.js"
 import { WorkerVideoDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io.js"
 import { OffscreenCanvasRenderer } from "./offscreen_canvas.js"
-import { BaseCanvasVideoRenderer, MainCanvasRenderer } from "./canvas.js"
+import { MainCanvasRenderer } from "./canvas.js"
 import { CanvasFrameDrawPipe, CanvasRgbaFrameDrawPipe, CanvasYuv420FrameDrawPipe as CanvasYuv420FrameDrawPipe } from "./canvas_frame.js"
 import { globalObject } from "../../util.js"
 import { OpenH264DecoderPipe } from "./openh264_decoder_pipe.js"
 import { VideoMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe.js"
 import { Yuv420ToRgbaFramePipe } from "./video_frame.js"
 import { MediaSourceDecoder } from "./media_source_decoder.js"
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js"
 
 // -- Gather information about the browser
 interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic { }
@@ -30,7 +31,7 @@ const VIDEO_RENDERERS: Array<VideoRendererStatic> = [
 
 // -- Build the pipeline
 export type VideoPipelineOptions = {
-    supportedVideoCodecs: VideoCodecSupport
+    supportedVideoCodecs: VideoFormats
     canvasRenderer: boolean
     forceVideoElementRenderer: boolean
     /// When true:
@@ -41,7 +42,7 @@ export type VideoPipelineOptions = {
     canvasVsync: boolean
 }
 
-type PipelineResult<T> = { videoRenderer: T, supportedCodecs: VideoCodecSupport, error: false } | { videoRenderer: null, supportedCodecs: null, error: true }
+type PipelineResult<T> = { videoRenderer: T, supportedCodecs: VideoFormats, error: false } | { videoRenderer: null, supportedCodecs: null, error: true }
 
 type Pipeline = { input: string, pipes: Array<PipeStatic>, renderer: VideoRendererStatic }
 
@@ -121,7 +122,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         if (!hasAnyCodec(settings.supportedVideoCodecs)) {
             logger?.debug("No codec currently found. Setting H264 as supported even though the browser says it is not supported")
 
-            settings.supportedVideoCodecs.H264 = true
+            settings.supportedVideoCodecs.h264 = true
         }
 
         return { videoRenderer: new VideoElementRenderer(), supportedCodecs: settings.supportedVideoCodecs, error: false }

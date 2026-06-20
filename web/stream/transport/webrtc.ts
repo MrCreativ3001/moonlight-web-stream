@@ -1,26 +1,13 @@
-import { Api, WebRTCAnswer } from "../../api.js";
+import { WebRTCAnswer } from "../../api.js";
 import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent_Tags, ControlStreamInput, ControlStreamOutput_Tags, InputBatcher, PacketDirection, ServerType, VideoFormats, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject, uniffiMillisUntil, uniffiNow } from "../../util.js";
 import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
 import { StatValue } from "../stats.js";
-import { emptyVideoCodecs, VideoCodecSupport } from "../video.js";
+import { emptyVideoCodecs } from "../video.js";
 import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
-import { IControlStream, Transport, TransportAudioType, TransportConnectData, TransportShutdown, TransportVideoType } from "./index.js";
-
-export type WebRTCWHEPOptions = {
-    appId: number,
-    width: number,
-    height: number,
-    fps: number,
-    bitrate: number,
-    hdr: boolean,
-    localAudioPlayMode: boolean,
-    preferredCodec?: VideoFormats,
-    preferredAudio?: number,
-    hostId?: number,
-}
+import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index.js";
 
 export class WebRTCTransport implements Transport {
 
@@ -67,15 +54,15 @@ export class WebRTCTransport implements Transport {
 
     private sdpOfferOptions: WebRtcSessionOffer | null = null
 
-    async createOffer(options: WebRTCWHEPOptions): Promise<string> {
-        this.logger?.debug("creating webrtc offer")
+    async createOffer(options: TransportOptions): Promise<string> {
+        this.logger?.debug("Creating webrtc offer")
 
         let offer = await this.peer.createOffer()
         if (offer.type != "offer") {
             throw `WHEP offer is of type ${offer.type}`
         }
 
-        this.logger?.debug("setting webrtc local description")
+        this.logger?.debug("Setting webrtc local description")
         await this.peer.setLocalDescription(offer)
 
         // Wait for ice gathering to finish and create sdp with those ice candidates
@@ -98,10 +85,10 @@ export class WebRTCTransport implements Transport {
     async setAnswer(response: WebRTCAnswer): Promise<void> {
         console.debug("Server Sdp", JSON.stringify(response))
 
-        this.logger?.debug(`received whep response with location "${response.location}"`)
+        this.logger?.debug(`Received whep response with location "${response.location}"`)
 
         const answer = webrtcSessionAnswerParse(response.answerSdp)
-        this.logger?.debug(`server responded with extensions ${JSON.stringify(answer)}`)
+        this.logger?.debug(`Server responded with extensions ${JSON.stringify(answer)}`)
 
         await this.peer.setRemoteDescription({
             type: "answer",
@@ -132,7 +119,7 @@ export class WebRTCTransport implements Transport {
                 height: this.sdpOfferOptions?.height ?? -1,
                 fps: this.sdpOfferOptions?.fps ?? -1,
                 // TODO: gather codec using stats
-                codec: "H264",
+                codec: "h264",
             },
             audioType: "audiotrack",
             audioSetup: {
@@ -174,13 +161,7 @@ export class WebRTCTransport implements Transport {
         this.logger?.debug(`received data channel with label: ${channel.label}, protocol: ${channel.protocol}`)
 
         if (channel.label == "moonlight.control") {
-            const config = controlPacketConfigNew(
-                { major: 7, minor: 0, patch: 0, sunshineIdentifier: -1, serverType: ServerType.Sunshine },
-                true
-            )
-            if (!config) {
-                throw "generated invalid packet config"
-            }
+            const config = generateControlPacketConfig()
 
             let protocol: "simple" | "enet" = "simple"
             if (channel.protocol == "enet") {
@@ -212,22 +193,6 @@ export class WebRTCTransport implements Transport {
     // Video
     private videoStream: MediaStreamTrack | null = null
 
-    getRequiredVideoPipelineCodec(): VideoCodecSupport {
-        if (!this.videoStream) {
-            throw "the stream must be connected!"
-        }
-
-        // TODO: figure out the exact codec
-        const codecs = emptyVideoCodecs()
-
-        codecs.H264 = true
-
-        return codecs
-    }
-    getRequiredVideoPipelineType(): TransportVideoType {
-        return "videotrack"
-    }
-
     setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>;
     setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>;
     async setVideoPipeline(type: TransportVideoType, pipeline: unknown): Promise<void> {
@@ -238,7 +203,6 @@ export class WebRTCTransport implements Transport {
         if (type == "videotrack") {
             const trackPipeline = pipeline as (TrackVideoRenderer & VideoRenderer)
 
-            await trackPipeline.setup(this.connectData.videoSetup)
             trackPipeline.setTrack(this.videoStream)
         } else if (type == "data") {
             throw "unimplemented"
@@ -248,9 +212,6 @@ export class WebRTCTransport implements Transport {
     // Audio
     private audioStream: MediaStreamTrack | null = null
 
-    getRequiredAudioPipelineType(): TransportAudioType {
-        return "audiotrack"
-    }
     setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
     setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
     async setAudioPipeline(type: TransportAudioType, pipeline: AudioPlayer): Promise<void> {
@@ -261,7 +222,6 @@ export class WebRTCTransport implements Transport {
         if (type == "audiotrack") {
             const trackPipeline = pipeline as (TrackAudioPlayer & AudioPlayer)
 
-            await trackPipeline.setup(this.connectData.audioSetup)
             trackPipeline.setTrack(this.audioStream)
         } else if (type == "data") {
             throw "unimplemented"

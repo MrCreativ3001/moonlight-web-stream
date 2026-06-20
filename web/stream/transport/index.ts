@@ -1,9 +1,8 @@
 import { StreamCapabilities } from "../../api_bindings.js"
-import { ClientInputEvent, ControlPacket } from "../../uniffi/moonlight_common_bindings.js"
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, ServerType, VideoFormats } from "../../uniffi/moonlight_common_bindings.js"
 import { AudioPlayer, AudioPlayerSetup, TrackAudioPlayer } from "../audio/index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { StatValue } from "../stats.js"
-import { VideoCodecSupport } from "../video.js"
 import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index.js"
 
 export type TransportVideoType = "videotrack" // TrackTransportChannel
@@ -16,6 +15,20 @@ export type TransportAudioType = "audiotrack" // TrackTransportChannel
 // failed => a connection was ungracefully closed
 // disconnect => a connection was gracefully closed
 export type TransportShutdown = "failednoconnect" | "failed" | "disconnect"
+
+export type TransportOptions = {
+    appId: number,
+    width: number,
+    height: number,
+    fps: number,
+    bitrate: number,
+    hdr: boolean,
+    localAudioPlayMode: boolean,
+    supportedCodecs: VideoFormats,
+    preferredCodecs?: VideoFormats,
+    preferredAudio?: number,
+    hostId: number,
+}
 
 export type TransportConnectData = {
     capabilities: StreamCapabilities,
@@ -42,6 +55,18 @@ export interface Transport {
     setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
 
     getStats(): Promise<Record<string, StatValue>>
+}
+
+export function generateControlPacketConfig(): ControlPacketConfig {
+    const config = controlPacketConfigNew(
+        { major: 7, minor: 0, patch: 0, sunshineIdentifier: -1, serverType: ServerType.Sunshine },
+        true
+    )
+    if (!config) {
+        throw "generated invalid packet config"
+    }
+
+    return config
 }
 
 export interface IControlStream {

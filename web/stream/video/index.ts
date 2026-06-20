@@ -1,9 +1,9 @@
 import { Component } from "../../component/index.js"
-import { StreamSupportedVideoCodecs } from "../../api_bindings.js"
 import { Pipe } from "../pipeline/index.js"
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js"
 
 export type VideoRendererSetup = {
-    codec: keyof typeof StreamSupportedVideoCodecs,
+    codec: keyof VideoFormats,
     width: number
     height: number
     fps: number

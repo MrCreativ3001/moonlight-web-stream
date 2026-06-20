@@ -3,7 +3,20 @@ use log::error;
 use tokio::process::Command;
 use tracing::debug;
 
-pub async fn load_dynamic_ice_servers(config: &WebRtcConfig) -> Vec<RtcIceServer> {
+use crate::app::{App, AppError};
+
+pub async fn generate_ice_servers(app: &App) -> Result<Vec<RtcIceServer>, AppError> {
+    // Load ice servers
+    let mut ice_servers = app.config().webrtc.ice_servers.clone();
+
+    // Load dynamic ice servers and append them to the current ice servers
+    let dynamic_ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
+    ice_servers.extend_from_slice(&dynamic_ice_servers);
+
+    Ok(ice_servers)
+}
+
+async fn load_dynamic_ice_servers(config: &WebRtcConfig) -> Vec<RtcIceServer> {
     let Some(script_command) = config.ice_server_script.as_ref() else {
         debug!("No WebRTC ice server script found");
         return vec![];

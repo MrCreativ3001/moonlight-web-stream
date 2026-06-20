@@ -1,11 +1,10 @@
-import { WebRTCAnswer } from "../../api.js";
+import { Api, fetchApi, WebRTCAnswer } from "../../api.js";
 import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent_Tags, ControlStreamInput, ControlStreamOutput_Tags, InputBatcher, PacketDirection, ServerType, VideoFormats, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject, uniffiMillisUntil, uniffiNow } from "../../util.js";
 import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
 import { StatValue } from "../stats.js";
-import { emptyVideoCodecs } from "../video.js";
 import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
 import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index.js";
 
@@ -19,11 +18,15 @@ export class WebRTCTransport implements Transport {
 
     private logger?: Logger
 
-    private peer: RTCPeerConnection
-    private onIceGatheringComplete: Promise<void>
+    private api: Api
 
-    constructor(configuration: RTCConfiguration, logger?: Logger) {
+    private peer: RTCPeerConnection
+    private location: string | null = null
+
+    constructor(api: Api, configuration: RTCConfiguration, logger?: Logger) {
         this.logger = logger
+
+        this.api = api
 
         // Create peer
         this.peer = new RTCPeerConnection(configuration)
@@ -36,13 +39,7 @@ export class WebRTCTransport implements Transport {
         this.peer.addEventListener("track", this.onTrack.bind(this))
 
         // Ice Gathering
-        this.onIceGatheringComplete = new Promise(resolve => {
-            this.peer.addEventListener("icegatheringstatechange", () => {
-                if (this.peer.iceGatheringState == "complete") {
-                    resolve()
-                }
-            })
-        })
+        this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
 
         // Add Media
         this.peer.addTransceiver("video", { direction: "recvonly" })
@@ -65,11 +62,6 @@ export class WebRTCTransport implements Transport {
         this.logger?.debug("Setting webrtc local description")
         await this.peer.setLocalDescription(offer)
 
-        // Wait for ice gathering to finish and create sdp with those ice candidates
-        this.logger?.debug("Waiting for ice gathering to finish")
-        await this.onIceGatheringComplete
-        offer.sdp = this.peer.localDescription?.sdp
-
         // Insert custom options
         this.sdpOfferOptions = {
             controlEnet: true,
@@ -80,12 +72,17 @@ export class WebRTCTransport implements Transport {
         this.logger?.debug(`successfully generated webrtc sdp with options ${JSON.stringify(this.sdpOfferOptions)}`)
         console.debug("Client Sdp", sdp)
 
+        this.logger?.debug(`starting ice candidate sender`)
+        this.sendIceCandidates()
+
         return sdp
     }
     async setAnswer(response: WebRTCAnswer): Promise<void> {
         console.debug("Server Sdp", JSON.stringify(response))
 
         this.logger?.debug(`Received whep response with location "${response.location}"`)
+
+        this.location = response.location
 
         const answer = webrtcSessionAnswerParse(response.answerSdp)
         this.logger?.debug(`Server responded with extensions ${JSON.stringify(answer)}`)
@@ -151,6 +148,50 @@ export class WebRTCTransport implements Transport {
             if (this.onclose) {
                 this.onclose(shutdown)
             }
+        }
+    }
+
+    // -- Trickle Ice
+    private iceCandidateSendTimer: number | null = null
+    private pendingIceCandidates: Array<string> = []
+    private onIceCandidate(event: RTCPeerConnectionIceEvent) {
+        if (!event.candidate) {
+            // Ice Gathering finished
+            this.logger?.debug("ice gathering finished")
+            return
+        }
+
+        const candidate = event.candidate.toJSON().candidate
+        if (candidate) {
+            this.pendingIceCandidates.push(candidate)
+        }
+    }
+
+    private boundSendIceCandidates = this.sendIceCandidates.bind(this)
+    private async sendIceCandidates() {
+        this.iceCandidateSendTimer = null
+        if (this.iceCandidateSendTimer != null) {
+            globalObject().clearTimeout(this.iceCandidateSendTimer)
+        }
+
+        for (const candidate of this.pendingIceCandidates) {
+            this.logger?.debug(`sending ice candidate: ${candidate}`)
+        }
+
+        if (this.location) {
+            const trickleIceSdpFrag = this.pendingIceCandidates.join("\r\n")
+
+            await fetchApi(this.api, this.location, "PATCH", {
+                noUrlModify: true,
+                trickleIceSdpFrag,
+                response: "ignore",
+            })
+        }
+
+        this.pendingIceCandidates = []
+
+        if (this.peer.iceGatheringState != "complete") {
+            this.iceCandidateSendTimer = globalObject().setTimeout(this.boundSendIceCandidates, 2000)
         }
     }
 

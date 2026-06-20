@@ -406,12 +406,6 @@ impl Display for RtcIceServer {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub struct GetWebRTCConfigurationResponse {
-    pub ice_servers: Vec<RtcIceServer>,
-}
-
 ts_consts!(
     pub WebSocketChannel(export_bindings_websocket_channels: EXPORT_PATH) as u8:
 

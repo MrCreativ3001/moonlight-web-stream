@@ -22,7 +22,7 @@ use moonlight_common::{
     },
 };
 use tokio::{select, sync::Mutex, time::sleep};
-use tracing::{error, info, instrument, warn};
+use tracing::{Instrument, debug_span, error, info, instrument, warn};
 
 use crate::{
     api::stream::create_control_packet_config,
@@ -55,14 +55,17 @@ pub async fn web_socket_stream(
     // upgrade connection to web socket connection
     let (res, ws_sender, ws_receiver) = actix_ws::handle(&req, body_stream)?;
 
-    spawn(async move {
-        match handle_ws(user, ws_sender, ws_receiver).await {
-            Ok(_) => {}
-            Err(err) => {
-                error!(error = %err, "stream failed");
+    spawn(
+        async move {
+            match handle_ws(user, ws_sender, ws_receiver).await {
+                Ok(_) => {}
+                Err(err) => {
+                    error!(error = %err, "stream failed");
+                }
             }
         }
-    });
+        .instrument(debug_span!("ws handler")),
+    );
 
     Ok(res)
 }

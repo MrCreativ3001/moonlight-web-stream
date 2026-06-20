@@ -1,8 +1,9 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, GetWebRTCConfigurationResponse } from "./api_bindings.js";
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, } from "./api_bindings.js";
 import { showErrorPopup } from "./component/error.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
 import { buildUrl } from "./config_.js";
+import { WebRtcLinkHeader_Tags, webrtcLinkHeaderParse } from "./uniffi/moonlight_common_bindings.js";
 
 // IMPORTANT: this should be a bit bigger than the moonlight-common reqwest backend timeout if some hosts are offline!
 const API_TIMEOUT = 12000
@@ -70,6 +71,7 @@ export async function tryLogin(): Promise<Api | null> {
     }
 }
 
+const OPTIONS = "OPTIONS"
 const GET = "GET"
 const POST = "POST"
 const PATCH = "PATCH"
@@ -90,6 +92,7 @@ export type ApiFetchInit = {
 } & (
         { json?: any, }
         | { sdp?: string }
+        | { trickleIceSdpFrag?: string }
     )
 
 export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
@@ -131,6 +134,9 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
         } else if ("sdp" in init) {
             headers["Content-Type"] = "application/sdp"
             body = init.sdp
+        } else if ("trickleIceSdpFrag" in init) {
+            headers["Content-Type"] = "application/trickle-ice-sdpfrag"
+            body = init.trickleIceSdpFrag
         }
     }
 
@@ -439,8 +445,41 @@ export async function apiHostCancel(api: Api, request: PostCancelRequest): Promi
     return response as PostCancelResponse
 }
 
-export async function apiWebRTCConfiguration(api: Api): Promise<GetWebRTCConfigurationResponse> {
-    return await fetchApi(api, "/host/stream/webrtc", GET)
+export type WebRTCConfiguration = {
+    iceServers: Array<RTCIceServer>
+}
+
+export async function apiWebRTCConfiguration(api: Api): Promise<WebRTCConfiguration> {
+    const ENDPOINT = "/host/stream/webrtc"
+
+    const [url, request] = buildRequest(api, ENDPOINT, OPTIONS)
+
+    let response
+    try {
+        response = await fetch(url, request)
+    } catch (e: any) {
+        throw new FetchError("unknown", ENDPOINT, OPTIONS, e)
+    }
+
+    const iceServers: Array<RTCIceServer> = []
+
+    const rawLinks = response.headers.get("Link")
+    if (rawLinks) {
+        const links = webrtcLinkHeaderParse(rawLinks)
+        for (const link of links) {
+            if (link.tag == WebRtcLinkHeader_Tags.IceServer) {
+                iceServers.push({
+                    urls: link.inner.url,
+                    username: link.inner.username,
+                    credential: link.inner.credential,
+                })
+            }
+        }
+    }
+
+    return {
+        iceServers
+    }
 }
 
 export type WebRTCAnswer = {

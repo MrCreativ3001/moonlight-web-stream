@@ -203,9 +203,13 @@ export class Stream implements Component {
         this.debugLog("Received WebRTC Config, Creating Transport")
 
         // Create transport
-        const transport = new WebRTCTransport({
-            iceServers: config.ice_servers,
-        }, this.logger)
+        const transport = new WebRTCTransport(
+            this.api,
+            {
+                iceServers: config.iceServers,
+            },
+            this.logger
+        )
         transport.controlStream.onreceive = this.boundReceivePacket
 
         const onConnect = new Promise<TransportConnectData>(resolve => {
@@ -273,7 +277,7 @@ export class Stream implements Component {
         }
 
         // -- Connection successful
-        await this.onConnect(transport, connectData)
+        await this.onConnect(connectData)
 
         return await onClose
     }
@@ -334,12 +338,12 @@ export class Stream implements Component {
         }
 
         // -- Connection successful
-        this.onConnect(transport, connectData)
+        this.onConnect(connectData)
 
         return await onClose
     }
 
-    private async onConnect(transport: Transport, connectData: TransportConnectData) {
+    private async onConnect(connectData: TransportConnectData) {
         // Set input
         this.input.onStreamStart(connectData.capabilities, [connectData.videoSetup.width, connectData.videoSetup.height])
 
@@ -444,7 +448,7 @@ export class Stream implements Component {
             return false
         }
 
-        return pipelineCodecSupport
+        return true
     }
     private async createAudioPlayer(audioType: TransportAudioType, audioSetup: AudioPlayerSetup): Promise<boolean> {
         if (this.audioPlayer) {

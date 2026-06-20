@@ -6,7 +6,7 @@ use actix_web::{
     post,
 };
 use async_trait::async_trait;
-use common::api_bindings::{GetWebRTCConfigurationResponse, RtcIceServer};
+use common::api_bindings::{ RtcIceServer};
 use common::config::{PortRange};
 use moonlight_common::ServerVersion;
 use moonlight_common::crypto::disabled::DisabledCryptoBackend;
@@ -28,27 +28,23 @@ use moonlight_common::stream::video::{
 use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
 };
+use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
-use std::time::{Duration, Instant};
-use tokio::net::UdpSocket;
+use std::time::{Duration};
 use tokio::sync::mpsc::{self, Sender, channel};
-use tokio::sync::{Mutex, Notify, oneshot};
+use tokio::sync::{Mutex};
 use tokio::time::sleep;
 use tokio::{select, spawn};
-use tracing::{Instrument, debug, debug_span, info, info_span, instrument, trace, warn};
+use tracing::{Instrument, debug, debug_span, info, instrument, trace, warn};
 use webrtc::api::APIBuilder;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_OPUS, MediaEngine};
 use webrtc::api::setting_engine::SettingEngine;
-use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
-use webrtc::data_channel::data_channel_message::DataChannelMessage;
-use webrtc::data_channel::data_channel_state::RTCDataChannelState;
 use webrtc::ice::udp_network::{EphemeralUDP, UDPNetwork};
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
@@ -75,7 +71,7 @@ use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use crate::api::stream::create_control_packet_config;
 use crate::api::stream::webrtc::control::{add_enet_control_channel, add_simple_control_channel};
 use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
-use crate::api::stream::webrtc::dynamic_ice_servers::load_dynamic_ice_servers;
+use crate::api::stream::webrtc::ice_servers::{generate_ice_servers};
 use crate::api::stream::webrtc::video::{codec_to_video_format, video_format_to_codec};
 use crate::app::App;
 use crate::app::host::HostId;
@@ -84,32 +80,36 @@ use crate::app::{AppError, user::AuthenticatedUser};
 
 mod control;
 mod convert;
-mod dynamic_ice_servers;
+mod ice_servers;
 mod video;
 
 #[options("")]
-pub async fn webrtc_options(_user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
-    Ok(HttpResponseBuilder::new(StatusCode::OK)
-        .append_header(("Accept-Post", "application/sdp"))
+pub async fn webrtc_options(app: Data<App>, _user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
+    let mut response = HttpResponseBuilder::new(StatusCode::OK)
+        ;
+        response.append_header(("Accept-Post", "application/sdp"));
+
+    // Add ice servers
+    let ice_servers = generate_ice_servers(&app).await?;
+    for ice_server in ice_servers {
+        let username = if ice_server.username.is_empty() {None} else {Some(ice_server.username)};
+        let credential= if ice_server.credential.is_empty() {None} else {Some(ice_server.credential)};
+
+        for url in ice_server.urls {
+        let header_value = WebRTCLinkHeader::IceServer { url, username: username.clone(), credential: credential.clone()};
+
+        response.append_header((header::LINK, header_value.to_string()));
+        }
+    }
+
+    Ok(response
         .finish())
 }
 
-async fn generate_ice_servers(app: &App) -> Result<Vec<RtcIceServer>, AppError> {
-    // Load ice servers
-    let mut ice_servers = app.config().webrtc.ice_servers.clone();
-
-    // Load dynamic ice servers and append them to the current ice servers
-    let dynamic_ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
-    ice_servers.extend_from_slice(&dynamic_ice_servers);
-
-    Ok( ice_servers )
-}
-
 #[get("")]
-pub async fn webrtc_get(app: Data<App>,_user: AuthenticatedUser) -> Result<Json<GetWebRTCConfigurationResponse>, AppError> {
-    let ice_servers= generate_ice_servers(&app).await?;
+pub async fn webrtc_get(_user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
+    Ok(HttpResponse::MethodNotAllowed().finish())
 
-    Ok(Json(GetWebRTCConfigurationResponse { ice_servers}))
 }
 
 fn opus_codec() -> RTCRtpCodecCapability {

@@ -1,4 +1,4 @@
-use common::{api_bindings::RtcIceServer, config::WebRtcConfig};
+use crate::{api::bindings::RtcIceServer, config::WebRtcConfig};
 use log::error;
 use tokio::process::Command;
 use tracing::debug;

@@ -571,9 +571,6 @@ name = "bytes"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "bytestring"
@@ -709,22 +706,6 @@ name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
-
-[[package]]
-name = "common"
-version = "2.6.0"
-dependencies = [
- "bytes",
- "log",
- "moonlight-common",
- "pem",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "ts-rs",
-]
 
 [[package]]
 name = "const-oid"
@@ -3397,7 +3378,6 @@ checksum = "4994acea2522cd2b3b85c1d9529a55991e3ad5e25cdcd3de9d505972c4379424"
 dependencies = [
  "thiserror 2.0.18",
  "ts-rs-macros",
- "uuid 1.22.0",
 ]
 
 [[package]]
@@ -3685,8 +3665,8 @@ dependencies = [
  "actix-ws",
  "anyhow",
  "async-trait",
+ "bytes",
  "clap",
- "common",
  "futures",
  "futures-concurrency",
  "hex",
@@ -3704,6 +3684,7 @@ dependencies = [
  "tracing-actix-web",
  "tracing-appender",
  "tracing-subscriber",
+ "ts-rs",
  "uuid 0.8.2",
  "venator",
  "webrtc",

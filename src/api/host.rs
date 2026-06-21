@@ -1,12 +1,12 @@
+use crate::api::bindings::{
+    DeleteHostQuery, GetHostQuery, GetHostResponse, GetHostsResponse, PatchHostRequest,
+    PostCancelRequest, PostCancelResponse, PostHostRequest, PostHostResponse, PostPairRequest,
+    PostPairResponse1, PostPairResponse2, PostWakeUpRequest, UndetailedHost,
+};
 use actix_web::{
     HttpResponse, delete, get, patch, post,
     rt::spawn,
     web::{Data, Json, Query},
-};
-use common::api_bindings::{
-    DeleteHostQuery, GetHostQuery, GetHostResponse, GetHostsResponse, PatchHostRequest,
-    PostCancelRequest, PostCancelResponse, PostHostRequest, PostHostResponse, PostPairRequest,
-    PostPairResponse1, PostPairResponse2, PostWakeUpRequest, UndetailedHost,
 };
 use futures::future::try_join_all;
 use moonlight_common::{crypto::rustcrypto::RustCryptoBackend, http::pair::PairPin};

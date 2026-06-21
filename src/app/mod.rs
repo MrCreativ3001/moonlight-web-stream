@@ -5,8 +5,8 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use crate::config::Config;
 use actix_web::{HttpResponse, ResponseError, body::BoxBody, http::StatusCode, web::Bytes};
-use common::config::Config;
 use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
 use moonlight_common::{

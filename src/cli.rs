@@ -3,14 +3,14 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-use clap::{Args, Parser, Subcommand};
-use common::{
-    api_bindings::RtcIceServer,
+use crate::{
+    api::bindings::RtcIceServer,
     config::{
         Config, ConfigSsl, ForwardedHeaders, PortRange, WebRtcNat1To1IceCandidateType,
         WebRtcNat1To1Mapping, WebRtcNetworkType,
     },
 };
+use clap::{Args, Parser, Subcommand};
 use log::LevelFilter;
 
 impl Cli {

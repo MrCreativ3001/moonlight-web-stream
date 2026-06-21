@@ -542,33 +542,31 @@ Thanks to everyone who contributed to make this software better :).
 </a>
 
 ## Building
-Make sure you've cloned this repo with all it's submodules
+Clone this repository:
 ```sh
 git clone https://github.com/MrCreativ3001/moonlight-web-stream.git
 ```
-A [Rust](https://www.rust-lang.org/tools/install) [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) installation is required.
+A [Rust](https://www.rust-lang.org/tools/install) installation is required.
 
-Moonlight Web consists the `web-server` binary and a web frontend:
+Moonlight Web consists the [web server binary](#building-the-web-server) and a [web frontend](#building-the-frontend):
 
-### Building the web-server
-- Build it on your system
+### Building the Web Server
+Run
+```sh
+cargo build --release
+```
+.
 
-  When you want to build it on your system take a look at how to compile the web server and build the frontend:
-  - [moonlight web server](#crate-moonlight-web-server)
-
-- Compile using [Cargo Cross](https://github.com/cross-rs/cross) (doesn't work on most targets because cross-rs images use outdated c/cpp compilers)
-
-  After you've got a successful installation of cross just run the command in the project root directory.
-  This will compile the [web server](#crate-moonlight-web-server)
-  ```sh
-  cross build --release --target YOUR_TARGET
-  ```
-  Note: windows only has the gnu target `x86_64-pc-windows-gnu`
+You can use [Cargo Cross](https://github.com/cross-rs/cross) for cross compilation:
+```sh
+cross build --release --target YOUR_TARGET
+```
+Note: windows only has the gnu target `x86_64-pc-windows-gnu`
 
 ### Building the Frontend
 Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
 
-To generate bindings to rust code using it is using [Uniffi Bindgen React Native](https://github.com/jhugman/uniffi-bindgen-react-native).
+To generate bindings to rust code it is using [Uniffi Bindgen React Native](https://github.com/jhugman/uniffi-bindgen-react-native).
 This might have dependencies on wasm-pack or wasm-bindgen.
 
 ```sh

@@ -1,4 +1,4 @@
-use common::config::Config;
+use crate::config::Config;
 use rustls::{
     CertificateError, OtherError, ServerConfig,
     pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
@@ -44,6 +44,7 @@ mod app;
 mod web;
 
 mod cli;
+mod config;
 mod human_json;
 
 #[actix_web::main]

@@ -3,8 +3,8 @@ use std::{
     sync::Arc,
 };
 
+use crate::api::bindings::{self, DetailedHost, HostOwner, HostState, PairStatus, UndetailedHost};
 use actix_web::web::Bytes;
-use common::api_bindings::{self, DetailedHost, HostOwner, HostState, PairStatus, UndetailedHost};
 use moonlight_common::{
     crypto::rustcrypto::RustCryptoBackend,
     high::{
@@ -58,7 +58,7 @@ impl From<moonlight_common::http::app_list::App> for App {
         }
     }
 }
-impl From<App> for api_bindings::App {
+impl From<App> for bindings::App {
     fn from(value: App) -> Self {
         Self {
             app_id: value.id.0,

@@ -1,5 +1,5 @@
-use common::{
-    api_bindings::RtcIceServer,
+use crate::{
+    api::bindings::RtcIceServer,
     config::{WebRtcNat1To1IceCandidateType, WebRtcNetworkType},
 };
 use webrtc::{

@@ -1,12 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
-use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
-use actix_ws::{Message, MessageStream, Session};
-use async_trait::async_trait;
-use common::api_bindings::{
+use crate::api::bindings::{
     WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage,
     WebSocketStreamResponse,
 };
+use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
+use actix_ws::{Message, MessageStream, Session};
+use async_trait::async_trait;
 use moonlight_common::{
     ServerVersion,
     crypto::rustcrypto::RustCryptoBackend,

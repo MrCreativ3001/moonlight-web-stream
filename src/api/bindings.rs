@@ -7,7 +7,9 @@ use moonlight_common::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::{api_bindings_ext::TsAny, ts_consts};
+use crate::ts_consts;
+
+use super::bindings_ext::TsAny;
 
 const EXPORT_PATH: &str = "../../web/api_bindings.ts";
 

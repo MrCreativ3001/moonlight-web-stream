@@ -1,6 +1,6 @@
+use crate::api::bindings::ConfigJs;
 use actix_files::Files;
 use actix_web::{HttpResponse, dev::HttpServiceFactory, get, services, web::Data};
-use common::api_bindings::ConfigJs;
 use log::warn;
 
 use crate::app::App;

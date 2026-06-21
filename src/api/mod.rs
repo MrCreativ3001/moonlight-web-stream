@@ -20,6 +20,9 @@ use crate::api::{
     user::{add_user, delete_user, get_user, list_users, patch_user},
 };
 
+pub mod bindings;
+pub(super) mod bindings_ext;
+
 pub mod app;
 pub mod auth;
 pub mod host;

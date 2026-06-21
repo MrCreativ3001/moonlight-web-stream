@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::api_bindings::RtcIceServer;
+use crate::api::bindings::RtcIceServer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {

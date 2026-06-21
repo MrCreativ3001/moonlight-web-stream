@@ -6,8 +6,8 @@ use actix_web::{
     post,
 };
 use async_trait::async_trait;
-use common::api_bindings::{ RtcIceServer};
-use common::config::{PortRange};
+use crate::api::bindings::{ RtcIceServer};
+use crate::config::{PortRange};
 use moonlight_common::ServerVersion;
 use moonlight_common::crypto::disabled::DisabledCryptoBackend;
 use moonlight_common::crypto::rustcrypto::RustCryptoBackend;

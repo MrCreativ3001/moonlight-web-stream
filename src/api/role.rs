@@ -1,13 +1,13 @@
-use actix_web::{
-    HttpResponse, delete, get, patch, post,
-    web::{Data, Json, Query},
-};
-use common::{
-    api_bindings::{
+use crate::{
+    api::bindings::{
         DeleteRoleQuery, GetRoleQuery, GetRoleResponse, GetRolesResponse, PatchRoleRequest,
         PostRoleRequest, PostRoleResponse, StreamPermissions,
     },
-    api_bindings_ext::TsAny,
+    api::bindings_ext::TsAny,
+};
+use actix_web::{
+    HttpResponse, delete, get, patch, post,
+    web::{Data, Json, Query},
 };
 
 use futures::future::join_all;

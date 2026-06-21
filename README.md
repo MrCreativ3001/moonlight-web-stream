@@ -532,14 +532,14 @@ Changes:
 - replaced openssl by rustls
   - This makes older v1 and v2 server certificates incompatible
 - replaced moonlight-common-c by moonlight-common-rust
-  - This makes older Nvidia GameStream Servers unsupported
+  - This could make older Nvidia GameStream and Sunshine Servers unsupported
 
 ## Contributors
-- Thanks to [@Argon2000](https://github.com/Argon2000) for implementing a canvas renderer, which makes this run in the Tesla browser.
-- Thanks to [@Maneetbal](https://github.com/Maneetbal) for creating a new beautiful GUI.
-- Thanks to [@chromaticpipe](https://github.com/chromaticpipe) for making Github CI.
-- Thanks to [@qiin2333](https://github.com/qiin2333) for implementing HDR support.
-- Thanks to [@Idefix2020](https://github.com/Idefix2020) for fixing the context menu and implementing caching for app images
+Thanks to everyone who contributed to make this software better :).
+
+<a href = "https://github.com/Tanu-N-Prabhu/Python/graphs/contributors">
+  <img src = "https://contrib.rocks/image?repo=MrCreativ3001/moonlight-web-stream"/>
+</a>
 
 ## Building
 Make sure you've cloned this repo with all it's submodules
@@ -548,38 +548,36 @@ git clone https://github.com/MrCreativ3001/moonlight-web-stream.git
 ```
 A [Rust](https://www.rust-lang.org/tools/install) [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) installation is required.
 
-There are 2 ways to build Moonlight Web:
+Moonlight Web consists the `web-server` binary and a web frontend:
+
+### Building the web-server
 - Build it on your system
 
-  When you want to build it on your system take a look at how to compile the web server and streamer binary:
+  When you want to build it on your system take a look at how to compile the web server and build the frontend:
   - [moonlight web server](#crate-moonlight-web-server)
-  - [moonlight web streamer](#crate-moonlight-web-streamer)
-  - [moonlight common rust](https://github.com/MrCreativ3001/moonlight-common-rust/tree/master/examples#client-common-c)
 
 - Compile using [Cargo Cross](https://github.com/cross-rs/cross) (doesn't work on most targets because cross-rs images use outdated c/cpp compilers)
 
   After you've got a successful installation of cross just run the command in the project root directory.
-  This will compile the [web server](#crate-moonlight-web-server) and the [streamer](#crate-moonlight-web-streamer).
+  This will compile the [web server](#crate-moonlight-web-server)
   ```sh
   cross build --release --target YOUR_TARGET
   ```
   Note: windows only has the gnu target `x86_64-pc-windows-gnu`
 
-### Crate: Moonlight Web Server
-This is the web server for Moonlight Web found at `src/`.
-It'll spawn a multiple [streamers](#crate-moonlight-web-server) as a subprocess for handling each stream.
-
+### Building the Frontend
 Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
+
+To generate bindings to rust code using it is using [Uniffi Bindgen React Native](https://github.com/jhugman/uniffi-bindgen-react-native).
+This might have dependencies on wasm-pack or wasm-bindgen.
+
 ```sh
 npm install
 npm run build
 ```
+
 The build output will be in `dist/`.
 
 If you're compiling in:
 - debug mode -> the folder needs to be called `dist/`
 - release mode -> the folder needs to be called `static/`
-
-### Crate: Moonlight Web Streamer
-This is the streamer subprocess of the [web server](#crate-moonlight-web-server) and found at `streamer/`.
-It'll communicate via stdin and stdout with the web server to negotiate the WebRTC peers and then continue to communicate via the peer.

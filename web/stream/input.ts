@@ -1104,12 +1104,12 @@ export class StreamInput {
         this.controlStream?.send(new ClientInputEvent.ControllerState({
             controllerNumber: id,
             pressedButtons: state.buttonFlags,
-            leftTrigger: Math.max(0.0, Math.min(1.0, state.leftTrigger)) * U8_MAX,
-            rightTrigger: Math.max(0.0, Math.min(1.0, state.rightTrigger)) * U8_MAX,
-            leftStickX: Math.max(-1.0, Math.min(1.0, state.leftStickX)) * I16_MAX,
-            leftStickY: Math.max(-1.0, Math.min(1.0, -state.leftStickY)) * I16_MAX,
-            rightStickX: Math.max(-1.0, Math.min(1.0, state.rightStickX)) * I16_MAX,
-            rightStickY: Math.max(-1.0, Math.min(1.0, -state.rightStickY)) * I16_MAX,
+            leftTrigger: Math.max(0.0, Math.min(1.0, state.leftTrigger)),
+            rightTrigger: Math.max(0.0, Math.min(1.0, state.rightTrigger)),
+            leftStickX: Math.max(-1.0, Math.min(1.0, state.leftStickX)),
+            leftStickY: Math.max(-1.0, Math.min(1.0, -state.leftStickY)),
+            rightStickX: Math.max(-1.0, Math.min(1.0, state.rightStickX)),
+            rightStickY: Math.max(-1.0, Math.min(1.0, -state.rightStickY)),
         }))
     }
 }

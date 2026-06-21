@@ -831,7 +831,7 @@ pub async fn webrtc_post(
                                 continue;
                             }
                         };
-                        
+
                         for attr in &session.attributes {
                             if attr.attribute == "candidate" && let Some(value) = &attr.value {
                                 if let Err(err) = peer.add_ice_candidate(RTCIceCandidateInit {

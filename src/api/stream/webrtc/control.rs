@@ -181,17 +181,17 @@ pub async fn add_enet_control_channel(
                     warn!(packet = ?message.data, "received string over enet control channel! dropping message");
                     return;
                 }
-                
-                {
-                let mut control_host = control_host.lock().await;
 
-                if let Err(err)= control_host.handle_input(ControlHostInput::Receive {
-                    now: Instant::from_std(base_time),
-                    addr,
-                    data: &message.data,
-                }) {
-                    warn!(error = ?err, "failed to call handle_input with Receive on ControlHost");
-                }
+                {
+                    let mut control_host = control_host.lock().await;
+
+                    if let Err(err)= control_host.handle_input(ControlHostInput::Receive {
+                        now: Instant::from_std(base_time),
+                        addr,
+                        data: &message.data,
+                    }) {
+                        warn!(error = ?err, "failed to call handle_input with Receive on ControlHost");
+                    }
                 }
 
                 poll_notify.notify_one();

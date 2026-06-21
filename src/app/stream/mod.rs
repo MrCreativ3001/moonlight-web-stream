@@ -54,7 +54,7 @@ impl Stream {
                             streams.remove(&id);
 
                             debug!(stream_id = ?id, "removed stopped stream from app");
-                            return;       
+                            return;
                         }
                     }
                 }

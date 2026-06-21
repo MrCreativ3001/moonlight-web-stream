@@ -4,7 +4,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use actix_web::web::Bytes;
 use moonlight_common::stream::proto::control::peer::{
-    ControlHostAction, ControlHostEvent, ControlHostOutput, ControlPeerConfig,  ControlPeerRole
+    ControlHostAction, ControlHostEvent, ControlHostOutput, ControlPeerConfig, ControlPeerRole,
 };
 use moonlight_common::{
     crypto::disabled::DisabledCryptoBackend,
@@ -41,7 +41,10 @@ pub async fn add_simple_control_channel(
     mut clientbound_control_receiver: Receiver<ControlPacket>,
     control_config: &ControlPacketConfig,
 ) {
-    let control = peer.create_data_channel("moonlight.control", None).await.unwrap();
+    let control = peer
+        .create_data_channel("moonlight.control", None)
+        .await
+        .unwrap();
     debug!("added simple control channel");
 
     let stream = moonlight_stream.clone();
@@ -118,7 +121,8 @@ pub async fn add_simple_control_channel(
             }
 
             debug!("stopping relaying from host to client");
-        }.instrument(debug_span!("relay: host to client"))
+        }
+        .instrument(debug_span!("relay: host to client"))
     });
 
     debug!("added events for simple control channel");

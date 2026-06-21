@@ -1,19 +1,15 @@
-use std::{
-    ops::Deref, sync::Arc, time::Duration
-};
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 use tokio::{spawn, sync::mpsc::Sender, task::JoinHandle, time::sleep};
 use tracing::{Level, Span, debug, instrument, warn};
 
 use crate::app::{
-    App, AppError, AppInner, 
+    App, AppError, AppInner,
     user::{AuthenticatedUser, RoleType, User},
 };
 
 pub enum ExternalStreamEvent {
-    WebRTCAddIceCandidate {
-        ice_sdp_frag: String,
-    },
+    WebRTCAddIceCandidate { ice_sdp_frag: String },
     Stop,
 }
 

@@ -11,7 +11,7 @@ use crate::ts_consts;
 
 use super::bindings_ext::TsAny;
 
-const EXPORT_PATH: &str = "../../web/api_bindings.ts";
+const EXPORT_PATH: &str = "../web/api_bindings.ts";
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone)]
 #[ts(export, export_to = EXPORT_PATH)]

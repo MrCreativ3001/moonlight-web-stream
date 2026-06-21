@@ -1,9 +1,9 @@
 use moonlight_common::{crypto::rustcrypto::RustCryptoBackend, http::pair::PairingCryptoBackend};
-use openssl::{hash::MessageDigest, pkcs5};
+use pbkdf2::sha2::Sha256;
 
 use crate::app::AppError;
 
-const HASH_ITERATIONS: usize = 150_000;
+const HASH_ITERATIONS: u32 = 150_000;
 
 #[derive(Clone)]
 pub struct StoragePassword {
@@ -17,13 +17,7 @@ impl StoragePassword {
             return Err(AppError::PasswordEmpty);
         }
 
-        pkcs5::pbkdf2_hmac(
-            password.as_bytes(),
-            salt,
-            HASH_ITERATIONS,
-            MessageDigest::sha256(),
-            out,
-        )?;
+        pbkdf2::pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, HASH_ITERATIONS, out);
 
         Ok(())
     }

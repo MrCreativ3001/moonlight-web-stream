@@ -15,7 +15,6 @@ use moonlight_common::{
     http::{client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
     stream::tokio::MoonlightStreamError,
 };
-use openssl::error::ErrorStack;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
@@ -91,9 +90,6 @@ pub enum AppError {
     #[error("the authorization header is not a bearer")]
     BadRequest,
     // --
-    // TODO: remove openssl
-    #[error("openssl error occured: {0}")]
-    OpenSSL(#[from] ErrorStack),
     #[error("rustcrypto error occured: {0}")]
     RustCrypto(#[from] RustCryptoError),
     #[error("hex error occured: {0}")]
@@ -139,7 +135,6 @@ impl ResponseError for AppError {
             Self::SessionTokenNotFound => HttpResponse::new(StatusCode::UNAUTHORIZED),
             Self::Unauthorized => HttpResponse::new(StatusCode::UNAUTHORIZED),
             Self::Forbidden => HttpResponse::new(StatusCode::FORBIDDEN),
-            Self::OpenSSL(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::RustCrypto(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::HeaderAuthDisabled => HttpResponse::new(StatusCode::UNAUTHORIZED),
             Self::Hex(_) => HttpResponse::new(StatusCode::BAD_REQUEST),

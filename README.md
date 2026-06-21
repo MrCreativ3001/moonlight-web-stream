@@ -527,6 +527,13 @@ Other changes:
   - change all instances of `ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}/`<br> to `ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/`
   - [Proxying via Apache 2](https://github.com/MrCreativ3001/moonlight-web-stream/tree/v2?tab=readme-ov-file#proxying-via-apache-2)
 
+## Migrating to v3
+Changes:
+- replaced openssl by rustls
+  - This makes older v1 and v2 server certificates incompatible
+- replaced moonlight-common-c by moonlight-common-rust
+  - This makes older Nvidia GameStream Servers unsupported
+
 ## Contributors
 - Thanks to [@Argon2000](https://github.com/Argon2000) for implementing a canvas renderer, which makes this run in the Tesla browser.
 - Thanks to [@Maneetbal](https://github.com/Maneetbal) for creating a new beautiful GUI.

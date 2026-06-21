@@ -1,5 +1,8 @@
 use common::config::Config;
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+use rustls::{
+    CertificateError, OtherError, ServerConfig,
+    pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+};
 use std::{
     fs::OpenOptions,
     io::{self, ErrorKind, IsTerminal},
@@ -99,6 +102,12 @@ async fn main() {
         );
     }
 
+    // Initialize crypto provider
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to set ring crypto provider as default");
+
+    // Start the server
     if let Err(err) = start(config).await {
         error!("{err:?}");
     }
@@ -124,6 +133,11 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
             "actix_http::h1=off"
                 .parse()
                 .expect("failed to add actix-web tracing directive"),
+        )
+        .add_directive(
+            "h2=off"
+                .parse()
+                .expect("failed to add h2 tracing directive"),
         )
         .add_directive(
             "mio::poll=off"
@@ -278,16 +292,24 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
     if let Some(certificate) = app.config().web_server.certificate.as_ref() {
         info!("[Server]: Running Https Server with ssl tls");
 
-        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())
-            .expect("failed to create ssl tls acceptor");
-        builder
-            .set_private_key_file(&certificate.private_key_pem, SslFiletype::PEM)
-            .expect("failed to set private key");
-        builder
-            .set_certificate_chain_file(&certificate.certificate_pem)
-            .expect("failed to set certificate");
+        let certificate_chain = {
+            let results =
+                CertificateDer::pem_file_iter(&certificate.certificate_pem)?.collect::<Vec<_>>();
+            let mut chain = Vec::with_capacity(results.len());
 
-        server.bind_openssl(bind_address, builder)?.run().await?;
+            for result in results {
+                chain.push(result?);
+            }
+
+            chain
+        };
+        let private_key = PrivateKeyDer::from_pem_file(&certificate.private_key_pem)?;
+
+        let config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certificate_chain, private_key)?;
+
+        server.bind_rustls_0_23(bind_address, config)?.run().await?;
     } else {
         server.bind(bind_address)?.run().await?;
     }

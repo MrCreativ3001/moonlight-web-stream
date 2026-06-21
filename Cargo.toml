@@ -60,8 +60,7 @@ actix-files = "0.6.6"
 # TODO: upgrade actix-ws
 actix-ws = "0.3.0"
 
-# OpenSSL / Crypto
-openssl = "0.10.67"
+# Crypto
 pem = "3.0.5"
 
 # Serialization
@@ -97,8 +96,11 @@ futures-concurrency = "7.7.1"
 
 clap = { workspace = true, features = ["derive", "env"] }
 
-actix-web = { workspace = true, features = ["openssl"] }
-openssl = { workspace = true }
+actix-web = { workspace = true, features = ["rustls-0_23"] }
+rustls = { version = "0.23.40", default-features = false, features = [
+    "std",
+    "ring",
+] }
 actix-files = { workspace = true }
 actix-ws = { workspace = true }
 
@@ -123,6 +125,7 @@ thiserror.workspace = true
 async-trait.workspace = true
 hex.workspace = true
 sha2 = "0.10.9"
+pbkdf2 = { version = "0.13.0", features = ["sha2"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }

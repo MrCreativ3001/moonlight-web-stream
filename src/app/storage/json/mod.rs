@@ -9,7 +9,7 @@ use std::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures::future::join_all;
-use openssl::rand::rand_bytes;
+use moonlight_common::{crypto::rustcrypto::RustCryptoBackend, http::pair::PairingCryptoBackend};
 use tokio::{
     fs, spawn,
     sync::{
@@ -318,7 +318,7 @@ fn host_from_json(host_id: HostId, host: &V2Host) -> StorageHost {
 
 fn random_number() -> Result<u32, AppError> {
     let mut id_bytes = [0u8; 4];
-    rand_bytes(&mut id_bytes)?;
+    RustCryptoBackend.random_bytes(&mut id_bytes)?;
     Ok(u32::from_be_bytes(id_bytes))
 }
 

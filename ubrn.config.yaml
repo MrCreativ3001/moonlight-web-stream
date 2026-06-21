@@ -2,8 +2,7 @@
 
 rust:
   repo: https://github.com/MrCreativ3001/moonlight-common-rust.git
-  # TODO: replace by a direct rev
-  branch: master
+  branch: 08b7e1ae595d35444bd93d1c83c8609f7cd81d3d
   manifestPath: bindings/Cargo.toml
 
 web:

@@ -1,24 +1,15 @@
-cargo-features = ["profile-rustflags"]
-
-# TODO: choose stable rust instead of nightly
-
 [workspace]
 resolver = "3"
 members = ["common", "./"]
 default-members = ["./"]
-
-[profile.release]
-# strip release information
-rustflags = ["-Zremap-cwd-prefix=.", "-Zlocation-detail=none"]
 
 [workspace.package]
 version = "2.6.0"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
-# TODO: change this to the repo url
 # Make sure to keep the ubrn.config.yaml repo the same as this
-moonlight-common = { path = "../moonlight-common-rust", features = [
+moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-rust.git", rev = "08b7e1ae595d35444bd93d1c83c8609f7cd81d3d", features = [
     "tokio",
     "tokio-hyper",
     "rustcrypto",

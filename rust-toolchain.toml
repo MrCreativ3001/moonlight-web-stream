@@ -1,5 +1,4 @@
-# Make sure to also update the ci toolchain if this is updated
 [toolchain]
-channel = "nightly-2026-02-13"
+channel = "1.96.0"
 components = ["clippy"]
 targets = ["wasm32-unknown-unknown"]

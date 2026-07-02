@@ -35,7 +35,7 @@ pub async fn add_audio_track(
         "moonlight".to_string(),
     ));
 
-    let audio_sender = peer.add_track(track.clone()).await.unwrap();
+    let audio_sender = peer.add_track(track.clone()).await?;
 
     // Feedback
     spawn(

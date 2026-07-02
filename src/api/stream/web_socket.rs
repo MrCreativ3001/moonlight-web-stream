@@ -212,10 +212,20 @@ async fn handle_ws(
         let sender = ws_sender.clone();
         async move {
             while let Ok(frame) = stream.poll_video_frame().await {
-                let mut buffer = vec![0; 1 + frame.raw().len()];
-                buffer[1..].copy_from_slice(frame.raw());
+                // TODO: avoid using payloading and depayloading the frame like this
+                let mut buffer = vec![0; 1 + 5 + frame.raw().len()];
+                buffer[(1 + 5)..].copy_from_slice(frame.raw());
 
                 buffer[0] = WebSocketChannel::VIDEO;
+                // TODO: make frame type from video packet public, 2==Idr
+                buffer[1] = if frame.metadata().frame_type.serialize() == 2 {
+                    1
+                } else {
+                    0
+                };
+                buffer[2..6].copy_from_slice(
+                    &(frame.metadata().timestamp.as_micros() as u32).to_be_bytes(),
+                );
 
                 let _ = sender.clone().binary(buffer).await;
             }

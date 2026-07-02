@@ -35,16 +35,15 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
+use crate::app::AppError;
+
 pub async fn add_simple_control_channel(
     peer: &RTCPeerConnection,
     moonlight_stream: Arc<MoonlightStream>,
     mut clientbound_control_receiver: Receiver<ControlPacket>,
     control_config: &ControlPacketConfig,
-) {
-    let control = peer
-        .create_data_channel("moonlight.control", None)
-        .await
-        .unwrap();
+) -> Result<(), AppError> {
+    let control = peer.create_data_channel("moonlight.control", None).await?;
     debug!("added simple control channel");
 
     let stream = moonlight_stream.clone();
@@ -126,6 +125,8 @@ pub async fn add_simple_control_channel(
     });
 
     debug!("added events for simple control channel");
+
+    Ok(())
 }
 
 pub async fn add_enet_control_channel(
@@ -133,7 +134,7 @@ pub async fn add_enet_control_channel(
     moonlight_stream: Arc<MoonlightStream>,
     mut clientbound_control_receiver: Receiver<ControlPacket>,
     control_config: &ControlPacketConfig,
-) {
+) -> Result<(), AppError> {
     let control = peer
         .create_data_channel(
             "moonlight.control",
@@ -144,8 +145,7 @@ pub async fn add_enet_control_channel(
                 ..Default::default()
             }),
         )
-        .await
-        .unwrap();
+        .await?;
 
     let base_time = StdInstant::now();
 
@@ -298,7 +298,7 @@ pub async fn add_enet_control_channel(
                             debug!(peer_id = ?id, "enet control stream connected, configured peer");
                             },
                             ControlHostEvent::Disconnected { id } => info!(id = ?id, "webrtc enet peer disconnected"),
-                            ControlHostEvent::Receive { id, channel_id, packet } => {
+                            ControlHostEvent::Receive { id: _, channel_id: _, packet } => {
                                 trace!(packet = ?packet, "received packet over enet");
                                 if let Err(err)=  stream.send_raw(packet.clone()){
                                     warn!(error = %err, packet = ?packet, "failed to relay packet from client to host");
@@ -336,4 +336,6 @@ pub async fn add_enet_control_channel(
             }
         }.instrument(debug_span!("relay: enet driver"))
     });
+
+    Ok(())
 }

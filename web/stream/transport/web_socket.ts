@@ -1,14 +1,14 @@
 import { Api } from "../../api.js";
+import { WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage } from "../../api_bindings.js";
 import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, InputBatcher, PacketDirection } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject } from "../../util.js";
-import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
-import { WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse } from "../../api_bindings.js";
+import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
 import { StatValue } from "../stats.js";
+import { createSupportedVideoFormatsBits } from "../video.js";
 import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
 import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index.js";
-import { createSupportedVideoFormatsBits } from "../video.js";
 
 export class WebSocketTransport implements Transport {
     readonly implementationName: string = "web_socket"
@@ -65,8 +65,8 @@ export class WebSocketTransport implements Transport {
             const message = JSON.parse(data) as WebSocketClientboundMessage
 
             if ("Response" in message) {
-                this.logger?.debug("Received stream response")
                 const response = message.Response
+                this.logger?.debug(`received stream response: ${JSON.stringify(response)}`)
 
                 if (this.onconnect) {
                     this.wasConnected = true
@@ -75,9 +75,9 @@ export class WebSocketTransport implements Transport {
                         videoType: "data",
                         videoSetup: {
                             codec: "h264",
-                            width: 0,
-                            height: 0,
-                            fps: 0
+                            width: this.options?.width ?? 0,
+                            height: this.options?.height ?? 0,
+                            fps: this.options?.fps ?? 0
                         },
                         audioType: "data",
                         audioSetup: {
@@ -105,6 +105,11 @@ export class WebSocketTransport implements Transport {
                 const frame = view.slice(1)
 
                 this.videoPipeline?.submitPacket(frame.buffer)
+                if (this.videoPipeline && "pollRequestIdr" in this.videoPipeline && typeof this.videoPipeline.pollRequestIdr == "function" && this.videoPipeline.pollRequestIdr()) {
+                    this.logger?.debug("requesting idr")
+
+                    this.controlStream.sendRaw(new ControlPacket.RequestIdr())
+                }
             } else if (channel == WebSocketChannel.AUDIO) {
                 const frame = view.slice(1)
 
@@ -114,10 +119,12 @@ export class WebSocketTransport implements Transport {
     }
 
     // -- Connect
+    private options: TransportOptions | null = null
     async startStream(options: TransportOptions): Promise<void> {
         this.logger?.debug("Waiting for Web Socket to open")
 
         await this.onOpen
+        this.options = options
 
         this.logger?.debug(`Web Socket opened, sending stream request: ${JSON.stringify(options)}`)
 
@@ -133,7 +140,6 @@ export class WebSocketTransport implements Transport {
                 local_audio_play_mode: options.localAudioPlayMode,
                 supported_codecs: createSupportedVideoFormatsBits(options.supportedCodecs),
                 preferred_codecs: options.preferredCodecs ? createSupportedVideoFormatsBits(options.preferredCodecs) : 0,
-                preferred_audio: options.preferredAudio ?? 0
             }
         })
     }

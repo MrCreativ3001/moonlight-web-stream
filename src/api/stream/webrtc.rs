@@ -40,7 +40,7 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Sender, channel};
 use tokio::time::sleep;
 use tokio::{select, spawn};
-use tracing::{Instrument, debug, debug_span, info, instrument, trace, warn};
+use tracing::{Instrument, debug, debug_span, error, info, instrument, trace, warn};
 use webrtc::api::APIBuilder;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_OPUS, MediaEngine};
@@ -262,7 +262,7 @@ pub async fn webrtc_post(
     let mut host = user.host(host_id).await?;
     let host = host.use_host(&mut user).await?;
 
-    if !host.is_paired().await.unwrap() {
+    if !host.is_paired().await? {
         return Err(AppError::HostNotPaired);
     }
 
@@ -306,8 +306,8 @@ pub async fn webrtc_post(
     let ice_servers = generate_ice_servers(&app).await?;
 
     // Interceptor Registry
-    let interceptor_registry =
-        register_default_interceptors(Registry::new(), &mut media_engine).unwrap();
+    let interceptor_registry = register_default_interceptors(Registry::new(), &mut media_engine)
+        .expect("register default interceptors");
 
     let api = APIBuilder::new()
         .with_interceptor_registry(interceptor_registry)
@@ -328,8 +328,7 @@ pub async fn webrtc_post(
                 .collect(),
             ..Default::default()
         })
-        .await
-        .unwrap();
+        .await?;
     let peer = Arc::new(peer);
 
     info!("created server webrtc peer");
@@ -438,9 +437,9 @@ pub async fn webrtc_post(
     };
     // TODO: apply permissions to settings
 
-    let server_version = host.version().await.unwrap();
-    let gfe_version = host.gfe_version().await.unwrap();
-    let server_codec_mode_support = host.server_codec_mode_support().await.unwrap();
+    let server_version = host.version().await?;
+    let gfe_version = host.gfe_version().await?;
+    let server_codec_mode_support = host.server_codec_mode_support().await?;
     settings
         .adjust_for_server(server_version, &gfe_version, server_codec_mode_support)
         .unwrap();
@@ -475,25 +474,33 @@ pub async fn webrtc_post(
         .unwrap(),
     );
 
-    // Add audio and video track
-    add_audio_track(&peer, &moonlight_stream).await.unwrap();
-    add_video_track(&peer, &moonlight_stream, supported_video_formats)
-        .await
-        .unwrap();
+    // Add audio and video track forwarding
+    if let Err(err) = add_audio_track(&peer, &moonlight_stream).await {
+        error!(error = %err, "failed to add audio track to webrtc peer");
+
+        peer.close().await?;
+        return Err(err.into());
+    }
+    if let Err(err) = add_video_track(&peer, &moonlight_stream, supported_video_formats).await {
+        error!(error = %err, "failed to add video track to webrtc peer");
+
+        peer.close().await?;
+        return Err(err.into());
+    };
 
     info!("started moonlight stream");
 
     // -- Create control channel based on support
     let control_config = create_control_packet_config();
 
-    if session.control_enet {
+    let result = if session.control_enet {
         add_enet_control_channel(
             &peer,
             moonlight_stream.clone(),
             clientbound_control_receiver,
             &control_config,
         )
-        .await;
+        .await
     } else {
         add_simple_control_channel(
             &peer,
@@ -501,7 +508,13 @@ pub async fn webrtc_post(
             clientbound_control_receiver,
             &control_config,
         )
-        .await;
+        .await
+    };
+    if let Err(err) = result {
+        error!("failed to add control stream to webrtc peer");
+
+        peer.close().await?;
+        return Err(err);
     }
 
     // forward packets
@@ -554,7 +567,12 @@ pub async fn webrtc_post(
     }));
 
     // Set remote description
-    peer.set_remote_description(offer).await.unwrap();
+    if let Err(err) = peer.set_remote_description(offer.clone()).await {
+        error!(error = %err, description = %offer, "failed to set remote description");
+
+        peer.close().await?;
+        return Err(err.into());
+    }
 
     info!("configured server webrtc peer, waiting for ice gathering to complete");
 
@@ -563,7 +581,13 @@ pub async fn webrtc_post(
 
     // Complete negotiation
     let answer = peer.create_answer(None).await.unwrap();
-    peer.set_local_description(answer.clone()).await.unwrap();
+
+    if let Err(err) = peer.set_local_description(answer.clone()).await {
+        error!(error = %err, description = %answer, "failed to set local description");
+
+        peer.close().await?;
+        return Err(err.into());
+    }
 
     // Wait for ice gathering to complete
     let _ = ice_complete.recv().await;
@@ -573,6 +597,7 @@ pub async fn webrtc_post(
 
     info!("ice gathering completed, sending answer to client");
 
+    // Add stream to the list of streams
     let (event_sender, mut event_receiver) = mpsc::channel(20);
     let stream = match Stream::new(&app, &user, event_sender).await {
         Ok(value) => value,
@@ -619,8 +644,8 @@ pub async fn webrtc_post(
                         };
 
                         for attr in &session.attributes {
-                            if attr.attribute == "candidate" && let Some(value) = &attr.value {
-                                if let Err(err) = peer.add_ice_candidate(RTCIceCandidateInit {
+                            if attr.attribute == "candidate" && let Some(value) = &attr.value
+                                && let Err(err) = peer.add_ice_candidate(RTCIceCandidateInit {
                                     candidate: value.clone(),
                                     sdp_mid: None,
                                     sdp_mline_index: None,
@@ -629,7 +654,6 @@ pub async fn webrtc_post(
                                 .await {
                                     warn!(error = %err, candidate = ?value, "failed to add trickle ice candidate");
                                 };
-                            }
                         }
                     }
                     ExternalStreamEvent::Stop => {

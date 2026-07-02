@@ -100,6 +100,8 @@ pub enum AppError {
     Moonlight(#[from] MoonlightClientError),
     #[error("moonlight error: {0}")]
     MoonlightStream(#[from] MoonlightStreamError),
+    #[error("webrtc: {0}")]
+    WebRTC(#[from] webrtc::Error),
 }
 
 impl ResponseError for AppError {
@@ -146,6 +148,7 @@ impl ResponseError for AppError {
             Self::BadRequest => HttpResponse::new(StatusCode::BAD_REQUEST),
             Self::Moonlight(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::MoonlightStream(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::WebRTC(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::Io(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
         }
     }

@@ -8,17 +8,20 @@ use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
 use async_trait::async_trait;
 use moonlight_common::{
-    ServerVersion,
     crypto::rustcrypto::RustCryptoBackend,
-    high::tokio::MoonlightHost,
-    http::Request,
     stream::{
         AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
         audio::{AudioConfig, AudioFrame, OpusMultistreamConfig},
         control::ActiveGamepads,
-        proto::control::packet::{ControlPacket, ControlPacketConfig, PacketDirection},
-        tokio::{MoonlightStream, MoonlightStreamError, MoonlightStreamHandler},
-        video::{ColorRange, ColorSpace, DecodeResult, VideoDecodeUnit, VideoFormats, VideoSetup},
+        proto::{
+            MoonlightStreamSetup,
+            control::packet::{ControlPacket, ControlPacketConfig, PacketDirection},
+        },
+        tokio::{MoonlightStream, MoonlightStreamError},
+        video::{
+            ColorRange, ColorSpace, DecodeResult, VideoCapabilities, VideoDecodeUnit, VideoFormats,
+            VideoSetup,
+        },
     },
 };
 use tokio::{select, sync::Mutex, time::sleep};
@@ -26,11 +29,7 @@ use tracing::{Instrument, debug_span, error, info, instrument, warn};
 
 use crate::{
     api::stream::create_control_packet_config,
-    app::{
-        AppError, RequestClient,
-        host::{AppId, HostId},
-        user::AuthenticatedUser,
-    },
+    app::{AppError, host::HostId, user::AuthenticatedUser},
 };
 
 // TODO: on new major make this web socket a different path, e.g. "/host/stream/web_socket"
@@ -77,13 +76,6 @@ async fn handle_ws(
 ) -> Result<(), AppError> {
     let control_config = create_control_packet_config();
 
-    // create moonlight stream handler, will handle sending over the web socket
-    let handler = Arc::new(WsStreamHandler {
-        control_config: control_config.clone(),
-        ws_sender: ws_sender.clone(),
-        setup: Default::default(),
-    });
-
     // Wait for stream request
     let stream_request = select! {
         _ = sleep(Duration::from_secs(10)) => {
@@ -107,10 +99,6 @@ async fn handle_ws(
     let stream_request = match serde_json::from_str::<WebSocketServerboundMessage>(&stream_request)
     {
         Ok(WebSocketServerboundMessage::Request(request)) => request,
-        Ok(value) => {
-            error!(message = ?value, "web socket received unexpected start message");
-            return Err(AppError::StreamClosed);
-        }
         Err(err) => {
             error!(error = %err, "failed to deserialize json");
             return Err(AppError::StreamClosed);
@@ -126,7 +114,7 @@ async fn handle_ws(
     let host = host.use_host(&mut user).await?;
 
     if !host.is_paired().await.map_err(AppError::from)? {
-        return Err(AppError::HostNotPaired.into());
+        return Err(AppError::HostNotPaired);
     }
 
     // -- Start stream
@@ -166,26 +154,21 @@ async fn handle_ws(
             &settings,
             aes_key,
             aes_iv,
-            MoonlightStream::launch_query_parameters(),
+            MoonlightStreamSetup::launch_query_parameters(),
         )
         .await?;
 
     let stream = MoonlightStream::connect(
         config,
         settings,
-        Arc::new(RustCryptoBackend) as _,
-        handler.clone(),
+        Arc::new(RustCryptoBackend),
+        VideoCapabilities::default(),
     )
     .await?;
 
     // send stream start response
-    let (video_setup, audio_setup) = {
-        let mut setup = handler.setup.lock().await;
-        let audio = setup.audio.take().expect("audio setup");
-        let video = setup.video.expect("video setup");
-
-        (video, audio)
-    };
+    let audio_setup = stream.audio_setup();
+    let video_setup = stream.video_setup();
 
     let response = WebSocketClientboundMessage::Response(WebSocketStreamResponse {
         video_codec: video_setup.format as u32,
@@ -199,17 +182,89 @@ async fn handle_ws(
     let response = match serde_json::to_string(&response) {
         Ok(value) => value,
         Err(err) => {
-            stream.stop().await;
+            error!(error = %err, response = ?response, "failed to serialize response");
+
+            stream.stop();
             return Err(AppError::StreamClosed);
         }
     };
     let _ = ws_sender.text(response).await;
 
+    // forward audio frames
+    spawn({
+        let stream = stream.clone();
+        let sender = ws_sender.clone();
+        async move {
+            while let Ok(frame) = stream.poll_audio_frame().await {
+                let mut buffer = vec![0; 1 + frame.buffer.len()];
+                buffer[1..].copy_from_slice(&frame.buffer);
+
+                buffer[0] = WebSocketChannel::AUDIO;
+
+                let _ = sender.clone().binary(buffer).await;
+            }
+        }
+    });
+
+    // forward video frames
+    spawn({
+        let stream = stream.clone();
+        let sender = ws_sender.clone();
+        async move {
+            while let Ok(frame) = stream.poll_video_frame().await {
+                let mut buffer = vec![0; 1 + frame.raw().len()];
+                buffer[1..].copy_from_slice(frame.raw());
+
+                buffer[0] = WebSocketChannel::VIDEO;
+
+                let _ = sender.clone().binary(buffer).await;
+            }
+        }
+    });
+
+    // forward packets
+    spawn({
+        let stream = stream.clone();
+        let sender = ws_sender.clone();
+        let control_config = control_config.clone();
+        async move {
+            while let Ok(packet) = stream.poll_packet().await {
+                let mut buffer = [0; ControlPacket::MAX_SIZE + 1];
+
+                buffer[0] = WebSocketChannel::CONTROL;
+
+                #[allow(clippy::unwrap_used)]
+                let packet_len = packet
+                    .serialize(&control_config, buffer[1..].as_mut_array().unwrap())
+                    .unwrap();
+
+                let message = &buffer[0..(1 + packet_len)];
+
+                let _ = sender.clone().binary(message.to_vec()).await;
+            }
+        }
+    });
+
+    // look for stream stop
+    spawn({
+        let stream = stream.clone();
+        let sender = ws_sender.clone();
+        async move {
+            loop {
+                sleep(Duration::from_secs(1)).await;
+                if stream.is_stopped() {
+                    let _ = sender.close(None).await;
+                    break;
+                }
+            }
+        }
+    });
+
     // handle incoming ws messages
     while let Some(Ok(message)) = ws_receiver.recv().await {
         match message {
             Message::Binary(message) => {
-                if message.len() < 1 {
+                if message.is_empty() {
                     continue;
                 }
 
@@ -223,10 +278,13 @@ async fn handle_ws(
                         continue;
                     };
 
-                    if let Err(err) = stream.send_input_raw(packet).await {
+                    if let Err(err) = stream.send_raw(packet) {
                         warn!(error = %err, "failed to send control packet");
                     }
                 }
+            }
+            Message::Text(text) => {
+                warn!(message = ?text, "received text over web socket");
             }
             _ => {}
         }
@@ -234,73 +292,7 @@ async fn handle_ws(
 
     // stop stream
     info!("stopping stream because the web socket disconnected");
-    stream.stop().await;
+    stream.stop();
 
     Ok(())
-}
-
-struct WsStreamHandler {
-    control_config: ControlPacketConfig,
-    ws_sender: Session,
-    setup: Mutex<StreamSetup>,
-}
-
-#[derive(Debug, Default)]
-struct StreamSetup {
-    video: Option<VideoSetup>,
-    audio: Option<OpusMultistreamConfig>,
-}
-
-#[async_trait]
-impl MoonlightStreamHandler for WsStreamHandler {
-    async fn setup_video(&self, setup: VideoSetup) -> Result<(), MoonlightStreamError> {
-        let mut stream_setup = self.setup.lock().await;
-
-        stream_setup.video = Some(setup);
-
-        Ok(())
-    }
-    async fn on_video_frame(&self, frame: VideoDecodeUnit<&[u8]>) -> DecodeResult {
-        // TODO
-        DecodeResult::Ok
-    }
-
-    async fn setup_audio(
-        &self,
-        _audio_config: AudioConfig,
-        opus_config: OpusMultistreamConfig,
-    ) -> Result<(), MoonlightStreamError> {
-        let mut stream_setup = self.setup.lock().await;
-
-        stream_setup.audio = Some(opus_config);
-
-        Ok(())
-    }
-    async fn on_audio_frame(&self, frame: AudioFrame<&[u8]>) {
-        let mut buffer = vec![0; 1 + frame.buffer.len()];
-        buffer[1..].copy_from_slice(frame.buffer);
-
-        buffer[0] = WebSocketChannel::AUDIO;
-
-        let _ = self.ws_sender.clone().binary(buffer).await;
-    }
-
-    async fn on_control_packet(&self, packet: ControlPacket) {
-        let mut buffer = [0; ControlPacket::MAX_SIZE + 1];
-
-        buffer[0] = WebSocketChannel::CONTROL;
-
-        #[allow(clippy::unwrap_used)]
-        let packet_len = packet
-            .serialize(&self.control_config, buffer[1..].as_mut_array().unwrap())
-            .unwrap();
-
-        let message = &buffer[0..(1 + packet_len)];
-
-        let _ = self.ws_sender.clone().binary(message.to_vec()).await;
-    }
-
-    async fn on_stop(&self) {
-        let _ = self.ws_sender.clone().close(None);
-    }
 }

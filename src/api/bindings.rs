@@ -299,19 +299,6 @@ pub struct UndetailedRole {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub struct StreamSettings {
-    pub bitrate_kbps: u32,
-    pub width: u32,
-    pub height: u32,
-    pub fps: u32,
-    pub play_audio_local: bool,
-    /// This is using the [SupportedVideoFormats]
-    pub supported_codecs: u32,
-    pub hdr: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
 pub struct StreamPermissions {
     pub allow_add_hosts: bool,
     /// If [None] there's no limit

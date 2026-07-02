@@ -5,7 +5,6 @@ use crate::{
 use webrtc::{
     ice::network_type::NetworkType,
     ice_transport::{ice_candidate_type::RTCIceCandidateType, ice_server::RTCIceServer},
-    peer_connection::sdp::sdp_type::RTCSdpType,
 };
 
 pub fn into_webrtc_ice(value: RtcIceServer) -> RTCIceServer {

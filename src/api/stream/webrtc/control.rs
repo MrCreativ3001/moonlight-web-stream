@@ -4,7 +4,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use actix_web::web::Bytes;
 use moonlight_common::stream::proto::control::peer::{
-    ControlHostAction, ControlHostEvent, ControlHostOutput, ControlPeerConfig, ControlPeerRole,
+    ControlHostEvent, ControlPeerConfig, ControlPeerRole,
 };
 use moonlight_common::{
     crypto::disabled::DisabledCryptoBackend,
@@ -13,7 +13,7 @@ use moonlight_common::{
             Instant,
             control::{
                 packet::{ControlPacket, ControlPacketConfig, EnetChannel, PacketDirection},
-                peer::{ControlHost, ControlHostConfig, ControlHostInput},
+                peer::{ControlHost, ControlHostConfig},
             },
         },
         tokio::MoonlightStream,
@@ -70,7 +70,7 @@ pub async fn add_simple_control_channel(
 
                 debug!(packet = ?packet, "relaying packet from client to host");
 
-                if let Err(err) = stream.send_input_raw(packet).await {
+                if let Err(err) = stream.send_raw(packet) {
                     warn!(error = %err, "failed to relay input from client to host");
                 }
             })
@@ -185,11 +185,11 @@ pub async fn add_enet_control_channel(
                 {
                     let mut control_host = control_host.lock().await;
 
-                    if let Err(err)= control_host.handle_input(ControlHostInput::Receive {
-                        now: Instant::from_std(base_time),
+                    if let Err(err)= control_host.handle_receive(
+                         Instant::from_std(base_time),
                         addr,
-                        data: &message.data,
-                    }) {
+                        &message.data,
+                    ) {
                         warn!(error = ?err, "failed to call handle_input with Receive on ControlHost");
                     }
                 }
@@ -271,86 +271,54 @@ pub async fn add_enet_control_channel(
             let _ = on_control_open.await;
 
             loop {
-                let output = {
+                let timeout = {
                     let mut control_host = control_host.lock().await;
 
-                    match control_host.poll_output() {
-                        Ok(value) => value,
-                        Err(err) => {
-                            warn!(error = %err, "failed to call poll_output on ControlHost. Stopping stream!");
+                    // Get events
+                    while let Some(event) =  control_host.poll_event() {
+                        match event {
+                            ControlHostEvent::Connected { id, sunshine_connect_data } => {
+                                if let Some(enet_open) = on_enet_open_sender.take() {
+                                    let _ = enet_open.send(());
+                                }
 
-                            // Stop stream
-                            stream.stop().await;
-                            return;
-                        }
-                    }
-                };
+                                debug!(id = ?id, connect_data = ?sunshine_connect_data, "webrtc enet peer connected");
 
-                let timeout = match output {
-                    ControlHostOutput::Action(ControlHostAction::SendUdp { addr: _, data }) => {
-                        trace!(packet = ?data, "sending enet data");
-
-                        if let Err(err) = control.send(&data.into()).await {
-                            warn!(error = %err, "failed to send message on control stream. Stopping stream!");
-
-                            stream.stop().await;
-                            return;
-                        }
-                        continue;
-                    }
-                    ControlHostOutput::Action(ControlHostAction::Timeout(timeout)) => {
-                        timeout.to_std(base_time)
-                    }
-                    ControlHostOutput::Event(ControlHostEvent::Connected {
-                        id,
-                        sunshine_connect_data: _,
-                    }) => {
-                        {
-                        // Configure peer
-                            let mut control_host = control_host.lock().await;
-
-                            if let Err(err)=  control_host.configure_peer(id, ControlPeerConfig {
-                                encryption: None,
-                                packets: control_config.clone(),
-                                role: ControlPeerRole::Server,
-                            }) {
-                                error!(peer_id = ?id, error = ?err, "failed to configure peer");
-                                // TODO: stop the stream
-                                return;
-                            }
+                                // Configure peer
+                                if let Err(err)=  control_host.configure_peer(id, ControlPeerConfig {
+                                    encryption: None,
+                                    packets: control_config.clone(),
+                                    role: ControlPeerRole::Server,
+                                }) {
+                                    error!(peer_id = ?id, error = ?err, "failed to configure peer");
+                                    stream.stop();
+                                    return;
+                                }
 
                             debug!(peer_id = ?id, "enet control stream connected, configured peer");
+                            },
+                            ControlHostEvent::Disconnected { id } => info!(id = ?id, "webrtc enet peer disconnected"),
+                            ControlHostEvent::Receive { id, channel_id, packet } => {
+                                trace!(packet = ?packet, "received packet over enet");
+                                if let Err(err)=  stream.send_raw(packet.clone()){
+                                    warn!(error = %err, packet = ?packet, "failed to relay packet from client to host");
+                                }
+                            }
                         }
+                    }
 
-                        if let Some(on_open) = on_enet_open_sender.take() {
-                            let _ = on_open.send(());
-                            debug!("calling on enet open");
-                        } else {
-                            debug!("on enet open was already called");
-                        }
+                    // Send data
+                    while let Some ((_, packet)) =control_host.pending_send() {
+                        let _ = control.send(&Bytes::copy_from_slice(packet)).await;
+                        control_host.consume_send();
+                    }
 
-                        continue;
-                    }
-                    ControlHostOutput::Event(ControlHostEvent::Receive {
-                        id,
-                        channel_id,
-                        packet,
-                    }) => {
-                        trace!(packet = ?packet, "received packet over enet");
-                        if let Err(err)=  stream.send_input_raw(packet.clone()).await{
-                            warn!(error = %err, packet = ?packet, "failed to relay packet from client to host");
-                        }
-                        continue;
-                    }
-                    ControlHostOutput::Event(ControlHostEvent::Disconnected { id }) => {
-                        // TODO: this should stop video traffic and connect should start it again!
-                        info!(peer_id = ?id, "enet control stream disconnected.");
-                        continue;
-                    }
+                    // Get timeout
+                    control_host.poll_timeout()
                 };
 
                 select! {
-                    _ = sleep_until(timeout.into()) => {}
+                    _ = sleep_until(timeout.to_std(base_time).into()) => {}
                     _ = poll_notify.notified() => {}
                 }
 
@@ -359,10 +327,9 @@ pub async fn add_enet_control_channel(
                 {
                     let mut control_host = control_host.lock().await;
 
-                    if let Err(err) = control_host.handle_input(ControlHostInput::Timeout(timeout))
-                    {
-                        error!(error = %err, "failed to call handle_input with Timeout on ControlHost");
-                        // TODO
+                    if let Err(err)= control_host.handle_timeout(timeout) {
+                        error!(error = %err, "error whilst handling timeout in webrtc control stream over enet, stopping stream");
+                        stream.stop();
                         return;
                     }
                 }

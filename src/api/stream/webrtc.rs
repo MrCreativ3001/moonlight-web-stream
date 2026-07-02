@@ -1,4 +1,5 @@
 use crate::api::bindings::RtcIceServer;
+use crate::api::stream::webrtc::audio::add_audio_track;
 use crate::config::PortRange;
 use actix_web::body::BoxBody;
 use actix_web::web::{Bytes, Data, Json, Path, Query};
@@ -15,15 +16,15 @@ use moonlight_common::http::Request;
 use moonlight_common::http::pair::PairingCryptoBackend;
 use moonlight_common::stream::audio::{AudioConfig, AudioFrame, OpusMultistreamConfig};
 use moonlight_common::stream::control::ActiveGamepads;
+use moonlight_common::stream::proto::MoonlightStreamSetup;
 use moonlight_common::stream::proto::control::packet::{
     ControlPacket, ControlPacketConfig, EnetChannel, PacketDirection,
 };
 use moonlight_common::stream::proto::control::peer::{ControlHost, ControlHostConfig};
-use moonlight_common::stream::tokio::{
-    MoonlightStream, MoonlightStreamError, MoonlightStreamHandler,
-};
+use moonlight_common::stream::tokio::{MoonlightStream, MoonlightStreamError};
 use moonlight_common::stream::video::{
-    ColorRange, ColorSpace, DecodeResult, VideoDecodeUnit, VideoFormat, VideoFormats, VideoSetup,
+    ColorRange, ColorSpace, DecodeResult, VideoCapabilities, VideoDecodeUnit, VideoFormat,
+    VideoFormats, VideoSetup,
 };
 use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
@@ -72,12 +73,15 @@ use crate::api::stream::create_control_packet_config;
 use crate::api::stream::webrtc::control::{add_enet_control_channel, add_simple_control_channel};
 use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
-use crate::api::stream::webrtc::video::{codec_to_video_format, video_format_to_codec};
+use crate::api::stream::webrtc::video::{
+    add_video_track, codec_to_video_format, video_format_to_codec,
+};
 use crate::app::App;
 use crate::app::host::HostId;
 use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
 use crate::app::{AppError, user::AuthenticatedUser};
 
+mod audio;
 mod control;
 mod convert;
 mod ice_servers;
@@ -224,237 +228,6 @@ struct StreamHandler {
     video_need_idr: Arc<AtomicBool>,
     peer: Arc<RTCPeerConnection>,
     clientbound_control_sender: Sender<ControlPacket>,
-}
-
-#[async_trait]
-impl MoonlightStreamHandler for StreamHandler {
-    async fn setup_video(&self, setup: VideoSetup) -> Result<(), MoonlightStreamError> {
-        // Check video format
-        if !self.video_formats.contains(setup.format.into_formats()) {
-            todo!();
-        }
-
-        // Create video track
-        let codec = video_format_to_codec(setup.format).expect("webrtc video codec");
-        let video_track = Arc::new(TrackLocalStaticRTP::new(
-            codec.clone(),
-            "video".to_string(),
-            "moonlight".to_string(),
-        ));
-
-        let video_sender = self.peer.add_track(video_track.clone()).await.unwrap();
-
-        // Feedback
-        spawn({
-            let need_idr = self.video_need_idr.clone();
-
-            async move {
-                let mut buffer = [0; 1500];
-
-                while let Ok((packets, _)) = video_sender.read(&mut buffer).await {
-                    for packet in packets {
-                        let packet = packet.as_any();
-
-                        if let Some(_) = packet.downcast_ref::<PictureLossIndication>() {
-                            debug!("got picture loss indication, set need idr flag");
-                            need_idr.store(true, Ordering::Release);
-                        } else if let Some(_) =
-                            packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
-                        {
-                            // TODO
-                        }
-                    }
-                }
-            }
-            .instrument(debug_span!("video rtcp feedback"))
-        });
-
-        let payloader = if setup.format.contained_in(VideoFormats::MASK_H264) {
-            Box::new(H264Payloader::default()) as Box<dyn Payloader + Send + Sync>
-        } else if setup.format.contained_in(VideoFormats::MASK_H265) {
-            Box::new(HevcPayloader::default()) as Box<dyn Payloader + Send + Sync>
-        } else {
-            todo!()
-        };
-
-        {
-            let mut video_guard = self.video.lock().await;
-            *video_guard = Some(VideoTrack {
-                track: video_track.clone(),
-                payloader,
-            });
-        }
-
-        info!(setup = ?setup, codec = ?codec, "finished video track setup");
-
-        Ok(())
-    }
-    async fn on_video_frame(&self, frame: VideoDecodeUnit<&[u8]>) -> DecodeResult {
-        let timestamp = (frame.timestamp.as_secs_f64() * 90000.0) as u32;
-
-        let mut video_guard = self.video.lock().await;
-        let video = video_guard.as_mut().expect("video track");
-
-        if video.track.all_binding_paused().await {
-            trace!("video track all binding paused");
-            // Don't send any packets when the track is paused because we don't want to increment the sequence number
-            return DecodeResult::Ok;
-        }
-
-        let mut payloads = Vec::with_capacity(10);
-
-        // Each buffer is one nal
-        for buffer in &frame.buffers {
-            let nal_payloads = video
-                .payloader
-                .payload(RTP_OUTBOUND_MTU, &Bytes::copy_from_slice(buffer.data))
-                .unwrap();
-
-            payloads.extend(nal_payloads);
-        }
-
-        let len = payloads.len();
-        for (i, payload) in payloads.into_iter().enumerate() {
-            if let Err(err) = video
-                .track
-                .write_rtp_with_extensions(
-                    &Packet {
-                        header: Header {
-                            version: 2,
-                            // Marker needs to mark the end of one frame
-                            marker: i == len - 1,
-                            sequence_number: self
-                                .video_sequence_number
-                                .fetch_add(1, Ordering::Acquire),
-                            timestamp,
-                            // TODO: this needs to match
-                            payload_type: 96,
-                            ..Default::default()
-                        },
-                        payload,
-                    },
-                    &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
-                        min_delay: 0,
-                        max_delay: 0,
-                    })],
-                )
-                .await
-            {
-                warn!(error = %err, "failed to send video packet");
-            }
-        }
-
-        // Check if idr is needed
-        if let Ok(_) =
-            self.video_need_idr
-                .compare_exchange(true, false, Ordering::Acquire, Ordering::Acquire)
-        {
-            info!("requesting idr");
-            DecodeResult::NeedIdr
-        } else {
-            DecodeResult::Ok
-        }
-    }
-
-    async fn setup_audio(
-        &self,
-        audio_config: AudioConfig,
-        opus_config: OpusMultistreamConfig,
-    ) -> Result<(), MoonlightStreamError> {
-        // TODO: what audio format is used?
-
-        // Create audio track
-        let mut codec = opus_codec();
-        codec.channels = opus_config.channel_count as u16;
-
-        let audio_track = Arc::new(TrackLocalStaticRTP::new(
-            codec.clone(),
-            "audio".to_string(),
-            "moonlight".to_string(),
-        ));
-
-        let audio_sender = self.peer.add_track(audio_track.clone()).await.unwrap();
-
-        // Feedback
-        spawn(
-            async move {
-                let mut buffer = [0; 1500];
-
-                while let Ok((_packets, _)) = audio_sender.read(&mut buffer).await {
-                    // do nothing, because we'll just have to poll packets to dequeue them
-                }
-            }
-            .instrument(debug_span!("audio rtcp feedback")),
-        );
-
-        {
-            let mut audio_guard = self.audio_track.lock().await;
-            *audio_guard = Some(audio_track.clone());
-        }
-
-        info!(audio_config = ?audio_config, opus_config = ?opus_config, codec = ?codec, "finished audio track setup");
-
-        Ok(())
-    }
-    async fn on_audio_frame(&self, frame: AudioFrame<&[u8]>) {
-        let timestamp = (frame.timestamp.as_secs_f64() * 48000.0) as u32;
-
-        let audio_guard = self.audio_track.lock().await;
-        // The audio track is initialized before the moonlight stream starts
-        let audio_track = audio_guard.as_ref().expect("audio track");
-
-        if audio_track.all_binding_paused().await {
-            trace!("audio track all binding paused");
-            // Don't send any packets when the track is paused because we don't want to increment the sequence number
-            return;
-        }
-
-        trace!(len = ?frame.buffer.len(), timestamp = ?frame.timestamp, "audio frame");
-
-        // Opus doesn't need any special payloading: https://github.com/webrtc-rs/webrtc/blob/6b94718e23111df28125f96af4b0de8cbb3dfd0d/rtp/src/codecs/opus/mod.rs#L9-L24
-        if let Err(err) = audio_track
-            .write_rtp_with_extensions(
-                &Packet {
-                    header: Header {
-                        version: 2,
-                        sequence_number: self.audio_sequence_number.fetch_add(1, Ordering::Acquire),
-                        timestamp,
-                        payload_type: 111,
-                        ..Default::default()
-                    },
-                    payload: Bytes::copy_from_slice(frame.buffer),
-                },
-                &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
-                    min_delay: 0,
-                    max_delay: 0,
-                })],
-            )
-            .await
-        {
-            warn!(error = %err, "failed to send audio frame");
-        }
-    }
-
-    async fn on_control_packet(&self, packet: ControlPacket) {
-        match &packet {
-            ControlPacket::HdrMode { enabled, sunshine } => {
-                // TODO: use the color space(hdr) extension, this seems to only be used on keyframes -> request one https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/color-space
-            }
-            _ => {}
-        }
-
-        if let Err(err) = self.clientbound_control_sender.send(packet).await {
-            warn!(error = %err, packet = ?err.0, "failed to relay control packet to client");
-        }
-    }
-
-    async fn on_stop(&self) {
-        info!("closing webrtc peer because the stream was closed");
-
-        if let Err(err) = self.peer.close().await {
-            warn!(error = %err, "error whilst closing peer because the stream was stopped");
-        }
-    }
 }
 
 #[post("")]
@@ -678,18 +451,7 @@ pub async fn webrtc_post(
     // Start moonlight stream
     info!(settings = ?settings, "starting stream");
 
-    let (clientbound_control_sender, mut clientbound_control_receiver) = channel(50);
-
-    let moonlight_handler = StreamHandler {
-        audio_track: Default::default(),
-        audio_sequence_number: AtomicU16::new(0),
-        video: Default::default(),
-        video_sequence_number: AtomicU16::new(0),
-        video_need_idr: Default::default(),
-        peer: peer.clone(),
-        video_formats: supported_video_formats,
-        clientbound_control_sender,
-    };
+    let (clientbound_control_sender, clientbound_control_receiver) = channel(50);
 
     let config = host
         .start_stream(
@@ -697,7 +459,8 @@ pub async fn webrtc_post(
             &settings,
             aes_key,
             aes_iv,
-            MoonlightStream::launch_query_parameters(),
+            // TODO: replace with normal `MoonlightStream::launch`
+            MoonlightStreamSetup::launch_query_parameters(),
         )
         .await?;
 
@@ -705,15 +468,18 @@ pub async fn webrtc_post(
         MoonlightStream::connect(
             config,
             settings,
-            Arc::new(RustCryptoBackend) as _,
-            Arc::new(moonlight_handler),
+            Arc::new(RustCryptoBackend),
+            VideoCapabilities::default(),
         )
         .await
         .unwrap(),
     );
 
-    // IMPORTANT: at this point audio and video tracks are already added to the peer because MoonlightStream::connect will call setup_audio and setup_video
-    // -> both tracks are added to the stream
+    // Add audio and video track
+    add_audio_track(&peer, &moonlight_stream).await.unwrap();
+    add_video_track(&peer, &moonlight_stream, supported_video_formats)
+        .await
+        .unwrap();
 
     info!("started moonlight stream");
 
@@ -738,6 +504,26 @@ pub async fn webrtc_post(
         .await;
     }
 
+    // forward packets
+    spawn({
+        let stream = moonlight_stream.clone();
+
+        async move {
+            while let Ok(packet) = stream.poll_packet().await {
+                match &packet {
+                    ControlPacket::HdrMode { enabled, sunshine } => {
+                        // TODO: use the color space(hdr) extension, this seems to only be used on keyframes -> request one https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/color-space
+                    }
+                    _ => {}
+                }
+
+                if let Err(err) = clientbound_control_sender.send(packet).await {
+                    warn!(error = %err, packet = ?err.0, "failed to relay control packet to client");
+                }
+            }
+        }
+    });
+
     // -- Register webrtc peer listeners
     peer.on_peer_connection_state_change(Box::new({
         let peer = peer.clone();
@@ -754,7 +540,7 @@ pub async fn webrtc_post(
                 ) {
                     info!("stopping stream because the webrtc peer state is failed");
 
-                    moonlight_stream.stop().await;
+                    moonlight_stream.stop();
                 }
                 if matches!(state, RTCPeerConnectionState::Failed) {
                     info!("closing webrtc peer because the peer connection state is failed");

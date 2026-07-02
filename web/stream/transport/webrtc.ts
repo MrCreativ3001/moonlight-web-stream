@@ -1,7 +1,7 @@
 import { Api, fetchApi, WebRTCAnswer } from "../../api.js";
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent_Tags, ControlStreamInput, ControlStreamOutput_Tags, InputBatcher, PacketDirection, ServerType, VideoFormats, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, InputBatcher, PacketDirection, UdpTransmit, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject, uniffiMillisUntil, uniffiNow } from "../../util.js";
-import { TrackAudioPlayer, AudioPlayer } from "../audio/index.js";
+import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
 import { StatValue } from "../stats.js";
@@ -369,11 +369,11 @@ class WebRtcControlStream implements IControlStream {
                 throw "dropping packet because enet control stream is not initialized"
             }
 
-            this.controlStream.handleInput(new ControlStreamInput.Receive({
-                now: uniffiNow(),
-                addr: ENET_IP,
-                data: event.data
-            }))
+            this.controlStream.handleReceive(
+                uniffiNow(),
+                ENET_IP,
+                event.data
+            )
 
             this.controlStreamPollOutput(false)
         } else {
@@ -473,42 +473,37 @@ class WebRtcControlStream implements IControlStream {
         }
 
         if (handleInput) {
-            this.controlStream.handleInput(new ControlStreamInput.Timeout(uniffiNow()))
+            this.controlStream.handleTimeout(uniffiNow())
         }
 
-        while (true) {
-            const output = this.controlStream.pollOutput()
+        let send: UdpTransmit | undefined
+        while (send = this.controlStream.pollPacket()) {
+            console.debug(send.contents, "enet send")
+            this.channel.send(send.contents)
+        }
 
-            if (output.tag === ControlStreamOutput_Tags.Send) {
-                console.debug(output.inner.data, "enet send")
-                this.channel.send(output.inner.data)
+        let event: ControlStreamEvent | undefined
+        while (event = this.controlStream.pollEvent()) {
+            if (event.tag === ControlStreamEvent_Tags.Connect) {
+                this.enetConnected = true
 
-                continue
-            } else if (output.tag === ControlStreamOutput_Tags.Timeout) {
-                this.controlStreamPollTimeout = globalObject().setTimeout(this.boundPollOutput, uniffiMillisUntil(output.inner[0]))
-            } else if (output.tag === ControlStreamOutput_Tags.Event) {
-                const event = output.inner[0]
+                // TODO: remove this, when the impl doesn't require this anymore
+                this.controlStream.sendRaw(new ControlPacket.StartB())
 
-                if (event.tag === ControlStreamEvent_Tags.Connect) {
-                    this.enetConnected = true
-
-                    // TODO: remove this, when the impl doesn't require this anymore
-                    this.controlStream.sendRaw(new ControlPacket.StartB())
-
-                    this.trySendBufferedPackets()
-                } else if (event.tag === ControlStreamEvent_Tags.Packet) {
-                    if (this.onreceive) {
-                        this.onreceive(event.inner[0]);
-                    }
-                } else if (event.tag === ControlStreamEvent_Tags.Disconnect) {
-                    // TODO: reconstruct control stream?
-                    this.enetConnected = false
+                this.trySendBufferedPackets()
+            } else if (event.tag === ControlStreamEvent_Tags.Packet) {
+                if (this.onreceive) {
+                    this.onreceive(event.inner[0]);
                 }
-
-                continue
+            } else if (event.tag === ControlStreamEvent_Tags.Disconnect) {
+                // TODO: reconstruct control stream?
+                this.enetConnected = false
             }
+        }
 
-            break
+        const timeout = this.controlStream.pollTimeout()
+        if (timeout != undefined) {
+            this.controlStreamPollTimeout = globalObject().setTimeout(this.boundPollOutput, uniffiMillisUntil(timeout))
         }
     }
 }

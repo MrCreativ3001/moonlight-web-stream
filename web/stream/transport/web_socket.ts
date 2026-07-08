@@ -30,7 +30,7 @@ export class WebSocketTransport implements Transport {
         this.logger = logger
 
         const wsApiHost = api.host_url.replace(/^http(s)?:/, "ws$1:")
-        this.ws = new WebSocket(`${wsApiHost}/host/stream`)
+        this.ws = new WebSocket(`${wsApiHost}/host/stream/web_socket`)
 
         // Configure Web Socket
         this.ws.binaryType = "arraybuffer"

@@ -28,9 +28,7 @@ use crate::{
     app::{AppError, host::HostId, user::AuthenticatedUser},
 };
 
-// TODO: on new major make this web socket a different path, e.g. "/host/stream/web_socket"
-
-#[get("/host/stream")]
+#[get("/host/stream/web_socket")]
 #[instrument(skip(user, body_stream), fields(user = %user.id()))]
 pub async fn web_socket_stream(
     mut user: AuthenticatedUser,

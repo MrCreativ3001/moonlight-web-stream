@@ -19,6 +19,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
   - [Using Web Socket Transport](#using-websocket-transport)
 - [Config](#config)
 - [Migrating to v2](#migrating-to-v2)
+- [Migrating to v3](#migrating-to-v3)
 - [Contributors](#contributors)
 - [Building](#building)
 
@@ -192,9 +193,9 @@ Define MOONLIGHT_STREAMER YOUR_LOCAL_IP:YOUR_PORT
 ProxyPreserveHost on
         
 # Important: This WebSocket will help negotiate the WebRTC Peers
-<Location ${MOONLIGHT_SUBPATH}/api/host/stream>
-        ProxyPass ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream
-        ProxyPassReverse ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream
+<Location ${MOONLIGHT_SUBPATH}/api/host/stream/web_socket>
+        ProxyPass ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream/web_socket
+        ProxyPassReverse ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream/web_socket
 </Location>
 
 ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/
@@ -533,6 +534,8 @@ Changes:
   - This makes older v1 and v2 server certificates incompatible
 - replaced moonlight-common-c by moonlight-common-rust
   - This could make older Nvidia GameStream and Sunshine Servers unsupported
+- moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`
+  - Change the Web Socket Endpoint when using a Reserve Proxy: See [Proxying via Apache2](#proxying-via-apache-2)
 
 ## Contributors
 Thanks to everyone who contributed to make this software better :).

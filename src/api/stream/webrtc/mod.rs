@@ -1,30 +1,20 @@
-use crate::api::bindings::RtcIceServer;
 use crate::api::stream::webrtc::audio::add_audio_track;
 use crate::config::PortRange;
+use actix_web::HttpRequest;
 use actix_web::body::BoxBody;
-use actix_web::web::{Bytes, Data, Json, Path, Query};
-use actix_web::{HttpMessage, HttpRequest};
+use actix_web::web::{Data, Path};
 use actix_web::{
     HttpResponse, HttpResponseBuilder, delete, get, http::StatusCode, http::header, options, patch,
     post,
 };
-use async_trait::async_trait;
-use moonlight_common::ServerVersion;
-use moonlight_common::crypto::disabled::DisabledCryptoBackend;
 use moonlight_common::crypto::rustcrypto::RustCryptoBackend;
-use moonlight_common::http::Request;
-use moonlight_common::http::pair::PairingCryptoBackend;
-use moonlight_common::stream::audio::{AudioConfig, AudioFrame, OpusMultistreamConfig};
+use moonlight_common::stream::audio::AudioConfig;
 use moonlight_common::stream::control::ActiveGamepads;
 use moonlight_common::stream::proto::MoonlightStreamSetup;
-use moonlight_common::stream::proto::control::packet::{
-    ControlPacket, ControlPacketConfig, EnetChannel, PacketDirection,
-};
-use moonlight_common::stream::proto::control::peer::{ControlHost, ControlHostConfig};
-use moonlight_common::stream::tokio::{MoonlightStream, MoonlightStreamError};
+use moonlight_common::stream::proto::control::packet::ControlPacket;
+use moonlight_common::stream::tokio::MoonlightStream;
 use moonlight_common::stream::video::{
-    ColorRange, ColorSpace, DecodeResult, VideoCapabilities, VideoDecodeUnit, VideoFormat,
-    VideoFormats, VideoSetup,
+    ColorRange, ColorSpace, VideoCapabilities, VideoFormat, VideoFormats,
 };
 use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
@@ -34,13 +24,11 @@ use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::Duration;
-use tokio::sync::Mutex;
-use tokio::sync::mpsc::{self, Sender, channel};
+use tokio::sync::mpsc::{self, channel};
 use tokio::time::sleep;
 use tokio::{select, spawn};
-use tracing::{Instrument, debug, debug_span, error, info, instrument, trace, warn};
+use tracing::{Instrument, debug, debug_span, error, info, instrument, warn};
 use webrtc::api::APIBuilder;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_OPUS, MediaEngine};
@@ -49,25 +37,13 @@ use webrtc::ice::udp_network::{EphemeralUDP, UDPNetwork};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
-use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
-use webrtc::rtcp::payload_feedbacks::receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate;
-use webrtc::rtp::codecs::h264::H264Payloader;
-use webrtc::rtp::codecs::h265::{HevcPayloader, RTP_OUTBOUND_MTU};
-use webrtc::rtp::extension::HeaderExtension;
-use webrtc::rtp::extension::playout_delay_extension::PlayoutDelayExtension;
-use webrtc::rtp::header::Header;
-use webrtc::rtp::packet::Packet;
-use webrtc::rtp::packetizer::Payloader;
+use webrtc::rtp_transceiver::RTCPFeedback;
 use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RTPCodecType,
 };
-use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
-use webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit};
-use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 
 use crate::api::stream::create_control_packet_config;
 use crate::api::stream::webrtc::control::{add_enet_control_channel, add_simple_control_channel};
@@ -214,22 +190,6 @@ fn create_media_engine() -> MediaEngine {
     media_engine
 }
 
-struct VideoTrack {
-    track: Arc<TrackLocalStaticRTP>,
-    payloader: Box<dyn Payloader + Send + Sync>,
-}
-
-struct StreamHandler {
-    audio_track: Mutex<Option<Arc<TrackLocalStaticRTP>>>,
-    audio_sequence_number: AtomicU16,
-    video_formats: VideoFormats,
-    video: Mutex<Option<VideoTrack>>,
-    video_sequence_number: AtomicU16,
-    video_need_idr: Arc<AtomicBool>,
-    peer: Arc<RTCPeerConnection>,
-    clientbound_control_sender: Sender<ControlPacket>,
-}
-
 #[post("")]
 #[instrument(skip(app, user, req, session_description), fields(user = %user.id()))]
 pub async fn webrtc_post(
@@ -250,7 +210,7 @@ pub async fn webrtc_post(
 
     debug!(req = ?req, session_description = ?session_description, "webrtc request");
 
-    let session = WebRTCSessionOffer::from_str(&session_description).unwrap();
+    let session = WebRTCSessionOffer::from_str(&session_description)?;
     debug!(moonlight_session = ?session, "moonlight session extensions", );
 
     let Some(host_id) = session.host_id else {
@@ -267,7 +227,7 @@ pub async fn webrtc_post(
     }
 
     // Create offer based on the sdp
-    let offer = RTCSessionDescription::offer(session_description).unwrap();
+    let offer = RTCSessionDescription::offer(session_description)?;
 
     // -- Create WebRtc peer
     // Create settings
@@ -336,11 +296,11 @@ pub async fn webrtc_post(
     info!("querying client for supported video and audio codecs");
 
     // -- Query sdp about video, audio and potential microphone
-    let mut microphone_enabled = false;
-    let mut audio_config = Some(AudioConfig::STEREO);
+    let microphone_enabled = false;
+    let audio_config = Some(AudioConfig::STEREO);
     let mut supported_video_formats = VideoFormats::empty();
 
-    let offer_parsed = offer.unmarshal().unwrap();
+    let offer_parsed = offer.unmarshal()?;
 
     for media in offer_parsed.media_descriptions {
         let kind = &media.media_name.media;
@@ -399,7 +359,7 @@ pub async fn webrtc_post(
     );
 
     // Cancel connection if no audio or video format was detected as supported
-    let Some(audio_config) = audio_config else {
+    let Some(_audio_config) = audio_config else {
         // TODO
         todo!();
     };
@@ -440,9 +400,7 @@ pub async fn webrtc_post(
     let server_version = host.version().await?;
     let gfe_version = host.gfe_version().await?;
     let server_codec_mode_support = host.server_codec_mode_support().await?;
-    settings
-        .adjust_for_server(server_version, &gfe_version, server_codec_mode_support)
-        .unwrap();
+    settings.adjust_for_server(server_version, &gfe_version, server_codec_mode_support)?;
 
     let aes_key = AesKey::new_random(&RustCryptoBackend)?;
     let aes_iv = AesIv::new_random(&RustCryptoBackend)?;
@@ -463,16 +421,21 @@ pub async fn webrtc_post(
         )
         .await?;
 
-    let moonlight_stream = Arc::new(
-        MoonlightStream::connect(
-            config,
-            settings,
-            Arc::new(RustCryptoBackend),
-            VideoCapabilities::default(),
-        )
-        .await
-        .unwrap(),
-    );
+    let moonlight_stream = match MoonlightStream::connect(
+        config,
+        settings,
+        Arc::new(RustCryptoBackend),
+        VideoCapabilities::default(),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(err) => {
+            error!(error = %err, "failed to start stream");
+            return Err(err.into());
+        }
+    };
+    let moonlight_stream = Arc::new(moonlight_stream);
 
     // Add audio and video track forwarding
     if let Err(err) = add_audio_track(&peer, &moonlight_stream).await {
@@ -524,7 +487,10 @@ pub async fn webrtc_post(
         async move {
             while let Ok(packet) = stream.poll_packet().await {
                 match &packet {
-                    ControlPacket::HdrMode { enabled, sunshine } => {
+                    ControlPacket::HdrMode {
+                        enabled: _,
+                        sunshine: _,
+                    } => {
                         // TODO: use the color space(hdr) extension, this seems to only be used on keyframes -> request one https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/color-space
                     }
                     _ => {}
@@ -580,7 +546,7 @@ pub async fn webrtc_post(
     let mut ice_complete = peer.gathering_complete_promise().await;
 
     // Complete negotiation
-    let answer = peer.create_answer(None).await.unwrap();
+    let answer = peer.create_answer(None).await?;
 
     if let Err(err) = peer.set_local_description(answer.clone()).await {
         error!(error = %err, description = %answer, "failed to set local description");
@@ -593,7 +559,10 @@ pub async fn webrtc_post(
     let _ = ice_complete.recv().await;
 
     // Use the local description with video and audio tracks, control channel and all ice candidates included
-    let answer = peer.local_description().await.unwrap();
+    let answer = peer
+        .local_description()
+        .await
+        .expect("web_post: peer.local_description()");
 
     info!("ice gathering completed, sending answer to client");
 

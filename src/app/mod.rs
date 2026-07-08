@@ -11,9 +11,10 @@ use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
 use moonlight_common::{
     crypto::rustcrypto::{RustCryptoBackend, RustCryptoError},
-    high::MoonlightClientError,
+    high::{MoonlightClientError, StreamConfigError},
     http::{client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
     stream::tokio::MoonlightStreamError,
+    webrtc::WebRTCParseError,
 };
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -89,6 +90,10 @@ pub enum AppError {
     UserNameEmpty,
     #[error("the authorization header is not a bearer")]
     BadRequest,
+    #[error("the host doesn't support the given config: {0}")]
+    StreamConfig(#[from] StreamConfigError),
+    #[error("failed to parse the given sdp: {0}")]
+    WebRTCParse(#[from] WebRTCParseError),
     // --
     #[error("rustcrypto error occured: {0}")]
     RustCrypto(#[from] RustCryptoError),
@@ -146,6 +151,12 @@ impl ResponseError for AppError {
             Self::PasswordEmpty => HttpResponse::new(StatusCode::BAD_REQUEST),
             Self::UserNameEmpty => HttpResponse::new(StatusCode::BAD_REQUEST),
             Self::BadRequest => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::StreamConfig(error) => {
+                HttpResponse::new(StatusCode::BAD_REQUEST).set_body(BoxBody::new(error.to_string()))
+            }
+            Self::WebRTCParse(error) => {
+                HttpResponse::new(StatusCode::BAD_REQUEST).set_body(BoxBody::new(error.to_string()))
+            }
             Self::Moonlight(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::MoonlightStream(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::WebRTC(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),

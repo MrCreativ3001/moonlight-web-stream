@@ -1,19 +1,8 @@
-use crate::{
-    api::bindings::RtcIceServer,
-    config::{WebRtcNat1To1IceCandidateType, WebRtcNetworkType},
-};
+use crate::config::{WebRtcNat1To1IceCandidateType, WebRtcNetworkType};
 use webrtc::{
     ice::network_type::NetworkType,
-    ice_transport::{ice_candidate_type::RTCIceCandidateType, ice_server::RTCIceServer},
+    ice_transport::ice_candidate_type::RTCIceCandidateType,
 };
-
-pub fn into_webrtc_ice(value: RtcIceServer) -> RTCIceServer {
-    RTCIceServer {
-        urls: value.urls,
-        username: value.username,
-        credential: value.credential,
-    }
-}
 
 pub fn into_webrtc_ice_candidate(value: WebRtcNat1To1IceCandidateType) -> RTCIceCandidateType {
     match value {

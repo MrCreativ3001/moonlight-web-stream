@@ -365,12 +365,6 @@ pub struct GetRolesResponse {
 }
 
 // -- Stream
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub struct StreamCapabilities {
-    pub touch: bool,
-}
-
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcIceServer {
@@ -439,18 +433,6 @@ pub struct WebSocketStreamResponse {
     pub audio_coupled_streams: u32,
     pub audio_samples_per_frame: u32,
     pub audio_mapping: [u8; 8],
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-#[serde(rename_all = "camelCase")]
-#[ts(rename_all = "camelCase")]
-pub enum LogMessageType {
-    Fatal,
-    IfErrorDescription,
-    FatalDescription,
-    Recover,
-    InformError,
 }
 
 // Virtual-Key Codes

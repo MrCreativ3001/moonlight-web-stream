@@ -52,7 +52,7 @@ pub async fn add_video_track(
         "moonlight".to_string(),
     ));
 
-    let video_sender = peer.add_track(track.clone()).await.unwrap();
+    let video_sender = peer.add_track(track.clone()).await?;
 
     // Feedback
     let need_idr = Arc::new(AtomicBool::new(false));
@@ -66,10 +66,11 @@ pub async fn add_video_track(
                 for packet in packets {
                     let packet = packet.as_any();
 
-                    if let Some(_) = packet.downcast_ref::<PictureLossIndication>() {
+                    if packet.downcast_ref::<PictureLossIndication>().is_some() {
                         debug!("got picture loss indication, set need idr flag");
                         need_idr.store(true, Ordering::Release);
-                    } else if let Some(_) = packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
+                    } else if let Some(ReceiverEstimatedMaximumBitrate { bitrate: _, .. }) =
+                        packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
                     {
                         // TODO
                     }
@@ -112,7 +113,7 @@ pub async fn add_video_track(
                 for buffer in &frame.buffers {
                     let nal_payloads = payloader
                         .payload(RTP_OUTBOUND_MTU, &Bytes::copy_from_slice(buffer.data))
-                        .unwrap();
+                        .expect("failed to payload frame");
 
                     payloads.extend(nal_payloads);
                 }

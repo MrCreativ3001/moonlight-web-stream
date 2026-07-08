@@ -1,6 +1,6 @@
 use crate::config::Config;
 use rustls::{
-    CertificateError, OtherError, ServerConfig,
+    ServerConfig,
     pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
 };
 use std::{

@@ -6,25 +6,21 @@ use crate::api::bindings::{
 };
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
-use async_trait::async_trait;
 use moonlight_common::{
     crypto::rustcrypto::RustCryptoBackend,
     stream::{
         AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
-        audio::{AudioConfig, AudioFrame, OpusMultistreamConfig},
+        audio::AudioConfig,
         control::ActiveGamepads,
         proto::{
             MoonlightStreamSetup,
-            control::packet::{ControlPacket, ControlPacketConfig, PacketDirection},
+            control::packet::{ControlPacket, PacketDirection},
         },
-        tokio::{MoonlightStream, MoonlightStreamError},
-        video::{
-            ColorRange, ColorSpace, DecodeResult, VideoCapabilities, VideoDecodeUnit, VideoFormats,
-            VideoSetup,
-        },
+        tokio::MoonlightStream,
+        video::{ColorRange, ColorSpace, VideoCapabilities, VideoFormats},
     },
 };
-use tokio::{select, sync::Mutex, time::sleep};
+use tokio::{select, time::sleep};
 use tracing::{Instrument, debug_span, error, info, instrument, warn};
 
 use crate::{

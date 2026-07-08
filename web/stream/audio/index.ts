@@ -31,7 +31,7 @@ export interface TrackAudioPlayer extends Pipe {
 export type AudioDecodeUnit = {
     timestampMicroseconds: number
     durationMicroseconds: number
-    data: ArrayBuffer
+    data: Uint8Array
 }
 
 export interface DataAudioPlayer extends Pipe {

@@ -1,7 +1,7 @@
 import { Pipe } from "./index.js";
 
 export interface DataPipe extends Pipe {
-    submitPacket(buffer: ArrayBuffer): void
+    submitPacket(buffer: Uint8Array<ArrayBuffer>): void
 }
 
 export function addPipePassthrough(pipe: Pipe, overwrite?: Array<string>) {

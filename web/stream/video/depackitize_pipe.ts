@@ -32,12 +32,10 @@ export class DepacketizeVideoPipe implements DataPipe {
         addPipePassthrough(this)
     }
 
-    submitPacket(buffer: ArrayBuffer) {
-        const array = new Uint8Array(buffer)
-
+    submitPacket(buffer: Uint8Array) {
         this.buffer.reset()
 
-        this.buffer.putU8Array(array.slice(0, 5))
+        this.buffer.putU8Array(buffer.slice(0, 5))
 
         this.buffer.flip()
 
@@ -47,7 +45,7 @@ export class DepacketizeVideoPipe implements DataPipe {
         const duration = timestamp - this.lastTimestampMicroseconds
         this.base.submitDecodeUnit({
             type: frameType == 0 ? "delta" : "key",
-            data: array.slice(5).buffer,
+            data: buffer.slice(5),
             durationMicroseconds: duration,
             timestampMicroseconds: timestamp,
         })

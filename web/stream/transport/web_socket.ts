@@ -98,22 +98,16 @@ export class WebSocketTransport implements Transport {
             const channel = view[0]
 
             if (channel == WebSocketChannel.CONTROL) {
-                const payload = view.slice(1)
-
-                this.controlStream.onRawPacket(payload.buffer)
+                this.controlStream.onRawPacket(view.subarray(1))
             } else if (channel == WebSocketChannel.VIDEO) {
-                const frame = view.slice(1)
-
-                this.videoPipeline?.submitPacket(frame.buffer)
+                this.videoPipeline?.submitPacket(view.subarray(1))
                 if (this.videoPipeline && "pollRequestIdr" in this.videoPipeline && typeof this.videoPipeline.pollRequestIdr == "function" && this.videoPipeline.pollRequestIdr()) {
                     this.logger?.debug("requesting idr")
 
                     this.controlStream.sendRaw(new ControlPacket.RequestIdr())
                 }
             } else if (channel == WebSocketChannel.AUDIO) {
-                const frame = view.slice(1)
-
-                this.audioPipeline?.submitPacket(frame.buffer)
+                this.audioPipeline?.submitPacket(view.subarray(1))
             }
         }
     }
@@ -249,8 +243,8 @@ class WebSocketControlStream implements IControlStream {
         this.ws.send(message)
     }
 
-    onRawPacket(packetBuffer: ArrayBuffer) {
-        const packet = controlPacketDeserialize(this.config, PacketDirection.ClientBound, packetBuffer)
+    onRawPacket(packetBuffer: Uint8Array) {
+        const packet = controlPacketDeserialize(this.config, PacketDirection.ClientBound, packetBuffer.slice().buffer)
         if (this.onreceive && packet) {
             this.onreceive(packet)
         } else if (!packet) {

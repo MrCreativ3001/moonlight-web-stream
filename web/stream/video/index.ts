@@ -156,7 +156,7 @@ export type VideoDecodeUnit = {
         - keyframe: Must contain sps,pps,idr(one or multiple)
         - delta: Must contain the whole frame(one or multiple CodecSliceNonIdr's)
     */
-    data: ArrayBuffer
+    data: Uint8Array
 }
 
 export interface DataVideoRenderer extends Pipe {

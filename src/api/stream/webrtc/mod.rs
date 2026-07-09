@@ -421,11 +421,13 @@ pub async fn webrtc_post(
     let permissions = user.role().await?.permissions().await?;
     apply_role_restrictions(&permissions, &mut settings);
 
+    // Adjust settings
     let server_version = host.version().await?;
     let gfe_version = host.gfe_version().await?;
     let server_codec_mode_support = host.server_codec_mode_support().await?;
     settings.adjust_for_server(server_version, &gfe_version, server_codec_mode_support)?;
 
+    // Generate key and iv
     let aes_key = AesKey::new_random(&RustCryptoBackend)?;
     let aes_iv = AesIv::new_random(&RustCryptoBackend)?;
 

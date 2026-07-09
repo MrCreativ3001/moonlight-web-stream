@@ -63,6 +63,7 @@ export const ptBR: Translations = {
         enableHdr: "Ativar HDR",
         audio: "Áudio",
         playAudioLocal: "Reproduzir Áudio Localmente",
+        useWasmOpusDecoder: "Usar Decodificador Opus WASM",
         audioSampleQueueSize: "Tamanho da Fila de Amostras de Áudio",
         mouse: "Mouse",
         scrollMode: "Modo de Rolagem",

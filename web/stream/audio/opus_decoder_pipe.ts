@@ -110,7 +110,7 @@ export class OpusAudioDecoderPipe implements DataAudioPlayer {
         }
 
         for (let channelIndex = 0; channelIndex < channels; channelIndex++) {
-            if (this.channelBuffers[channelIndex].byteLength < samplesDecoded) {
+            if (this.channelBuffers[channelIndex].length != samplesDecoded) {
                 this.channelBuffers[channelIndex] = new Float32Array(samplesDecoded)
             }
 

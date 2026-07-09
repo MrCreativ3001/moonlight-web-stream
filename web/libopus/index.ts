@@ -64,24 +64,26 @@ export class OpusMultistreamDecoder {
         this.channels = channels
 
         const stackTop = module.stackSave()
+        let error = OPUS_OK
+        try {
+            const mappingPtr = module.stackAlloc(mappings.length)
+            for (let index = 0; index < channels; index++) {
+                const mapping = mappings[index]
 
-        const mappingPtr = module.stackAlloc(mappings.length)
-        for (let index = 0; index < channels; index++) {
-            const mapping = mappings[index]
-
-            if (mapping < 0 || mapping > 255) {
-                throw new OpusError(OPUS_BAD_ARG)
+                if (mapping < 0 || mapping > 255) {
+                    throw new OpusError(OPUS_BAD_ARG)
+                }
+                module.HEAPU8[mappingPtr + index] = mapping
             }
-            module.HEAPU8[mappingPtr + index] = mapping
+
+            const errorPtr = module.stackAlloc(4)
+
+            this.ptr = module._opus_multistream_decoder_create(sampleRate, channels, streams, coupled_channels, mappingPtr, errorPtr)
+            error = this.module.getValue(errorPtr, "i32")
+        } finally {
+            module.stackRestore(stackTop)
         }
 
-        const errorPtr = module.stackAlloc(4)
-
-        this.ptr = module._opus_multistream_decoder_create(sampleRate, channels, coupled_channels, streams, mappingPtr, errorPtr)
-
-        module.stackRestore(stackTop)
-
-        const error = this.module.getValue(errorPtr, "i32")
         if (error != OPUS_OK) {
             throw new OpusError(error)
         }
@@ -120,13 +122,13 @@ export class OpusMultistreamDecoder {
 
         this.outputBuffer.ensureSize(outputSize)
 
-        const result = this.module._opus_multistream_decode_float(this.ptr, this.inputBuffer.getPtr(), input?.byteLength ?? 0, this.outputBuffer.getPtr(), frameSize, decodeFec ? 1 : 0)
+        const result = this.module._opus_multistream_decode_float(this.ptr, input ? this.inputBuffer.getPtr() : 0, input?.byteLength ?? 0, this.outputBuffer.getPtr(), frameSize, decodeFec ? 1 : 0)
 
         if (result < 0) {
             throw new OpusError(result)
         }
 
-        const outputBuffer = this.outputBuffer.asBufferF32(0, this.channels * frameSize)
+        const outputBuffer = this.outputBuffer.asBufferF32(0, this.channels * result)
         output.set(outputBuffer)
 
         return result
@@ -197,7 +199,7 @@ class Buffer {
         }
 
         this.checkPtr()
-        if ((offsetF32 + lengthF32) * 4 < this.length || offsetF32 < 0 || lengthF32 < 0) {
+        if ((offsetF32 + lengthF32) * 4 > this.length || offsetF32 < 0 || lengthF32 < 0) {
             throw "BufferOutOfBounds"
         }
 

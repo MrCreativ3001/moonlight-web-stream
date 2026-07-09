@@ -63,6 +63,7 @@ export const zhCN: Translations = {
         enableHdr: "启用 HDR",
         audio: "音频",
         playAudioLocal: "本地播放音频",
+        useWasmOpusDecoder: "使用 WASM Opus 解码器",
         audioSampleQueueSize: "音频采样队列大小",
         mouse: "鼠标",
         scrollMode: "滚动模式",

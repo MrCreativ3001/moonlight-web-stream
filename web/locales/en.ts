@@ -61,6 +61,7 @@ export const en = {
         enableHdr: "Enable HDR",
         audio: "Audio",
         playAudioLocal: "Play Audio Local",
+        useWasmOpusDecoder: "Use WASM Opus Decoder",
         audioSampleQueueSize: "Audio Sample Queue Size",
         mouse: "Mouse",
         scrollMode: "Scroll Mode",

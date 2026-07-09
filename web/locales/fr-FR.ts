@@ -63,6 +63,7 @@ export const frFr: Translations = {
         enableHdr: "Activer HDR",
         audio: "Audio",
         playAudioLocal: "Jouer l'auudio localement",
+        useWasmOpusDecoder: "Utiliser le decodeur Opus WASM",
         audioSampleQueueSize: "Taille de la file d'attente audio",
         mouse: "Souris",
         scrollMode: "Mode de défilement",

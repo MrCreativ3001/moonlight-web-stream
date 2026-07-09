@@ -399,6 +399,10 @@ impl WebRtcInner {
                     let mut video = self.video.lock().await;
                     video.set_codecs(video_supported_formats).await;
                 }
+                {
+                    let mut audio = self.audio.lock().await;
+                    audio.set_use_data_channel(settings.use_wasm_opus_decoder);
+                }
 
                 // TODO: check peer for supported formats via sdp
 

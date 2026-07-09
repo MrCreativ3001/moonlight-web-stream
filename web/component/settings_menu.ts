@@ -21,6 +21,7 @@ export type Settings = {
     canvasRenderer: boolean
     canvasVsync: boolean
     playAudioLocal: boolean
+    useWasmOpusDecoder: boolean
     audioSampleQueueSize: number
     mouseScrollMode: MouseScrollMode
     mouseMode: MouseMode
@@ -165,6 +166,7 @@ export class StreamSettingsComponent implements Component {
 
     private audioHeader: HTMLHeadingElement = document.createElement("h3")
     private playAudioLocal: InputComponent
+    private useWasmOpusDecoder: InputComponent
     private audioSampleQueueSize: InputComponent
 
     private mouseHeader: HTMLHeadingElement = document.createElement("h3")
@@ -357,6 +359,12 @@ export class StreamSettingsComponent implements Component {
         })
         this.playAudioLocal.addChangeListener(this.onSettingsChange.bind(this))
         this.playAudioLocal.mount(this.divElement)
+
+        this.useWasmOpusDecoder = new InputComponent("useWasmOpusDecoder", "checkbox", i.useWasmOpusDecoder, {
+            checked: settings?.useWasmOpusDecoder ?? defaultSettings_.useWasmOpusDecoder
+        })
+        this.useWasmOpusDecoder.addChangeListener(this.onSettingsChange.bind(this))
+        this.useWasmOpusDecoder.mount(this.divElement)
 
         // Audio Sample Queue Size
         this.audioSampleQueueSize = new InputComponent("audioSampleQueueSize", "number", i.audioSampleQueueSize, {
@@ -568,6 +576,7 @@ export class StreamSettingsComponent implements Component {
         settings.canvasVsync = this.canvasVsync.isChecked()
 
         settings.playAudioLocal = this.playAudioLocal.isChecked()
+        settings.useWasmOpusDecoder = this.useWasmOpusDecoder.isChecked()
         settings.audioSampleQueueSize = parseInt(this.audioSampleQueueSize.getValue())
 
         settings.mouseScrollMode = this.mouseScrollMode.getValue() as any

@@ -8,11 +8,13 @@ export class WebRTCTransport implements Transport {
     implementationName: string = "webrtc"
 
     private logger: Logger | null
+    private useDataAudio: boolean
 
     private peer: RTCPeerConnection | null = null
 
-    constructor(logger?: Logger) {
+    constructor(logger?: Logger, options?: { useDataAudio?: boolean }) {
         this.logger = logger ?? null
+        this.useDataAudio = options?.useDataAudio ?? false
     }
 
     async initPeer(configuration?: RTCConfiguration) {
@@ -239,8 +241,12 @@ export class WebRTCTransport implements Transport {
                 continue
             }
             if (channel == "HOST_AUDIO") {
-                const channel: AudioTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"audiotrack">(this.logger, "audiotrack", "audio", this.audioTrackHolder)
-                this.channels[TransportChannelId.HOST_AUDIO] = channel
+                if (this.useDataAudio) {
+                    this.channels[TransportChannelId.HOST_AUDIO] = new WebRTCDataTransportChannel(channel, null)
+                } else {
+                    const channel: AudioTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"audiotrack">(this.logger, "audiotrack", "audio", this.audioTrackHolder)
+                    this.channels[TransportChannelId.HOST_AUDIO] = channel
+                }
                 continue
             }
 
@@ -355,8 +361,15 @@ export class WebRTCTransport implements Transport {
         }
     }
 
-    async setupHostAudio(_setup: TransportAudioSetup): Promise<void> {
-        // TODO: check transport type
+    async setupHostAudio(setup: TransportAudioSetup): Promise<void> {
+        if (this.useDataAudio && setup.type.indexOf("data") == -1) {
+            this.logger?.debug("Cannot use WebRTC data audio: Found no supported audio pipeline")
+            throw "Cannot use WebRTC data audio: Found no supported audio pipeline"
+        }
+        if (!this.useDataAudio && setup.type.indexOf("audiotrack") == -1) {
+            this.logger?.debug("Cannot use WebRTC track audio: Found no supported audio pipeline")
+            throw "Cannot use WebRTC track audio: Found no supported audio pipeline"
+        }
     }
 
     getChannel(id: TransportChannelIdValue): TransportChannel {
@@ -524,6 +537,9 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
 
         this.logger = logger ?? null
 
+        if (this.channel) {
+            this.channel.binaryType = "arraybuffer"
+        }
         this.channel?.addEventListener("message", this.boundOnMessage)
     }
 
@@ -536,6 +552,7 @@ class WebRTCDataTransportChannel implements DataTransportChannel {
         this.channel?.removeEventListener("message", this.boundOnMessage)
         // Add listener to new channel
         this.channel = newChannel
+        this.channel.binaryType = "arraybuffer"
         this.channel.addEventListener("open", this.boundTryDequeueSendQueue)
         this.channel.addEventListener("message", this.boundOnMessage)
     }

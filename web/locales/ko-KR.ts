@@ -63,6 +63,7 @@ export const koKR: Translations = {
         enableHdr: "HDR 활성화",
         audio: "오디오",
         playAudioLocal: "로컬 오디오 재생",
+        useWasmOpusDecoder: "WASM Opus 디코더 사용",
         audioSampleQueueSize: "오디오 샘플 대기열 크기",
         mouse: "마우스",
         scrollMode: "스크롤 모드",

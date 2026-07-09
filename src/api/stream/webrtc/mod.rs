@@ -1,7 +1,9 @@
 use crate::api::stream::webrtc::audio::add_audio_track;
 use crate::config::PortRange;
 use actix_web::HttpRequest;
-use actix_web::body::BoxBody;
+use actix_web::body::{BoxBody, MessageBody};
+use actix_web::dev::{ServiceRequest, ServiceResponse};
+use actix_web::middleware::Next;
 use actix_web::web::{Data, Path};
 use actix_web::{
     HttpResponse, HttpResponseBuilder, delete, get, http::StatusCode, http::header, options, patch,
@@ -45,13 +47,13 @@ use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RTPCodecType,
 };
 
-use crate::api::stream::create_control_packet_config;
 use crate::api::stream::webrtc::control::{add_enet_control_channel, add_simple_control_channel};
 use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
 use crate::api::stream::webrtc::video::{
     add_video_track, codec_to_video_format, video_format_to_codec,
 };
+use crate::api::stream::{apply_role_restrictions, create_control_packet_config};
 use crate::app::App;
 use crate::app::host::HostId;
 use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
@@ -62,6 +64,25 @@ mod control;
 mod convert;
 mod ice_servers;
 mod video;
+
+pub async fn webrtc_middleware(
+    mut req: ServiceRequest,
+    next: Next<impl MessageBody>,
+) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
+    let mut user = req.extract::<AuthenticatedUser>().await?;
+
+    if !user
+        .role()
+        .await?
+        .permissions()
+        .await?
+        .allow_transport_webrtc
+    {
+        return Err(AppError::Forbidden.into());
+    }
+
+    next.call(req).await
+}
 
 #[options("")]
 pub async fn webrtc_options(
@@ -395,7 +416,10 @@ pub async fn webrtc_post(
         gamepads_persist_after_disconnect: false,
         enable_mic: microphone_enabled,
     };
-    // TODO: apply permissions to settings
+
+    // -- Get and Apply Permissions
+    let permissions = user.role().await?.permissions().await?;
+    apply_role_restrictions(&permissions, &mut settings);
 
     let server_version = host.version().await?;
     let gfe_version = host.gfe_version().await?;

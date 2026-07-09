@@ -15,7 +15,9 @@ use crate::api::{
     settings::{get_default_settings, get_permissions},
     stream::{
         web_socket::web_socket_stream,
-        webrtc::{webrtc_delete, webrtc_get, webrtc_options, webrtc_patch, webrtc_post},
+        webrtc::{
+            webrtc_delete, webrtc_get, webrtc_middleware, webrtc_options, webrtc_patch, webrtc_post,
+        },
     },
     user::{add_user, delete_user, get_user, list_users, patch_user},
 };
@@ -86,6 +88,7 @@ pub fn api_service() -> impl HttpServiceFactory {
         .service(
             // -- WebRTC Stream
             web::scope("/host/stream/webrtc")
+                .wrap(from_fn(webrtc_middleware))
                 .service(webrtc_options)
                 .service(webrtc_get)
                 .service(webrtc_post)

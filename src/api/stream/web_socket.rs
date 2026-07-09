@@ -1,8 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::api::bindings::{
-    WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage,
-    WebSocketStreamResponse,
+use crate::api::{
+    bindings::{
+        WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage,
+        WebSocketStreamResponse,
+    },
+    stream::apply_role_restrictions,
 };
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
@@ -70,6 +73,12 @@ async fn handle_ws(
 ) -> Result<(), AppError> {
     let control_config = create_control_packet_config();
 
+    // See if the user is allowed to use web sockets
+    let permissions = user.role().await?.permissions().await?;
+    if !permissions.allow_transport_websockets {
+        return Err(AppError::Forbidden);
+    }
+
     // Wait for stream request
     let stream_request = select! {
         _ = sleep(Duration::from_secs(10)) => {
@@ -99,8 +108,6 @@ async fn handle_ws(
         }
     };
 
-    // TODO: apply role restrictions
-
     // -- Get host
     let host_id = HostId(stream_request.host_id);
     let mut host = user.host(host_id).await?;
@@ -113,7 +120,7 @@ async fn handle_ws(
 
     // -- Start stream
     // get settings
-    let settings = MoonlightStreamSettings {
+    let mut settings = MoonlightStreamSettings {
         width: stream_request.width,
         height: stream_request.height,
         fps: stream_request.fps,
@@ -135,7 +142,9 @@ async fn handle_ws(
         // TODO: mic?
         enable_mic: false,
     };
-    // TODO: apply permissions to settings
+
+    // apply permissions
+    apply_role_restrictions(&permissions, &mut settings);
 
     // encryption
     let aes_key = AesKey::new_random(&RustCryptoBackend)?;

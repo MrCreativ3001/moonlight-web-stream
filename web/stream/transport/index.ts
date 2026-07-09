@@ -24,6 +24,7 @@ export type TransportOptions = {
     bitrate: number,
     hdr: boolean,
     localAudioPlayMode: boolean,
+    /// These are the available video codecs when using data transport
     supportedCodecs: VideoFormats,
     preferredCodecs?: VideoFormats,
     preferredAudio?: number,

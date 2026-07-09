@@ -4,8 +4,8 @@ import { TrackVideoRenderer, VideoRenderer } from "./index.js"
 import { VideoDecoderPipe } from "./video_decoder_pipe.js"
 import { DepacketizeVideoPipe } from "./depackitize_pipe.js"
 import { Logger } from "../log.js"
-import { andVideoCodecs, hasAnyCodec } from "../video.js"
-import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
+import { andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "../video.js"
+import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfo, PipeInfoStatic, PipeStatic } from "../pipeline/index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { workerPipe } from "../pipeline/worker_pipe.js"
 import { WorkerVideoDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io.js"
@@ -83,12 +83,105 @@ const PIPELINES: Array<Pipeline> = [
 
 const FORCE_CANVAS_PIPELINES: Array<Pipeline> = PIPELINES.filter(pipeline => pipeline.renderer.name.includes("Canvas"))
 
-export async function buildVideoPipeline(type: "videotrack", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackVideoRenderer & VideoRenderer>>
-export async function buildVideoPipeline(type: "data", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<DataPipe & VideoRenderer>>
-
-export async function buildVideoPipeline(type: string, settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<VideoRenderer>> {
+async function queryPipelineInfo(pipeline: Pipeline, supportedCodecs: VideoFormats, logger?: Logger): Promise<PipeInfo> {
     const pipesInfo = await gatherPipeInfo()
 
+    // Check if supported and contains codecs
+    for (const pipe of pipeline.pipes) {
+        const pipeInfo = pipesInfo.get(pipe)
+        if (!pipeInfo) {
+            logger?.debug(`Failed to query info for video pipe ${pipe.name}`)
+            return {
+                environmentSupported: false
+            }
+        }
+
+        if (!pipeInfo?.environmentSupported) {
+            return {
+                environmentSupported: false,
+            }
+        }
+
+        if (pipeInfo?.supportedVideoCodecs) {
+            supportedCodecs = andVideoCodecs(supportedCodecs, pipeInfo.supportedVideoCodecs)
+        }
+    }
+
+    const rendererInfo = await pipeline.renderer.getInfo()
+    if (!rendererInfo) {
+        logger?.debug(`Failed to query info for video renderer ${pipeline.renderer.name}`)
+        return {
+            environmentSupported: false
+        }
+    }
+
+    // See if the pipeline is supported and has the required codecs
+    if (!rendererInfo.environmentSupported) {
+        return {
+            environmentSupported: false
+        }
+    }
+    if (rendererInfo.supportedVideoCodecs) {
+        supportedCodecs = andVideoCodecs(supportedCodecs, rendererInfo.supportedVideoCodecs)
+    }
+
+    return {
+        environmentSupported: true,
+        supportedVideoCodecs: supportedCodecs,
+    }
+}
+
+async function selectPipeline(type: string, settings: VideoPipelineOptions, logger?: Logger): Promise<Pipeline | null> {
+    let pipelines: Array<Pipeline> = []
+
+    // Forced renderer
+    if (settings.forceVideoElementRenderer) {
+        logger?.debug("Forcing Video Element Renderer")
+        if (type != "videotrack") {
+            logger?.debug("The option Force Video Element Renderer is currently only supported with WebRTC", { type: "fatalDescription" })
+            return null
+        }
+
+        // H264 is assumed universal, if we don't currently support something force it!
+        if (!hasAnyCodec(settings.supportedVideoCodecs)) {
+            logger?.debug("No codec currently found. Setting H264 as supported even though the browser says it is not supported")
+
+            settings.supportedVideoCodecs.h264 = true
+        }
+
+        return { input: "videotrack", pipes: [], renderer: VideoElementRenderer }
+    }
+
+    if (settings.canvasRenderer) {
+        logger?.debug("Forcing canvas renderer")
+
+        pipelines = FORCE_CANVAS_PIPELINES
+    } else {
+        logger?.debug("Selecting pipeline automatically")
+
+        pipelines = PIPELINES
+    }
+
+    pipelineLoop: for (const pipeline of pipelines) {
+        if (pipeline.input != type) {
+            continue
+        }
+
+        const supportedCodecs = settings.supportedVideoCodecs
+        const pipelineInfo = await queryPipelineInfo(pipeline, supportedCodecs)
+
+        if (!hasAnyCodec(pipelineInfo?.supportedVideoCodecs ?? emptyVideoCodecs())) {
+            logger?.debug(`Not using pipe ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer) because it doesn't support any codec the user wants`)
+            continue pipelineLoop
+        }
+
+        return pipeline
+    }
+
+    return null
+}
+
+export async function queryVideoPipelineInfo(type: "videotrack" | "data", settings: VideoPipelineOptions, logger?: Logger): Promise<PipeInfo | null> {
     if (logger) {
         // Print supported pipes
         const videoRendererInfoPromises = []
@@ -105,6 +198,18 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         }
         logger.debug(`}`)
     }
+
+
+    const pipeline = selectPipeline(type, settings, logger)
+
+    return null
+}
+
+export async function buildVideoPipeline(type: "videotrack", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackVideoRenderer & VideoRenderer>>
+export async function buildVideoPipeline(type: "data", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<DataPipe & VideoRenderer>>
+
+export async function buildVideoPipeline(type: string, settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<VideoRenderer>> {
+    const pipesInfo = await gatherPipeInfo()
 
     logger?.debug(`Building video pipeline with output "${type}"`)
 

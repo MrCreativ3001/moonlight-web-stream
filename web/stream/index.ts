@@ -1,5 +1,5 @@
 import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api.js"
-import { App, StreamCapabilities, StreamPermissions, } from "../api_bindings.js"
+import { App, StreamPermissions, } from "../api_bindings.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
 import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings.js"
@@ -13,13 +13,17 @@ import { StreamStats } from "./stats.js"
 import { Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./transport/index.js"
 import { WebSocketTransport } from "./transport/web_socket.js"
 import { WebRTCTransport } from "./transport/webrtc.js"
-import { allVideoCodecs, andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video.js"
+import { allVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video.js"
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
 import { buildVideoPipeline, queryVideoPipelineInfo, VideoPipelineOptions } from "./video/pipeline.js"
 
 export type ExecutionEnvironment = {
     main: boolean
     worker: boolean
+}
+
+export type StreamCapabilities = {
+    touch: boolean
 }
 
 export type InfoEvent = CustomEvent<

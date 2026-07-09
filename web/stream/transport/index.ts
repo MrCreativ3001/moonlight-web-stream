@@ -1,6 +1,6 @@
-import { StreamCapabilities } from "../../api_bindings.js"
 import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, ServerType, VideoFormats } from "../../uniffi/moonlight_common_bindings.js"
 import { AudioPlayer, AudioPlayerSetup, TrackAudioPlayer } from "../audio/index.js"
+import { StreamCapabilities } from "../index.js"
 import { DataPipe } from "../pipeline/pipes.js"
 import { StatValue } from "../stats.js"
 import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index.js"

@@ -2,13 +2,13 @@ import "./polyfill/index.js"
 import { Api, apiGetRole, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showErrorPopup } from "./component/error.js";
-import { InfoEvent, Stream } from "./stream/index.js"
+import { InfoEvent, Stream, StreamCapabilities } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { getLocalStreamSettings, Settings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
+import { DetailedRole, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
@@ -16,6 +16,7 @@ import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from ".
 import { emptyKeyModifiers } from "./stream/keyboard.js";
 import { LogLevel, setLogger as uniffiSetLogger, Logger as UniffiLogger, uniffiInitAsync } from "./uniffi/entry.js";
 import "./styles/index.ts"
+import { LogMessageType } from "./stream/log.js";
 
 let I = getTranslations(getCurrentLanguage())
 

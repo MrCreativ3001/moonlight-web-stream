@@ -1,7 +1,7 @@
-import { StreamCapabilities } from "../api_bindings.js"
 import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButton, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
+import { StreamCapabilities } from "./index.js"
 import { convertToKey, convertToModifiers, emptyKeyModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
 import { IControlStream } from "./transport/index.js"

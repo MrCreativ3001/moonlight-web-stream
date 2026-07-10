@@ -6,6 +6,7 @@ use actix_web::web::Bytes;
 use moonlight_common::stream::proto::control::peer::{
     ControlHostEvent, ControlPeerConfig, ControlPeerRole,
 };
+use moonlight_common::stream::proto::runtime::UdpStream;
 use moonlight_common::{
     crypto::disabled::DisabledCryptoBackend,
     stream::{
@@ -318,7 +319,7 @@ pub async fn add_enet_control_channel(
                 };
 
                 select! {
-                    _ = sleep_until(timeout.to_std(base_time).into()) => {}
+                    _ = sleep_until(timeout.expect("timeout").to_std(base_time).into()), if timeout.is_some() => {}
                     _ = poll_notify.notified() => {}
                 }
 

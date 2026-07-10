@@ -14,7 +14,6 @@ use moonlight_common::stream::audio::AudioConfig;
 use moonlight_common::stream::control::ActiveGamepads;
 use moonlight_common::stream::proto::MoonlightStreamSetup;
 use moonlight_common::stream::proto::control::packet::ControlPacket;
-use moonlight_common::stream::proto::sdp::Sdp;
 use moonlight_common::stream::tokio::MoonlightStream;
 use moonlight_common::stream::video::{
     ColorRange, ColorSpace, VideoCapabilities, VideoFormat, VideoFormats,
@@ -27,7 +26,6 @@ use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{self, channel};
@@ -456,14 +454,12 @@ pub async fn webrtc_post(
 
         async move {
             while let Ok(packet) = stream.poll_packet().await {
-                match &packet {
-                    ControlPacket::HdrMode {
-                        enabled: _,
-                        sunshine: _,
-                    } => {
-                        // TODO: use the color space(hdr) extension, this seems to only be used on keyframes -> request one https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/color-space
-                    }
-                    _ => {}
+                if let ControlPacket::HdrMode {
+                    enabled: _,
+                    sunshine: _,
+                } = &packet
+                {
+                    // TODO: use the color space(hdr) extension, this seems to only be used on keyframes -> request one https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/color-space
                 }
 
                 if let Err(err) = clientbound_control_sender.send(packet).await {

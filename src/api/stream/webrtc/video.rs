@@ -80,8 +80,6 @@ pub fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParam
     }
 
     // -- Add all recognized codecs
-    let mut current_pt = 112;
-
     for (pt, (codec, clock_rate)) in &codec_and_clock_rate {
         let sdp_fmtp_line = sdp_fmtp_lines.get(pt).unwrap_or(&"");
         debug!(pt = *pt, codec = ?codec, clock_rate = ?clock_rate, sdp_fmtp_line = ?sdp_fmtp_line, "got codec");
@@ -118,11 +116,10 @@ pub fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParam
                         rtcp_feedback: rtcp_feedback(),
                         ..Default::default()
                     },
-                    payload_type: current_pt,
+                    payload_type: *pt,
                     ..Default::default()
                 },
             );
-            current_pt += 1;
         } else if codec.eq_ignore_ascii_case("H265") {
             // Get profile
             let mut format = VideoFormat::H265;
@@ -151,11 +148,10 @@ pub fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParam
                         rtcp_feedback: rtcp_feedback(),
                         ..Default::default()
                     },
-                    payload_type: current_pt,
+                    payload_type: *pt,
                     ..Default::default()
                 },
             );
-            current_pt += 1;
         } else if codec.eq_ignore_ascii_case("AV1") {
             // Get profile
             let mut format = VideoFormat::Av1Main8;
@@ -182,11 +178,10 @@ pub fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParam
                         rtcp_feedback: rtcp_feedback(),
                         ..Default::default()
                     },
-                    payload_type: current_pt,
+                    payload_type: *pt,
                     ..Default::default()
                 },
             );
-            current_pt += 1;
         }
     }
 
@@ -300,7 +295,7 @@ pub async fn add_video_track(
 
                 let len = payloads.len();
                 for (i, payload) in payloads.into_iter().enumerate() {
-                    sequence_number += sequence_number.wrapping_add(1);
+                    sequence_number = sequence_number.wrapping_add(1);
 
                     if let Err(err) = track
                         .write_rtp_with_extensions(

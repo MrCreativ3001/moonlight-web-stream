@@ -1,5 +1,5 @@
 import { Api, fetchApi, WebRTCAnswer } from "../../api.js";
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, InputBatcher, PacketDirection, UdpTransmit, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, EstimatedRttInfo, InputBatcher, PacketDirection, UdpTransmit, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject, uniffiMillisUntil, uniffiNow } from "../../util.js";
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
@@ -273,9 +273,58 @@ export class WebRTCTransport implements Transport {
         // TODO
     }
 
+    private lastTotalDecodeTime = 0
+    private lastFramesDecoded = 0
     async getStats(): Promise<Record<string, StatValue>> {
-        // TODO
-        return {}
+        const out: Record<string, StatValue> = {}
+
+        // Control Stream
+        const estimatedRtt = this.controlStream.estimatedRtt()
+        if (estimatedRtt) {
+            out.estimatedClientToRelayRttMs = estimatedRtt.rtt
+            out.estimatedClientToRelayRttVarianceMs = estimatedRtt.rttVariance
+        }
+
+        const stats = await this.peer.getStats()
+
+        for (const [_key, value] of stats) {
+            console.debug(value)
+
+            // Video Stream
+            if ("type" in value && "kind" in value
+                && value.type == "inbound-rtp" && value.kind == "video"
+            ) {
+                out.framesDecoded = value?.framesDecoded
+                out.framesDropped = value?.framesDropped
+                out.keyFramesDecoded = value?.keyFramesDecoded
+
+                out.packetsLost = value?.packetsLost
+                out.packetsReceived = value?.packetsReceived
+
+                out.nackCount = value?.nackCount
+                out.pliCount = value?.pliCount
+                out.firCount = value?.firCount
+
+                if ("totalDecodeTime" in value && "framesDecoded" in value) {
+                    out.decodeTimePerFrameMs = (value.totalDecodeTime - this.lastTotalDecodeTime) / (value.framesDecoded - this.lastFramesDecoded) * 1000.0
+
+                    this.lastFramesDecoded = value.framesDecoded
+                    this.lastTotalDecodeTime = value.totalDecodeTime
+                }
+
+                out.currentFps = value?.framesPerSecond
+            }
+            if ("type" in value && "mimeType" in value && typeof value.mimeType == "string"
+                && value.type == "codec" && value.mimeType.startsWith("video/")
+            ) {
+                out.codec = value.mimeType.substring(6)
+                out.codecSdpFmtpLine = value?.sdpFmtpLine
+            }
+
+            // Audio Stream
+        }
+
+        return out
     }
 }
 
@@ -446,6 +495,10 @@ class WebRtcControlStream implements IControlStream {
         } else {
             this.logger?.debug(`failed to send control packet ${JSON.stringify(packet)}`)
         }
+    }
+
+    estimatedRtt(): EstimatedRttInfo | null {
+        return this.controlStream?.estimatedRtt() ?? null
     }
 
     private boundSendBatchedInputs = this.sendBatchedInputs.bind(this)

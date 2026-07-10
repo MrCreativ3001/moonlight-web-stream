@@ -215,11 +215,11 @@ fn parse_fmtp(attribute_value: &str) -> Option<(u8, &str)> {
 pub async fn add_video_track(
     peer: &RTCPeerConnection,
     stream: &MoonlightStream,
-    video_formats: HashMap<VideoFormat, RTCRtpCodecParameters>,
+    mut video_formats: HashMap<VideoFormat, RTCRtpCodecParameters>,
 ) -> Result<(), AppError> {
     // Check video format
     let format = stream.video_setup().format;
-    let Some(codec) = video_formats.get(&format) else {
+    let Some(codec) = video_formats.remove(&format) else {
         return Err(AppError::WebRtcClientCodecNotSupported);
     };
 
@@ -310,8 +310,7 @@ pub async fn add_video_track(
                                     marker: i == len - 1,
                                     sequence_number,
                                     timestamp,
-                                    // TODO: this needs to match
-                                    payload_type: 96,
+                                    payload_type: codec.payload_type,
                                     ..Default::default()
                                 },
                                 payload,

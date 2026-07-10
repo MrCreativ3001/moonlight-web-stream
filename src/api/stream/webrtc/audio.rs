@@ -58,7 +58,7 @@ pub async fn add_audio_track(
             let mut sequence_number = 0;
 
             while let Ok(frame) = stream.poll_audio_frame().await {
-                let timestamp = (frame.timestamp.as_secs_f64() * 48000.0) as u32;
+                let timestamp = (frame.timestamp.as_millis() * 48) as u32;
 
                 if track.all_binding_paused().await {
                     trace!("audio track all binding paused");

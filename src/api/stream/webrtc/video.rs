@@ -273,12 +273,13 @@ pub async fn add_video_track(
         let need_idr = need_idr.clone();
 
         async move {
-            let mut sequence_number = 0;
+            let mut sequence_number = 0u16;
 
             while let Ok(frame) = stream.poll_video_frame().await {
                 let frame = frame.as_ref();
 
-                let timestamp = (frame.metadata.timestamp.as_secs_f64() * clock_rate as f64) as u32;
+                let timestamp =
+                    (frame.metadata.timestamp.as_millis() * clock_rate as u128 / 1000) as u32;
 
                 if track.all_binding_paused().await {
                     trace!("video track all binding paused");
@@ -299,7 +300,7 @@ pub async fn add_video_track(
 
                 let len = payloads.len();
                 for (i, payload) in payloads.into_iter().enumerate() {
-                    sequence_number += 1;
+                    sequence_number += sequence_number.wrapping_add(1);
 
                     if let Err(err) = track
                         .write_rtp_with_extensions(

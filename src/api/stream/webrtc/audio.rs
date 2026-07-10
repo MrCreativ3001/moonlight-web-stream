@@ -55,7 +55,7 @@ pub async fn add_audio_track(
         let stream = stream.clone();
 
         async move {
-            let mut sequence_number = 0;
+            let mut sequence_number = 0u16;
 
             while let Ok(frame) = stream.poll_audio_frame().await {
                 let timestamp = (frame.timestamp.as_millis() * 48) as u32;
@@ -68,7 +68,7 @@ pub async fn add_audio_track(
 
                 trace!(len = ?frame.buffer.len(), timestamp = ?frame.timestamp, "audio frame");
 
-                sequence_number += 1;
+                sequence_number = sequence_number.wrapping_add(1);
 
                 // Opus doesn't need any special payloading: https://github.com/webrtc-rs/webrtc/blob/6b94718e23111df28125f96af4b0de8cbb3dfd0d/rtp/src/codecs/opus/mod.rs#L9-L24
                 if let Err(err) = track

@@ -1,7 +1,6 @@
 use crate::config::{WebRtcNat1To1IceCandidateType, WebRtcNetworkType};
 use webrtc::{
-    ice::network_type::NetworkType,
-    ice_transport::ice_candidate_type::RTCIceCandidateType,
+    ice::network_type::NetworkType, ice_transport::ice_candidate_type::RTCIceCandidateType,
 };
 
 pub fn into_webrtc_ice_candidate(value: WebRtcNat1To1IceCandidateType) -> RTCIceCandidateType {

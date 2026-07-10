@@ -14,6 +14,7 @@ use moonlight_common::stream::audio::AudioConfig;
 use moonlight_common::stream::control::ActiveGamepads;
 use moonlight_common::stream::proto::MoonlightStreamSetup;
 use moonlight_common::stream::proto::control::packet::ControlPacket;
+use moonlight_common::stream::proto::sdp::Sdp;
 use moonlight_common::stream::tokio::MoonlightStream;
 use moonlight_common::stream::video::{
     ColorRange, ColorSpace, VideoCapabilities, VideoFormat, VideoFormats,
@@ -21,9 +22,11 @@ use moonlight_common::stream::video::{
 use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
 };
+use moonlight_common::webrtc::WebRTCParseError;
 use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,9 +53,7 @@ use webrtc::rtp_transceiver::rtp_codec::{
 use crate::api::stream::webrtc::control::{add_enet_control_channel, add_simple_control_channel};
 use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
-use crate::api::stream::webrtc::video::{
-    add_video_track, codec_to_video_format, video_format_to_codec,
-};
+use crate::api::stream::webrtc::video::{add_video_track, get_video_formats};
 use crate::api::stream::{apply_role_restrictions, create_control_packet_config};
 use crate::app::App;
 use crate::app::host::HostId;
@@ -139,7 +140,7 @@ fn opus_codec() -> RTCRtpCodecCapability {
     }
 }
 
-fn create_media_engine() -> MediaEngine {
+fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameters>) -> MediaEngine {
     // The media engine contains all supported codecs this peer has
     let mut media_engine = MediaEngine::default();
 
@@ -188,23 +189,9 @@ fn create_media_engine() -> MediaEngine {
         .expect("register audio opus codec");
 
     // register video
-    for (i, format) in VideoFormat::all().into_iter().enumerate() {
-        let Some(codec) = video_format_to_codec(format) else {
-            debug!(format = ?format, "failed to convert format into codec");
-            continue;
-        };
-
-        debug!(format = ?format, codec = ?codec, "adding codec to media engine");
-
+    for codec in video_formats.values() {
         media_engine
-            .register_codec(
-                RTCRtpCodecParameters {
-                    capability: codec,
-                    payload_type: 96 + i as u8,
-                    ..Default::default()
-                },
-                RTPCodecType::Video,
-            )
+            .register_codec(codec.clone(), RTPCodecType::Video)
             .expect("register video codec");
     }
 
@@ -231,7 +218,9 @@ pub async fn webrtc_post(
 
     debug!(req = ?req, session_description = ?session_description, "webrtc request");
 
-    let session = WebRTCSessionOffer::from_str(&session_description)?;
+    let offer_sdp =
+        Session::parse(session_description.as_bytes()).map_err(WebRTCParseError::from)?;
+    let session = WebRTCSessionOffer::from_sdp(&offer_sdp)?;
     debug!(moonlight_session = ?session, "moonlight session extensions", );
 
     let Some(host_id) = session.host_id else {
@@ -281,8 +270,11 @@ pub async fn webrtc_post(
 
     setting_engine.set_include_loopback_candidate(app.config().webrtc.include_loopback_candidates);
 
+    // Get video codecs
+    let video_codecs = get_video_formats(&offer_sdp);
+
     // Create media engine
-    let mut media_engine = create_media_engine();
+    let mut media_engine = create_media_engine(&video_codecs);
 
     let ice_servers = generate_ice_servers(&app).await?;
 
@@ -316,62 +308,17 @@ pub async fn webrtc_post(
 
     info!("querying client for supported video and audio codecs");
 
-    // -- Query sdp about video, audio and potential microphone
+    // TODO: query microphone support
     let microphone_enabled = false;
+
+    // TODO: query audio support
     let audio_config = Some(AudioConfig::STEREO);
-    let mut supported_video_formats = VideoFormats::empty();
 
-    let offer_parsed = offer.unmarshal()?;
-
-    for media in offer_parsed.media_descriptions {
-        let kind = &media.media_name.media;
-
-        let payload_types: Vec<u8> = media
-            .media_name
-            .formats
-            .iter()
-            .filter_map(|f| f.parse::<u8>().ok())
-            .collect();
-
-        // Map payload type -> codec
-        for payload_type in &payload_types {
-            if let Some(attr) = media.attributes.iter().find(|a| {
-                a.key == "rtpmap"
-                    && a.value
-                        .as_ref()
-                        .map(|v| v.starts_with(&format!("{} ", payload_type)))
-                        .unwrap_or(false)
-            }) {
-                // value example: "111 opus/48000/2"
-                if let Some(value) = &attr.value {
-                    let mut parts = value.split_whitespace().nth(1).unwrap_or("").split('/');
-                    let codec_name = parts.next().unwrap_or("");
-                    let clock_rate = parts.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
-                    let channels = parts.next().unwrap_or("1").parse::<u16>().unwrap_or(1);
-
-                    if let Some(format) = codec_to_video_format(&RTCRtpCodecCapability {
-                        mime_type: format!("{kind}/{}", codec_name.to_uppercase()),
-                        clock_rate,
-                        channels,
-                        ..Default::default()
-                    }) {
-                        debug!(
-                            kind = ?kind, codec_name = ?codec_name, clock_rate = clock_rate, channels = channels,
-                            "added video codec",
-                        );
-
-                        supported_video_formats |= format.into_formats();
-                    } else {
-                        debug!(
-                            kind = ?kind, codec_name = ?codec_name, clock_rate = clock_rate, channels = channels,
-                            "unknown codec",
-                        );
-                    }
-                    // TODO: detect audio
-                }
-            }
-        }
-    }
+    let supported_video_formats = video_codecs
+        .iter()
+        .fold(VideoFormats::empty(), |formats, (format, _)| {
+            formats | format.into_formats()
+        });
 
     debug!(
         supported_video_formats = %supported_video_formats,
@@ -381,17 +328,14 @@ pub async fn webrtc_post(
 
     // Cancel connection if no audio or video format was detected as supported
     let Some(_audio_config) = audio_config else {
-        // TODO
-        todo!();
+        error!("failed to start stream because no audio codec is supported by the client");
+        return Err(AppError::WebRtcClientCodecNotSupported);
     };
 
     if supported_video_formats.is_empty() {
-        // TODO
-        todo!();
+        error!("failed to start stream because no video codec is supported by the client");
+        return Err(AppError::WebRtcClientCodecNotSupported);
     }
-
-    // TODO: remove this limitation
-    supported_video_formats &= VideoFormats::H264;
 
     let mut settings = MoonlightStreamSettings {
         width: session.width,
@@ -470,11 +414,11 @@ pub async fn webrtc_post(
         peer.close().await?;
         return Err(err.into());
     }
-    if let Err(err) = add_video_track(&peer, &moonlight_stream, supported_video_formats).await {
+    if let Err(err) = add_video_track(&peer, &moonlight_stream, video_codecs).await {
         error!(error = %err, "failed to add video track to webrtc peer");
 
         peer.close().await?;
-        return Err(err.into());
+        return Err(err);
     };
 
     info!("started moonlight stream");

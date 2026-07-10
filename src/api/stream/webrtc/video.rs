@@ -1,19 +1,24 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use bytes::Bytes;
-use moonlight_common::stream::{
-    proto::control::packet::ControlPacket,
-    tokio::MoonlightStream,
-    video::{VideoFormat, VideoFormats},
+use moonlight_common::{
+    stream::{
+        proto::control::packet::ControlPacket,
+        tokio::MoonlightStream,
+        video::{VideoFormat, VideoFormats},
+    },
+    webrtc::sdp::Session,
 };
 use tokio::spawn;
 use tracing::{Instrument, debug, debug_span, info, trace, warn};
 use webrtc::{
-    Error,
-    api::media_engine::{MIME_TYPE_H264, MIME_TYPE_HEVC},
+    api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC},
     peer_connection::RTCPeerConnection,
     rtcp::payload_feedbacks::{
         picture_loss_indication::PictureLossIndication,
@@ -21,6 +26,7 @@ use webrtc::{
     },
     rtp::{
         codecs::{
+            av1::Av1Payloader,
             h264::H264Payloader,
             h265::{HevcPayloader, RTP_OUTBOUND_MTU},
         },
@@ -29,25 +35,198 @@ use webrtc::{
         packet::Packet,
         packetizer::Payloader,
     },
-    rtp_transceiver::{RTCPFeedback, rtp_codec::RTCRtpCodecCapability},
+    rtp_transceiver::{
+        RTCPFeedback,
+        rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters},
+    },
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
+
+use crate::app::AppError;
+
+pub fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameters> {
+    let mut formats = HashMap::default();
+
+    // -- Find and extract codec and sdp fmtp line
+    let mut codec_and_clock_rate = HashMap::<_, (&str, _)>::default();
+    let mut sdp_fmtp_lines = HashMap::<_, &str>::default();
+
+    for media in &sdp.medias {
+        for attribute in &media.attributes {
+            let Some(value) = &attribute.value else {
+                continue;
+            };
+
+            match attribute.attribute.as_str() {
+                "rtpmap" => {
+                    let Some((pt, codec, clock_rate)) = parse_rtpmap(value) else {
+                        warn!(attribute = ?attribute, "failed to parse rtpmap");
+                        continue;
+                    };
+
+                    codec_and_clock_rate.insert(pt, (codec, clock_rate));
+                }
+                "fmtp" => {
+                    let Some((pt, sdp_fmtp_line)) = parse_fmtp(value) else {
+                        warn!(attribute = ?attribute, "failed to parse fmtp");
+                        continue;
+                    };
+
+                    sdp_fmtp_lines.insert(pt, sdp_fmtp_line);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // -- Add all recognized codecs
+    let mut current_pt = 112;
+
+    for (pt, (codec, clock_rate)) in &codec_and_clock_rate {
+        let sdp_fmtp_line = sdp_fmtp_lines.get(pt).unwrap_or(&"");
+        debug!(pt = *pt, codec = ?codec, clock_rate = ?clock_rate, sdp_fmtp_line = ?sdp_fmtp_line, "got codec");
+
+        if codec.eq_ignore_ascii_case("H264") {
+            if !sdp_fmtp_line.contains("packetization-mode=1") {
+                // Single NAL mode is not supported
+                continue;
+            }
+
+            // Get profile
+            let mut format = VideoFormat::H264;
+
+            let attributes = sdp_fmtp_line.split(";");
+            for (attribute, value) in attributes.filter_map(|attribute| attribute.split_once("=")) {
+                if attribute == "profile-level-id" {
+                    if value.starts_with("64") {
+                        format = VideoFormat::H264;
+                    } else if value.starts_with("f4") {
+                        format = VideoFormat::H264High8_444;
+                    } else {
+                        debug!(profile_level_id = ?value, "found unknown h264 profile-level-id");
+                    }
+                }
+            }
+
+            formats.insert(
+                format,
+                RTCRtpCodecParameters {
+                    capability: RTCRtpCodecCapability {
+                        mime_type: MIME_TYPE_H264.to_string(),
+                        sdp_fmtp_line: sdp_fmtp_line.to_string(),
+                        clock_rate: *clock_rate,
+                        rtcp_feedback: rtcp_feedback(),
+                        ..Default::default()
+                    },
+                    payload_type: current_pt,
+                    ..Default::default()
+                },
+            );
+            current_pt += 1;
+        } else if codec.eq_ignore_ascii_case("H265") {
+            // Get profile
+            let mut format = VideoFormat::H265;
+
+            let attributes = sdp_fmtp_line.split(";");
+            for (attribute, value) in attributes.filter_map(|attribute| attribute.split_once("=")) {
+                if attribute == "profile-id" {
+                    match value {
+                        "1" => format = VideoFormat::H265,
+                        "2" => format = VideoFormat::H265Main10,
+                        "4" => {
+                            // TODO: range extensions
+                        }
+                        _ => debug!(profile_id = ?value, "unknown h265 profile-id"),
+                    }
+                }
+            }
+
+            formats.insert(
+                format,
+                RTCRtpCodecParameters {
+                    capability: RTCRtpCodecCapability {
+                        mime_type: MIME_TYPE_HEVC.to_string(),
+                        sdp_fmtp_line: sdp_fmtp_line.to_string(),
+                        clock_rate: *clock_rate,
+                        rtcp_feedback: rtcp_feedback(),
+                        ..Default::default()
+                    },
+                    payload_type: current_pt,
+                    ..Default::default()
+                },
+            );
+            current_pt += 1;
+        } else if codec.eq_ignore_ascii_case("AV1") {
+            // Get profile
+            let mut format = VideoFormat::Av1Main8;
+
+            let attributes = sdp_fmtp_line.split(";");
+            for (attribute, value) in attributes.filter_map(|attribute| attribute.split_once("=")) {
+                if attribute == "profile" {
+                    match value {
+                        "1" => format = VideoFormat::Av1Main8,
+                        "2" => format = VideoFormat::Av1High8_444,
+                        // TODO: how do the Main10 / High10 profiles work?
+                        _ => debug!(profile = ?value, "unknown av1 profile"),
+                    }
+                }
+            }
+
+            formats.insert(
+                format,
+                RTCRtpCodecParameters {
+                    capability: RTCRtpCodecCapability {
+                        mime_type: MIME_TYPE_AV1.to_string(),
+                        sdp_fmtp_line: sdp_fmtp_line.to_string(),
+                        clock_rate: *clock_rate,
+                        rtcp_feedback: rtcp_feedback(),
+                        ..Default::default()
+                    },
+                    payload_type: current_pt,
+                    ..Default::default()
+                },
+            );
+            current_pt += 1;
+        }
+    }
+
+    debug!(formats = ?formats, "found video codecs");
+
+    formats
+}
+fn parse_rtpmap(attribute_value: &str) -> Option<(u8, &str, u32)> {
+    let (pt_str, full_codec) = attribute_value.split_once(' ')?;
+    let pt = pt_str.parse::<u8>().ok()?;
+
+    // identify codec
+    let (codec_str, clock_rate_str) = full_codec.split_once('/')?;
+
+    let clock_rate = clock_rate_str.parse::<u32>().ok()?;
+
+    Some((pt, codec_str, clock_rate))
+}
+fn parse_fmtp(attribute_value: &str) -> Option<(u8, &str)> {
+    let (pt_str, sdp_fmtp_line) = attribute_value.split_once(' ')?;
+    let pt = pt_str.parse::<u8>().ok()?;
+
+    Some((pt, sdp_fmtp_line))
+}
 
 pub async fn add_video_track(
     peer: &RTCPeerConnection,
     stream: &MoonlightStream,
-    allowed_formats: VideoFormats,
-) -> Result<(), Error> {
+    video_formats: HashMap<VideoFormat, RTCRtpCodecParameters>,
+) -> Result<(), AppError> {
     // Check video format
     let format = stream.video_setup().format;
-    if !allowed_formats.contains(format.into_formats()) {
-        todo!();
-    }
+    let Some(codec) = video_formats.get(&format) else {
+        return Err(AppError::WebRtcClientCodecNotSupported);
+    };
 
     // Create video track
-    let codec = video_format_to_codec(format).expect("webrtc video codec");
+    let clock_rate = codec.capability.clock_rate;
     let track = Arc::new(TrackLocalStaticRTP::new(
-        codec.clone(),
+        codec.capability.clone(),
         "video".to_string(),
         "moonlight".to_string(),
     ));
@@ -85,7 +264,7 @@ pub async fn add_video_track(
     } else if format.contained_in(VideoFormats::MASK_H265) {
         Box::new(HevcPayloader::default()) as Box<dyn Payloader + Send + Sync>
     } else {
-        todo!()
+        Box::new(Av1Payloader::default()) as Box<dyn Payloader + Send + Sync>
     };
 
     // Spawn forwarding task
@@ -99,7 +278,7 @@ pub async fn add_video_track(
             while let Ok(frame) = stream.poll_video_frame().await {
                 let frame = frame.as_ref();
 
-                let timestamp = (frame.metadata.timestamp.as_secs_f64() * 90000.0) as u32;
+                let timestamp = (frame.metadata.timestamp.as_secs_f64() * clock_rate as f64) as u32;
 
                 if track.all_binding_paused().await {
                     trace!("video track all binding paused");
@@ -187,46 +366,3 @@ fn rtcp_feedback() -> Vec<RTCPFeedback> {
         },
     ]
 }
-
-macro_rules! video_formats_codec_mapping {
-    ($($format:path = $mime_type:ident : $sdp_fmtp_line:expr ),*) => {
-        pub fn video_format_to_codec(format: VideoFormat) -> Option<RTCRtpCodecCapability> {
-            match format {
-                $(
-                    $format => Some(RTCRtpCodecCapability {
-                        mime_type: $mime_type.to_string(),
-                        sdp_fmtp_line: $sdp_fmtp_line.to_string(),
-                        clock_rate: 90000,
-                        rtcp_feedback: rtcp_feedback(),
-                        channels: 0,
-                    }),
-                )*
-                _ => None,
-            }
-        }
-
-        pub fn codec_to_video_format(codec: &RTCRtpCodecCapability) -> Option<VideoFormat> {
-            match codec.mime_type.as_str() {
-                $(
-                    // TODO: check the sdp fmtp line?
-                    $mime_type => Some($format),
-                )*
-                _ => None
-            }
-        }
-    };
-}
-
-video_formats_codec_mapping!(
-    // H264
-    VideoFormat::H264 = MIME_TYPE_H264: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
-    VideoFormat::H264High8_444 = MIME_TYPE_H264: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640032",
-
-    // H265
-    VideoFormat::H265 = MIME_TYPE_HEVC: "packetization-mode=1",
-    VideoFormat::H265Main10 = MIME_TYPE_HEVC: "profile-id=2;level-id=93;tier-flag=0;packetization-mode=1",
-    VideoFormat::H265Rext8_444 = MIME_TYPE_HEVC: "profile-id=4;level-id=93;tier-flag=0;packetization-mode=1",
-    VideoFormat::H265Rext10_444 = MIME_TYPE_HEVC: "profile-id=5;level-id=93;tier-flag=0;packetization-mode=1"
-    // AV1
-    // TODO: av1
-);

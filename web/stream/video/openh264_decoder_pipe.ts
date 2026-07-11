@@ -15,7 +15,7 @@ export class OpenH264DecoderPipe implements DataVideoRenderer {
         let environmentSupported = false
         try {
             await import("../../libopenh264/decoder.js")
-            environmentSupported = true
+            // environmentSupported = true
         } catch (e) { }
 
         // no link

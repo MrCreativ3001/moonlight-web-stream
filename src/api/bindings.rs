@@ -389,6 +389,18 @@ impl Display for RtcIceServer {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum StreamStatsServerboundMessage {
+    Ping(u32),
+}
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum StreamStatsClientboundMessage {
+    Pong(u32),
+    RelayRtt { rtt_ms: u32, rtt_variance_ms: u32 },
+}
+
 ts_consts!(
     pub WebSocketChannel(export_bindings_websocket_channels: EXPORT_PATH) as u8:
 
@@ -401,6 +413,7 @@ ts_consts!(
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum WebSocketServerboundMessage {
     Request(WebSocketStreamRequest),
+    Stats(StreamStatsServerboundMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
@@ -422,6 +435,7 @@ pub struct WebSocketStreamRequest {
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum WebSocketClientboundMessage {
     Response(WebSocketStreamResponse),
+    Stats(StreamStatsClientboundMessage),
 }
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]

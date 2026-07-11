@@ -24,6 +24,9 @@ export class WebSocketTransport implements Transport {
     private onOpen: Promise<void>
     private wasConnected: boolean = false
 
+    private internalOnConnect: () => void = () => { }
+    private onConnected: Promise<void> = new Promise(resolve => this.internalOnConnect = resolve)
+
     private connectData: TransportConnectData | null = null
 
     constructor(api: Api, logger?: Logger) {
@@ -68,29 +71,43 @@ export class WebSocketTransport implements Transport {
                 const response = message.Response
                 this.logger?.debug(`received stream response: ${JSON.stringify(response)}`)
 
-                if (this.onconnect) {
-                    this.wasConnected = true
+                this.wasConnected = true
 
-                    this.connectData = {
-                        videoType: "data",
-                        videoSetup: {
-                            codec: "h264",
-                            width: this.options?.width ?? 0,
-                            height: this.options?.height ?? 0,
-                            fps: this.options?.fps ?? 0
-                        },
-                        audioType: "data",
-                        audioSetup: {
-                            channels: response.audio_channel_count,
-                            sampleRate: response.audio_sample_rate,
-                            streams: response.audio_coupled_streams,
-                            coupledStreams: response.audio_coupled_streams,
-                            samplesPerFrame: response.audio_samples_per_frame,
-                            mapping: response.audio_mapping
-                        },
-                        capabilities: { touch: true }
-                    }
+                this.connectData = {
+                    videoType: "data",
+                    videoSetup: {
+                        codec: "h264",
+                        width: this.options?.width ?? 0,
+                        height: this.options?.height ?? 0,
+                        fps: this.options?.fps ?? 0
+                    },
+                    audioType: "data",
+                    audioSetup: {
+                        channels: response.audio_channel_count,
+                        sampleRate: response.audio_sample_rate,
+                        streams: response.audio_coupled_streams,
+                        coupledStreams: response.audio_coupled_streams,
+                        samplesPerFrame: response.audio_samples_per_frame,
+                        mapping: response.audio_mapping
+                    },
+                    capabilities: { touch: true }
+                }
+
+                this.internalOnConnect()
+
+                if (this.onconnect) {
                     this.onconnect(this.connectData)
+                }
+            } else if ("Stats" in message) {
+                if ("Pong" in message.Stats) {
+                    const pongId = message.Stats.Pong
+                    this.onPongReceive(pongId)
+                } else if ("RelayRtt" in message.Stats) {
+                    const relayRtt = message.Stats.RelayRtt
+                    this.relayStats = {
+                        rttMs: relayRtt.rtt_ms,
+                        rttVarianceMs: relayRtt.rtt_variance_ms
+                    }
                 }
             }
         } else if (data instanceof ArrayBuffer) {
@@ -169,8 +186,58 @@ export class WebSocketTransport implements Transport {
         this.audioPipeline = pipeline as (DataPipe & AudioPlayer)
     }
 
-    getStats(): Promise<Record<string, StatValue>> {
-        throw new Error("Method not implemented.");
+    private relayStats: { rttMs: number, rttVarianceMs: number } | null = null
+    async getStats(): Promise<Record<string, StatValue>> {
+        const out: Record<string, StatValue> = {}
+
+        if (this.relayStats) {
+            out.hostToRelayRttMs = this.relayStats.rttMs
+            out.hostToRelayRttVarianceMs = this.relayStats.rttVarianceMs
+        }
+        out.relayToClientRttMs = await this.doPing()
+
+        return out
+    }
+
+    // Do ping pong to get rtt
+    private onPongPromise: Promise<number> | null = null
+    private pongReceiveResolve: (() => void) | null = null
+
+    private onPongReceive(_id: number) {
+        if (this.pongReceiveResolve) {
+            this.pongReceiveResolve()
+        }
+    }
+    private async doPing(): Promise<number> {
+        // Make sure that the socket is open and we're connected
+        await this.onConnected
+
+        // Check if we've already send a ping
+        if (this.onPongPromise) {
+            return await this.onPongPromise
+        }
+
+        // Setup pong receive
+        this.onPongPromise = new Promise<number>(resolve => {
+            const start = performance.now()
+
+            this.pongReceiveResolve = () => {
+                this.pongReceiveResolve = null
+                this.onPongPromise = null
+
+                const diff = performance.now() - start
+                resolve(diff)
+            }
+        })
+
+        // Send Ping
+        this.sendMessage({
+            Stats: {
+                Ping: Math.floor(Math.random() * 1000)
+            }
+        })
+
+        return await this.onPongPromise
     }
 
     private dispatchedClosed: boolean = false

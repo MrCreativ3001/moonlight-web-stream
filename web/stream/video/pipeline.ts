@@ -199,10 +199,14 @@ export async function queryVideoPipelineInfo(type: "videotrack" | "data", settin
         logger.debug(`}`)
     }
 
+    const pipeline = await selectPipeline(type, settings, logger)
+    if (!pipeline) {
+        return null
+    }
 
-    const pipeline = selectPipeline(type, settings, logger)
+    const pipelineInfo = await queryPipelineInfo(pipeline, settings.supportedVideoCodecs, logger)
 
-    return null
+    return pipelineInfo
 }
 
 export async function buildVideoPipeline(type: "videotrack", settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackVideoRenderer & VideoRenderer>>
@@ -211,7 +215,7 @@ export async function buildVideoPipeline(type: "data", settings: VideoPipelineOp
 export async function buildVideoPipeline(type: string, settings: VideoPipelineOptions, logger?: Logger): Promise<PipelineResult<VideoRenderer>> {
     const pipesInfo = await gatherPipeInfo()
 
-    logger?.debug(`Building video pipeline with output "${type}"`)
+    logger?.debug(`Building video pipeline with input "${type}" and settings ${JSON.stringify(settings)}`)
 
     let pipelines: Array<Pipeline> = []
 

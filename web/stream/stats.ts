@@ -1,5 +1,4 @@
 import { globalObject } from "../util.js"
-import { BIG_BUFFER, ByteBuffer } from "./buffer.js"
 import { Logger } from "./log.js"
 import { Pipe } from "./pipeline/index.js"
 import { Transport } from "./transport/index.js"
@@ -14,14 +13,6 @@ export type StreamStatsData = {
     videoPipeline: string | null
     audioPipeline: string | null
     hdrEnabled: boolean | null
-    streamerRttMs: number | null
-    streamerRttVarianceMs: number | null
-    minHostProcessingLatencyMs: number | null
-    maxHostProcessingLatencyMs: number | null
-    avgHostProcessingLatencyMs: number | null
-    minStreamerProcessingTimeMs: number | null
-    maxStreamerProcessingTimeMs: number | null
-    avgStreamerProcessingTimeMs: number | null
     browserRtt: number | null
     transport: Record<string, StatValue>
     video: Record<string, StatValue>
@@ -42,10 +33,6 @@ video information: ${statsData.videoCodec}, ${statsData.videoWidth}x${statsData.
 HDR: ${statsData.hdrEnabled === true ? "Enabled" : statsData.hdrEnabled === false ? "Disabled" : "Unknown"}
 video pipeline: ${statsData.videoPipeline}
 audio pipeline: ${statsData.audioPipeline}
-streamer round trip time: ${num(statsData.streamerRttMs, "ms")} (variance: ${num(statsData.streamerRttVarianceMs, "ms")})
-host processing latency min/max/avg: ${num(statsData.minHostProcessingLatencyMs, "ms")} / ${num(statsData.maxHostProcessingLatencyMs, "ms")} / ${num(statsData.avgHostProcessingLatencyMs, "ms")}
-streamer processing latency min/max/avg: ${num(statsData.minStreamerProcessingTimeMs, "ms")} / ${num(statsData.maxStreamerProcessingTimeMs, "ms")} / ${num(statsData.avgStreamerProcessingTimeMs, "ms")}
-streamer to browser rtt (ws only): ${num(statsData.browserRtt, "ms")}
 `
     for (const key in statsData.transport) {
         const value = statsData.transport[key]
@@ -101,14 +88,6 @@ export class StreamStats {
         videoPipeline: null,
         audioPipeline: null,
         hdrEnabled: null,
-        streamerRttMs: null,
-        streamerRttVarianceMs: null,
-        minHostProcessingLatencyMs: null,
-        maxHostProcessingLatencyMs: null,
-        avgHostProcessingLatencyMs: null,
-        minStreamerProcessingTimeMs: null,
-        maxStreamerProcessingTimeMs: null,
-        avgStreamerProcessingTimeMs: null,
         browserRtt: null,
         transport: {},
         video: {},

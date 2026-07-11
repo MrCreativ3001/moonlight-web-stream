@@ -2,8 +2,8 @@ use std::{sync::Arc, time::Duration};
 
 use crate::api::{
     bindings::{
-        WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage,
-        WebSocketStreamResponse,
+        StreamStatsClientboundMessage, StreamStatsServerboundMessage, WebSocketChannel,
+        WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse,
     },
     stream::apply_role_restrictions,
 };
@@ -19,12 +19,12 @@ use moonlight_common::{
             MoonlightStreamSetup,
             control::packet::{ControlPacket, PacketDirection},
         },
-        tokio::MoonlightStream,
+        tokio::{MoonlightStream, MoonlightStreamError},
         video::{ColorRange, ColorSpace, VideoCapabilities, VideoFormats},
     },
 };
 use tokio::{select, time::sleep};
-use tracing::{Instrument, debug_span, error, info, instrument, warn};
+use tracing::{Instrument, debug, debug_span, error, info, instrument, trace, warn};
 
 use crate::{
     api::stream::create_control_packet_config,
@@ -32,7 +32,7 @@ use crate::{
 };
 
 #[get("/host/stream/web_socket")]
-#[instrument(skip(user, body_stream), fields(user = %user.id()))]
+#[instrument(skip(user, req, body_stream), fields(user = %user.id()))]
 pub async fn web_socket_stream(
     mut user: AuthenticatedUser,
     req: HttpRequest,
@@ -102,6 +102,10 @@ async fn handle_ws(
     let stream_request = match serde_json::from_str::<WebSocketServerboundMessage>(&stream_request)
     {
         Ok(WebSocketServerboundMessage::Request(request)) => request,
+        Ok(message) => {
+            error!(message = ?message, "expected web socket stream request but got another message");
+            return Err(AppError::StreamClosed);
+        }
         Err(err) => {
             error!(error = %err, "failed to deserialize json");
             return Err(AppError::StreamClosed);
@@ -190,16 +194,13 @@ async fn handle_ws(
         audio_samples_per_frame: audio_setup.samples_per_frame,
         audio_mapping: audio_setup.mapping,
     });
-    let response = match serde_json::to_string(&response) {
-        Ok(value) => value,
-        Err(err) => {
-            error!(error = %err, response = ?response, "failed to serialize response");
+    info!(response = ?response, "sending response to client");
+    if !send_ws_message(&mut ws_sender, response).await {
+        stream.stop();
 
-            stream.stop();
-            return Err(AppError::StreamClosed);
-        }
-    };
-    let _ = ws_sender.text(response).await;
+        error!("failed to send response to client, stopping stream");
+        return Err(AppError::MoonlightStream(MoonlightStreamError::Closed));
+    }
 
     // forward audio frames
     spawn({
@@ -281,6 +282,37 @@ async fn handle_ws(
         }
     });
 
+    // spawn relay stats
+    spawn({
+        let stream = stream.clone();
+        let mut sender = ws_sender.clone();
+        async move {
+            loop {
+                sleep(Duration::from_secs(1)).await;
+
+                let rtt = match stream.estimated_rtt().await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        warn!(error = %err, "failed to send rtt to client");
+                        break;
+                    }
+                };
+
+                if !send_ws_message(
+                    &mut sender,
+                    WebSocketClientboundMessage::Stats(StreamStatsClientboundMessage::RelayRtt {
+                        rtt_ms: rtt.rtt.as_millis() as u32,
+                        rtt_variance_ms: rtt.rtt_variance.as_millis() as u32,
+                    }),
+                )
+                .await
+                {
+                    break;
+                }
+            }
+        }
+    });
+
     // handle incoming ws messages
     while let Some(Ok(message)) = ws_receiver.recv().await {
         match message {
@@ -305,7 +337,23 @@ async fn handle_ws(
                 }
             }
             Message::Text(text) => {
-                warn!(message = ?text, "received text over web socket");
+                let message = match serde_json::from_str::<WebSocketServerboundMessage>(&text) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        warn!(error = %err, "failed to deserialize serverbound web socket message");
+                        continue;
+                    }
+                };
+
+                if let WebSocketServerboundMessage::Stats(StreamStatsServerboundMessage::Ping(id)) =
+                    message
+                {
+                    send_ws_message(
+                        &mut ws_sender,
+                        WebSocketClientboundMessage::Stats(StreamStatsClientboundMessage::Pong(id)),
+                    )
+                    .await;
+                }
             }
             _ => {}
         }
@@ -316,4 +364,23 @@ async fn handle_ws(
     stream.stop();
 
     Ok(())
+}
+
+async fn send_ws_message(ws_sender: &mut Session, message: WebSocketClientboundMessage) -> bool {
+    trace!(message = ?message, "sending text message to client");
+
+    let text = match serde_json::to_string(&message) {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(error = %err, "failed to send web socket message");
+            return false;
+        }
+    };
+
+    if let Err(err) = ws_sender.text(text).await {
+        warn!(error = %err, "failed to send web socket message");
+        return false;
+    }
+
+    true
 }

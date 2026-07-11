@@ -13,7 +13,7 @@ import { StreamStats } from "./stats.js"
 import { Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./transport/index.js"
 import { WebSocketTransport } from "./transport/web_socket.js"
 import { WebRTCTransport } from "./transport/webrtc.js"
-import { allVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video.js"
+import { allVideoCodecs, andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video.js"
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
 import { buildVideoPipeline, queryVideoPipelineInfo, VideoPipelineOptions } from "./video/pipeline.js"
 
@@ -59,8 +59,6 @@ export function getStreamerSize(settings: Settings, viewerScreenSize: [number, n
 }
 
 function getVideoCodecHint(settings: Settings): VideoFormats {
-    // TODO: enable other high variants, but currently they just cause problems
-
     let videoCodecHint = emptyVideoCodecs()
     if (settings.videoCodec == "h264") {
         videoCodecHint.h264 = true
@@ -346,6 +344,8 @@ export class Stream implements Component {
     }
 
     private async onConnect(connectData: TransportConnectData) {
+        this.logger.debug("connected successfully, creating video and audio pipelines")
+
         // Set input
         this.input.onStreamStart(connectData.capabilities, [connectData.videoSetup.width, connectData.videoSetup.height])
 
@@ -395,14 +395,33 @@ export class Stream implements Component {
     }
 
     private async queryVideoCodecs(type: "videotrack" | "data"): Promise<VideoFormats> {
+        const codecHint = getVideoCodecHint(this.settings)
+
         const videoSettings: VideoPipelineOptions = {
-            supportedVideoCodecs: getVideoCodecHint(this.settings),
+            supportedVideoCodecs: codecHint,
             canvasRenderer: this.settings.canvasRenderer,
             forceVideoElementRenderer: this.settings.forceVideoElementRenderer,
             canvasVsync: this.settings.canvasVsync
         }
 
         const info = await queryVideoPipelineInfo(type, videoSettings, this.logger)
+        if (!info) {
+            this.logger.debug("failed to query video pipelines for information! Disabling high codecs. This could lead to no video being visible!")
+            const baseCodecs = {
+                h264: true,
+                h264High8444: true,
+                h265: true,
+                h265Main10: true,
+                h265Rext8444: true,
+                h265Rext10444: true,
+                av1Main8: true,
+                av1Main10: true,
+                av1High8444: true,
+                av1High10444: true
+            }
+
+            videoSettings.supportedVideoCodecs = andVideoCodecs(codecHint, baseCodecs)
+        }
 
         return info?.supportedVideoCodecs ?? emptyVideoCodecs()
     }
@@ -479,7 +498,7 @@ export class Stream implements Component {
         }
 
         if (audioType == "audiotrack") {
-            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", this.settings, this.logger)
+            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", {}, this.logger)
 
             if (error) {
                 return false
@@ -492,7 +511,7 @@ export class Stream implements Component {
 
             this.audioPlayer = audioPlayer
         } else if (audioType == "data") {
-            const { audioPlayer, error } = await buildAudioPipeline("data", this.settings, this.logger)
+            const { audioPlayer, error } = await buildAudioPipeline("data", {}, this.logger)
 
             if (error) {
                 return false

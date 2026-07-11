@@ -6,14 +6,22 @@ import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { getLocalStreamSettings, Settings, TransportType} from "./component/settings_menu.js";
+import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage} from "./i18n.js";
+import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n.js";
 import { requestKeyboardLock } from "./iframe.js";
+
+declare global {
+    interface Window {
+        vGamepad?: any;
+        toggleVirtualGamepad?: (btn: HTMLButtonElement) => void;
+        unplugVirtualGamepad?: (btn: HTMLButtonElement) => void;
+    }
+}
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -121,7 +129,15 @@ function parseLanguageFromQuery(queryParams: URLSearchParams): Language | undefi
 
 startApp()
 
+// Force disable highlighting globally on the entire document body
+document.body.style.setProperty("-webkit-user-select", "none", "important");
+document.body.style.setProperty("user-select", "none", "important");
+document.body.style.setProperty("-webkit-touch-callout", "none", "important");
+document.body.style.setProperty("-webkit-tap-highlight-color", "transparent", "important");
+
 class ViewerApp implements Component {
+
+
     private api: Api
 
     private sidebar: ViewerSidebar
@@ -1003,6 +1019,8 @@ class AutoFullscreenModal implements Component, Modal<void> {
 class ViewerSidebar implements Component, Sidebar {
     private app: ViewerApp
 
+    private gamepadButton = document.createElement("button");
+
     private div = document.createElement("div")
 
     private buttonDiv = document.createElement("div")
@@ -1022,6 +1040,32 @@ class ViewerSidebar implements Component, Sidebar {
     private mouseMode: SelectComponent
     private touchMode: SelectComponent
 
+    // Class-level state for sticky modifiers to ensure reliable resets
+    private stickyModifiers: Record<number, boolean> = {
+        0x11: false, // Ctrl
+        0x12: false, // Alt
+        0x10: false, // Shift
+        0x5B: false  // Win
+    };
+    private modifierButtons: Record<number, HTMLElement> = {};
+
+    private resetStickyModifiers() {
+        const input = this.app.getStream()?.getInput();
+        if (!input) return;
+
+        [0x11, 0x12, 0x10, 0x5B].forEach(code => {
+            if (this.stickyModifiers[code]) {
+                input.sendKey(false, code, 0); // Release via class-level input access
+                this.stickyModifiers[code] = false;
+                
+                // Visual reset
+                if (this.modifierButtons[code]) {
+                    this.modifierButtons[code].style.background = "rgba(55, 55, 55, 0.4)";
+                }
+            }
+        });
+    }
+
     constructor(app: ViewerApp) {
         this.app = app
 
@@ -1030,6 +1074,63 @@ class ViewerSidebar implements Component, Sidebar {
 
         this.buttonDiv.classList.add("sidebar-stream-buttons")
         this.div.appendChild(this.buttonDiv)
+
+        // Add these two buttons to your buttonDiv
+        const switchLeftButton = document.createElement("button");
+        switchLeftButton.innerText = "Prev Monitor";
+        switchLeftButton.addEventListener("click", () => this.sendMonitorShortcut(0x70)); // VK_F1
+        this.buttonDiv.appendChild(switchLeftButton);
+
+        const switchRightButton = document.createElement("button");
+        switchRightButton.innerText = "Next Monitor";
+        switchRightButton.addEventListener("click", () => this.sendMonitorShortcut(0x71)); // VK_F2
+        this.buttonDiv.appendChild(switchRightButton);
+
+
+        // --- VIRTUAL GAMEPAD BUTTON (First button) ---
+        this.gamepadButton = document.createElement("button");
+        this.gamepadButton.innerText = "Gamepad";
+        this.gamepadButton.id = "vpad-btn";
+        this.gamepadButton.title = "Virtual Gamepad (Long press to unplug)";
+
+        let gamepadPressStartTime = 0;
+        const GAMEPAD_LONG_PRESS_DURATION = 550;
+
+        const handleGamepadPointerDown = (e: PointerEvent) => {
+            if (e.button !== undefined && e.button !== 0) return;
+            gamepadPressStartTime = Date.now();
+            this.gamepadButton.style.transition = "background-color 0.15s";
+            this.gamepadButton.style.backgroundColor = "rgba(255, 255, 255, 0.25)";
+        };
+
+        const handleGamepadPointerUp = (e: PointerEvent) => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            const duration = Date.now() - gamepadPressStartTime;
+            this.gamepadButton.style.backgroundColor = "";
+
+            if (duration >= GAMEPAD_LONG_PRESS_DURATION) {
+                window.unplugVirtualGamepad?.(this.gamepadButton);
+            } else {
+                window.toggleVirtualGamepad?.(this.gamepadButton);
+            }
+        };
+
+        this.gamepadButton.addEventListener("pointerdown", handleGamepadPointerDown, { passive: false });
+        this.gamepadButton.addEventListener("pointerup", handleGamepadPointerUp, { passive: false });
+        this.gamepadButton.addEventListener("pointerleave", () => {
+            this.gamepadButton.style.backgroundColor = "";
+        });
+        this.gamepadButton.addEventListener("pointercancel", () => {
+            this.gamepadButton.style.backgroundColor = "";
+        });
+
+        this.gamepadButton.addEventListener("contextmenu", e => e.preventDefault());
+        this.gamepadButton.addEventListener("click", e => e.preventDefault());
+
+        // Insert as the very first button
+        this.buttonDiv.appendChild(this.gamepadButton);
 
         // Send keycode
         this.sendKeycodeButton.innerText = I.stream.sendKeycode
@@ -1045,6 +1146,31 @@ class ViewerSidebar implements Component, Sidebar {
         })
         this.buttonDiv.appendChild(this.sendKeycodeButton)
 
+        const clipboardButton = document.createElement("button")
+        clipboardButton.innerText = "Clipboard"
+        clipboardButton.addEventListener("click", async () => {
+            setSidebarExtended(false);
+
+            const textToSend = await showModal(new ClipboardModal());
+
+            if (textToSend) {
+                const stream = this.app.getStream()?.getInput();
+                if (!stream) return;
+
+                // Use a conservative chunk size (e.g., 128) to avoid UTF-8 buffer overflow
+                const CHUNK_SIZE = 128;
+
+                for (let i = 0; i < textToSend.length; i += CHUNK_SIZE) {
+                    const chunk = textToSend.slice(i, i + CHUNK_SIZE);
+                    stream.sendText(chunk);
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+
+                console.log("📤 Transmitted via native sendText.");
+            }
+        });
+        this.buttonDiv.appendChild(clipboardButton)
+
         // Pointer Lock
         this.lockMouseButton.innerText = I.stream.lockMouse
         this.lockMouseButton.addEventListener("click", async () => {
@@ -1052,30 +1178,205 @@ class ViewerSidebar implements Component, Sidebar {
         })
         this.buttonDiv.appendChild(this.lockMouseButton)
 
-        // Pop up keyboard
-        this.keyboardButton.innerText = I.stream.keyboard
-        this.keyboardButton.addEventListener("click", async () => {
-            setSidebarExtended(false)
-            this.screenKeyboard.show()
-        })
-        this.buttonDiv.appendChild(this.keyboardButton)
+        // --- VISUAL ON-SCREEN KEYBOARD ENGINE ---
+        const visualKbdOverlay = document.createElement("div");
+        visualKbdOverlay.id = "visual-kbd-overlay";
+        visualKbdOverlay.style.pointerEvents = "none";
+        visualKbdOverlay.style.display = "none"; // Hidden by default
 
-        this.floatingKeyboardButton.innerText = "⌨×"
-        this.floatingKeyboardButton.title = I.stream.hideKeyboard
-        this.floatingKeyboardButton.ariaLabel = I.stream.hideKeyboard
-        this.floatingKeyboardButton.classList.add("stream-keyboard-floating-button")
+        // Handle raw key transmissions
+        const sendRawKey = (isDown: boolean, vkCode: number) => {
+            const input = this.app.getStream()?.getInput();
+            if (input) {
+                input.sendKey(isDown, vkCode, 0);
+            }
+        };
+
+        // Key Layout Mapping Matrix [Label, Virtual Key Code, Flex-Grow Weight (optional)]
+        const kbdLayout = [
+            [ ["ESC", 0x1B], ["F1", 0x70], ["F2", 0x71], ["F3", 0x72], ["F4", 0x73], ["F5", 0x74], ["F6", 0x75], ["F7", 0x76], ["F8", 0x77], ["F9", 0x78], ["F10", 0x79], ["F11", 0x7A], ["F12", 0x7B], ["Ins", 0x2D], ["Del", 0x2E] ],
+            [ ["~ `", 0xC0], ["1", 0x31], ["2", 0x32], ["3", 0x33], ["4", 0x34], ["5", 0x35], ["6", 0x36], ["7", 0x37], ["8", 0x38], ["9", 0x39], ["0", 0x30], ["-_", 0xBD], ["+=", 0xBB], ["Back", 0x08, 1.5] ],
+            [ ["Tab", 0x09, 1.5], ["Q", 0x51], ["W", 0x57], ["E", 0x45], ["R", 0x52], ["T", 0x54], ["Y", 0x59], ["U", 0x55], ["I", 0x49], ["O", 0x4F], ["P", 0x50], ["{[", 0xDB], ["}]", 0xDD], ["| \\", 0xDC] ],
+            [ ["Caps", 0x14, 1.75], ["A", 0x41], ["S", 0x53], ["D", 0x44], ["F", 0x46], ["G", 0x47], ["H", 0x48], ["J", 0x4A], ["K", 0x4B], ["L", 0x4C], [";:", 0xBA], ["'\"", 0xDE], ["Enter", 0x0D, 2.25] ],
+            [ ["Shift", 0x10, 2.25], ["Z", 0x5A], ["X", 0x58], ["C", 0x43], ["V", 0x56], ["B", 0x42], ["N", 0x4E], ["M", 0x4D], ["<,", 0xBC], [">.", 0xBE], ["?/", 0xBF], ["↑", 0x26], ["Hide\nKBD", -1, 1.25] ],
+            [ ["Ctrl", 0x11, 1.5], ["Win", 0x5B, 1.25], ["Alt", 0x12, 1.25], ["___", 0x20, 5], ["Home", 0x24], ["End", 0x23], ["PgUp", 0x21], ["PgDn", 0x22], ["←", 0x25], ["↓", 0x28], ["→", 0x27] ]
+        ];
+
+        // Generate the visual markup dynamically
+        // Generate the visual markup dynamically
+        kbdLayout.forEach(row => {
+            const rowEl = document.createElement("div");
+            rowEl.className = "vkbd-row";
+            row.forEach(([label, code, weight]) => {
+                const btn = document.createElement("div");
+                btn.className = "vkbd-key";
+                btn.innerText = label.toString();
+                if (weight) {
+                    btn.style.flexGrow = weight.toString();
+                }
+
+                const isModifier = [0x11, 0x12, 0x10, 0x5B].indexOf(code as number) !== -1;
+                
+                if (isModifier) {
+                    this.modifierButtons[code as number] = btn;
+                }
+
+                let pressTimer: number | undefined;
+                let isLongPressed = false;
+                let wasAlreadySticky = false;
+
+                const handleKeyStart = (e: PointerEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    btn.classList.add("active");
+                    btn.setPointerCapture(e.pointerId);
+                    
+                    isLongPressed = false;
+
+                    if (isModifier) {
+                        wasAlreadySticky = this.stickyModifiers[code as number];
+                        
+                        if (wasAlreadySticky) {
+                            // If it's already lit up, ANY tap instantly disables it.
+                            this.stickyModifiers[code as number] = false;
+                            btn.style.background = "rgba(55, 55, 55, 0.4)";
+                            sendRawKey(false, code as number);
+                        } else {
+                            // It is not lit up. Start timer to see if they hold it.
+                            pressTimer = window.setTimeout(() => {
+                                isLongPressed = true;
+                                this.stickyModifiers[code as number] = true;
+                                btn.style.background = "rgba(255, 255, 255, 0.6)";
+                                sendRawKey(true, code as number);
+                            }, 500);
+                        }
+                    } else if (code === -1) {
+                        this.resetStickyModifiers();
+                        visualKbdOverlay.style.display = "none";
+                        visualKbdOverlay.style.pointerEvents = "none";
+                    } else {
+                        // Standard keys fire immediately
+                        sendRawKey(true, code as number);
+                    }
+                };
+
+                const handleKeyEnd = (e: PointerEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    clearTimeout(pressTimer);
+                    
+                    try {
+                        if (btn.hasPointerCapture(e.pointerId)) {
+                            btn.releasePointerCapture(e.pointerId);
+                        }
+                    } catch(err) {}
+
+                    if (isModifier) {
+                        if (!wasAlreadySticky && !isLongPressed) {
+                            // It was a quick tap on an unlit modifier. Pulse it.
+                            sendRawKey(true, code as number);
+                            setTimeout(() => sendRawKey(false, code as number), 100);
+                        }
+                        btn.classList.remove("active");
+                    } else {
+                        btn.classList.remove("active");
+                        if (code !== -1) {
+                            sendRawKey(false, code as number);
+                        }
+                    }
+                };
+
+                btn.addEventListener("pointerdown", handleKeyStart);
+                btn.addEventListener("pointerup", handleKeyEnd);
+                btn.addEventListener("pointercancel", handleKeyEnd);
+
+                rowEl.appendChild(btn);
+            });
+            visualKbdOverlay.appendChild(rowEl);
+        });
+
+        // --- THE LEAK BLOCKER ---
+        const blockEvent = (e: Event) => e.stopPropagation();
+        const eventsToBlock = [
+            "pointerdown", "pointerup", "pointermove", "pointercancel",
+            "touchstart", "touchend", "touchmove", "touchcancel",
+            "mousedown", "mouseup", "mousemove", "contextmenu"
+        ];
+        eventsToBlock.forEach(ev => {
+            visualKbdOverlay.addEventListener(ev, blockEvent, { passive: false });
+        });
+
+        (document.getElementById("root") || document.body).appendChild(visualKbdOverlay);
+
+        // --- Pop up keyboard with Long Press support ---
+        this.keyboardButton.innerText = I.stream.keyboard;
+
+        let kbdPressTimer: number | undefined;
+        let kbdIsLongPress = false;
+
+        this.keyboardButton.addEventListener("pointerdown", () => {
+            kbdIsLongPress = false;
+            clearTimeout(kbdPressTimer);
+
+            kbdPressTimer = window.setTimeout(() => {
+                kbdIsLongPress = true;
+                setSidebarExtended(false);
+                if (visualKbdOverlay) {
+                    visualKbdOverlay.style.display = "flex";
+                    visualKbdOverlay.style.pointerEvents = "auto";
+                }
+            }, 500);
+        });
+
+        const cancelKbdTimer = () => {
+            clearTimeout(kbdPressTimer);
+        };
+        this.keyboardButton.addEventListener("pointerup", cancelKbdTimer);
+        this.keyboardButton.addEventListener("pointercancel", cancelKbdTimer);
+        this.keyboardButton.addEventListener("pointerleave", cancelKbdTimer);
+
+        this.keyboardButton.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+        });
+
+        this.keyboardButton.addEventListener("click", async (e) => {
+            if (kbdIsLongPress) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            setSidebarExtended(false);
+            this.screenKeyboard.show();
+        });
+
+        this.buttonDiv.appendChild(this.keyboardButton);
+
+        // --- Floating Keyboard Button ---
+        this.floatingKeyboardButton.innerText = "⌨×";
+        this.floatingKeyboardButton.title = I.stream.hideKeyboard;
+        this.floatingKeyboardButton.ariaLabel = I.stream.hideKeyboard;
+        this.floatingKeyboardButton.classList.add("stream-keyboard-floating-button");
         this.floatingKeyboardButton.addEventListener("click", event => {
-            event.preventDefault()
-            event.stopPropagation()
-            this.screenKeyboard.hide()
-        })
-        stopPropagationOn(this.floatingKeyboardButton)
-        this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this))
-        this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this))
-        this.screenKeyboard.addTextListener(this.onText.bind(this))
-        this.screenKeyboard.addKeyboardModeWillChangeListener(this.app.onScreenKeyboardModeWillChange.bind(this.app))
-        this.screenKeyboard.addKeyboardModeListener(this.onKeyboardModeChange.bind(this))
-        this.div.appendChild(this.screenKeyboard.getHiddenElement())
+            event.preventDefault();
+            event.stopPropagation();
+            this.screenKeyboard.hide();
+
+            if (visualKbdOverlay) {
+                this.resetStickyModifiers();
+                visualKbdOverlay.style.display = "none";
+                visualKbdOverlay.style.pointerEvents = "none";
+            }
+        });
+        stopPropagationOn(this.floatingKeyboardButton);
+
+        // --- Standard Keyboard Listeners ---
+        this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this));
+        this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this));
+        this.screenKeyboard.addTextListener(this.onText.bind(this));
+        this.screenKeyboard.addKeyboardModeWillChangeListener(this.app.onScreenKeyboardModeWillChange.bind(this.app));
+        this.screenKeyboard.addKeyboardModeListener(this.onKeyboardModeChange.bind(this));
+        this.div.appendChild(this.screenKeyboard.getHiddenElement());
 
 
         // Fullscreen
@@ -1116,7 +1417,6 @@ class ViewerSidebar implements Component, Sidebar {
             } else {
                 window.close()
             }
-
         })
         this.buttonDiv.appendChild(this.exitStreamButton)
 
@@ -1188,6 +1488,19 @@ class ViewerSidebar implements Component, Sidebar {
         this.app.setInputConfig(config)
     }
 
+    // --- Move Monitors ---
+    private sendMonitorShortcut(vkCode: number) {
+        const input = this.app.getStream()?.getInput();
+        if (!input) return;
+
+        const modifiers = [0x11, 0x12, 0x10];
+
+        modifiers.forEach(key => input.sendKey(true, key, 0));
+        input.sendKey(true, vkCode, 0);
+        input.sendKey(false, vkCode, 0);
+        modifiers.forEach(key => input.sendKey(false, key, 0));
+    }
+
     extended(): void {
 
     }
@@ -1198,7 +1511,7 @@ class ViewerSidebar implements Component, Sidebar {
     mount(parent: HTMLElement): void {
         parent.appendChild(this.div)
         const appRoot = document.getElementById("root")
-            ; (appRoot ?? document.body).appendChild(this.floatingKeyboardButton)
+        ;(appRoot ?? document.body).appendChild(this.floatingKeyboardButton)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
@@ -1255,6 +1568,97 @@ class SendKeycodeModal extends FormModal<number> {
         }
 
         return parseInt(keyString)
+    }
+}
+
+class ClipboardModal implements Modal<string | null> {
+    private root = document.createElement("div")
+    private title = document.createElement("h3")
+    private description = document.createElement("p")
+    private textarea = document.createElement("textarea")
+    private options = document.createElement("div")
+    private sendButton = document.createElement("button")
+    private cancelButton = document.createElement("button")
+
+    constructor(incomingText: string = "") {
+        this.root.classList.add("modal-content")
+
+        // 1. Optimized width for both Portrait and Landscape
+        this.root.style.width = "80vw"      // Slightly narrower to look better
+        this.root.style.maxWidth = "400px"  // Stays compact on desktop
+        this.root.style.boxSizing = "border-box"
+        this.root.style.padding = "20px"
+        this.root.style.margin = "0 auto"   // Centers it perfectly
+
+        this.title.innerText = "Clipboard Sync"
+        this.title.style.marginTop = "0"
+        this.title.style.marginBottom = "10px"
+
+        this.description.innerText = incomingText
+            ? "Text received from Host PC:"
+            : "Paste text below to send it to the Host PC:"
+        this.description.style.fontSize = "14px"
+        this.description.style.opacity = "0.8"
+        this.description.style.marginBottom = "10px"
+
+        // 2. Textarea: Tight and flush with the padding
+        this.textarea.style.width = "100%"
+        this.textarea.style.margin = "0"
+        this.textarea.style.boxSizing = "border-box" // Crucial for no-clip
+        this.textarea.style.display = "block"
+        this.textarea.style.height = "120px"
+        this.textarea.style.marginBottom = "15px"
+        this.textarea.style.resize = "none"
+        this.textarea.style.background = "rgba(0,0,0,0.2)"
+        this.textarea.style.color = "white"
+        this.textarea.style.border = "1px solid rgba(255,255,255,0.2)"
+        this.textarea.style.padding = "10px"
+
+        this.textarea.value = incomingText
+        this.textarea.placeholder = "Paste here..."
+
+        stopPropagationOn(this.textarea)
+
+        // 3. Button Layout
+        this.options.style.display = "flex"
+        this.options.style.justifyContent = "flex-end"
+        this.options.style.gap = "10px"
+
+        this.sendButton.innerText = incomingText ? "Copy & Close" : "Send to Host"
+        this.cancelButton.innerText = "Cancel"
+
+        this.options.appendChild(this.sendButton)
+        this.options.appendChild(this.cancelButton)
+
+        this.root.appendChild(this.title)
+        this.root.appendChild(this.description)
+        this.root.appendChild(this.textarea)
+        this.root.appendChild(this.options)
+    }
+
+    mount(parent: HTMLElement): void {
+        parent.appendChild(this.root)
+        // Auto-focus the text area slightly after mounting so pasting is instant
+        setTimeout(() => this.textarea.focus(), 50)
+    }
+
+    unmount(parent: HTMLElement): void {
+        parent.removeChild(this.root)
+    }
+
+    // Inside your ClipboardModal class
+    onFinish(abort: AbortSignal): Promise<string | null> {
+        return new Promise((resolve) => {
+            this.sendButton.addEventListener("click", () => {
+                // Resolve the text directly from the textarea
+                // This avoids any "writeText" clipboard operations that trigger UTF8 errors
+                resolve(this.textarea.value);
+            }, { once: true, signal: abort });
+
+            this.cancelButton.addEventListener("click", () => {
+                resolve(null);
+            }, { once: true, signal: abort });
+        });
     }
 }
 

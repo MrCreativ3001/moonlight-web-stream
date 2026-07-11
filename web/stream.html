@@ -29,6 +29,456 @@
 </head>
 
 <body class="stream">
+    <style>
+        /* Disable text selection and tap highlights globally across the entire app */
+        html,
+        body {
+            -webkit-user-select: none !important;
+            -moz-user-select: none !important;
+            -ms-user-select: none !important;
+            user-select: none !important;
+
+            /* Disables the iOS/Android popup menu on long press */
+            -webkit-touch-callout: none !important;
+
+            /* Removes the default Android/iOS blue tap highlight box */
+            -webkit-tap-highlight-color: transparent !important;
+        }
+
+        /* Force the sidebar to sit above the custom keyboard overlay */
+        .sidebar,
+        .viewer-sidebar {
+            position: relative;
+            /* Required for z-index to take effect if it isn't already set */
+            z-index: 99999 !important;
+        }
+
+        #controller-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 99998;
+            pointer-events: none;
+            display: none;
+        }
+
+        #controller-overlay.active {
+            pointer-events: auto;
+            display: block;
+        }
+
+        .vbtn {
+            pointer-events: auto;
+            position: absolute;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            touch-action: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 500;
+            font-family: sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .btn-round {
+            width: 60px;
+            height: 60px;
+            font-size: 18px;
+        }
+
+        .sidebar-button-active {
+            background: rgba(255, 255, 255, 0.3) !important;
+            color: #ff5722 !important;
+        }
+
+        /* POSITIONS */
+        #btn-lt {
+            top: 30px;
+            left: 50px;
+        }
+
+        #btn-lb {
+            top: 30px;
+            left: 140px;
+        }
+
+        #btn-rt {
+            top: 30px;
+            right: 50px;
+        }
+
+        #btn-rb {
+            top: 30px;
+            right: 140px;
+        }
+
+        #btn-select {
+            top: 30px;
+            left: calc(50% - 110px);
+            font-size: 24px;
+        }
+
+        #btn-guide {
+            top: 20px;
+            left: calc(50% - 35px);
+            width: 70px;
+            height: 70px;
+            font-size: 28px;
+        }
+
+        #btn-start {
+            top: 30px;
+            left: calc(50% + 50px);
+            font-size: 24px;
+        }
+
+        #btn-y {
+            bottom: 350px;
+            right: 130px;
+        }
+
+        #btn-a {
+            bottom: 210px;
+            right: 130px;
+        }
+
+        #btn-x {
+            bottom: 280px;
+            right: 200px;
+        }
+
+        #btn-b {
+            bottom: 280px;
+            right: 60px;
+        }
+
+        #btn-up {
+            bottom: 350px;
+            left: 130px;
+        }
+
+        #btn-down {
+            bottom: 210px;
+            left: 130px;
+        }
+
+        #btn-left {
+            bottom: 280px;
+            left: 60px;
+        }
+
+        #btn-right {
+            bottom: 280px;
+            left: 200px;
+        }
+
+        #btn-l3 {
+            bottom: 40px;
+            left: 50px;
+        }
+
+        #btn-r3 {
+            bottom: 40px;
+            right: 50px;
+        }
+
+        .joystick-zone {
+            position: absolute;
+            pointer-events: auto;
+            touch-action: none;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .joystick-knob {
+            position: absolute;
+            top: 35px;
+            left: 35px;
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.75);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            transition: transform 0.05s linear;
+        }
+
+        #joy-left {
+            bottom: 60px;
+            left: 220px;
+        }
+
+        #joy-right {
+            bottom: 60px;
+            right: 220px;
+        }
+
+        /* Keyboard */
+
+        #visual-kbd-overlay {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100vw;
+            background: rgba(20, 20, 20, 0.3);
+            z-index: 500;
+            pointer-events: none;
+            flex-direction: column;
+            padding: 6px;
+            box-sizing: border-box;
+            gap: 5px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            /* ADD THIS: Prevents browser-level gestures */
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .vkbd-row {
+            display: flex;
+            width: 100%;
+            gap: 5px;
+            justify-content: space-between;
+        }
+
+        .vkbd-key {
+            flex: 1;
+            /* Lowered from 0.85 to 0.4 for transparent keys */
+            background: rgba(55, 55, 55, 0.4);
+            /* Slightly brighter border so the key edges are still easy to see */
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 500;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: pre-line;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+            touch-action: none;
+        }
+
+        /* Key press highlight state */
+        .vkbd-key.active {
+            background: rgba(150, 150, 150, 0.6) !important;
+            color: #ffffff;
+            transform: scale(0.97);
+        }
+    </style>
+
+    <div id="controller-overlay">
+        <div id="btn-lt" class="vbtn btn-round">LT</div>
+        <div id="btn-lb" class="vbtn btn-round">LB</div>
+        <div id="btn-rt" class="vbtn btn-round">RT</div>
+        <div id="btn-rb" class="vbtn btn-round">RB</div>
+        <div id="btn-select" class="vbtn btn-round">◀</div>
+        <div id="btn-guide" class="vbtn btn-round">🎮</div>
+        <div id="btn-start" class="vbtn btn-round">▶</div>
+        <div id="btn-a" class="vbtn btn-round">A</div>
+        <div id="btn-b" class="vbtn btn-round">B</div>
+        <div id="btn-x" class="vbtn btn-round">X</div>
+        <div id="btn-y" class="vbtn btn-round">Y</div>
+        <div id="btn-up" class="vbtn btn-round">▲</div>
+        <div id="btn-down" class="vbtn btn-round">▼</div>
+        <div id="btn-left" class="vbtn btn-round">◀</div>
+        <div id="btn-right" class="vbtn btn-round">▶</div>
+        <div id="btn-l3" class="vbtn btn-round">L3</div>
+        <div id="btn-r3" class="vbtn btn-round">R3</div>
+        <div id="joy-left" class="joystick-zone">
+            <div class="joystick-knob" id="knob-left"></div>
+        </div>
+        <div id="joy-right" class="joystick-zone">
+            <div class="joystick-knob" id="knob-right"></div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Core API Hijack
+        window.vGamepad = {
+            id: "Xbox 360 Controller (Standard Gamepad)", index: 0, mapping: "standard",
+            connected: false, timestamp: performance.now(), axes: [0, 0, 0, 0],
+            buttons: new Array(17).fill(0).map(() => ({ pressed: false, touched: false, value: 0 }))
+        };
+
+        const originalGetGamepads = navigator.getGamepads || navigator.webkitGetGamepads;
+        navigator.getGamepads = function () {
+            const realPads = originalGetGamepads ? Array.from(originalGetGamepads.call(navigator)) : [];
+            if (window.vGamepad.connected) {
+                window.vGamepad.timestamp = performance.now();
+                return [window.vGamepad, ...realPads.filter(p => p !== null)];
+            }
+            return [...realPads.filter(p => p !== null)];
+        };
+
+        // 2. Global Actions for the Sidebar to call
+        window.toggleVirtualGamepad = function (btn) {
+            const overlay = document.getElementById('controller-overlay');
+            const isVisible = overlay.style.display === 'block';
+
+            if (isVisible) {
+                overlay.style.display = 'none';
+                if (btn) btn.classList.remove('sidebar-button-active');
+            } else {
+                overlay.style.display = 'block';
+                if (btn) btn.classList.add('sidebar-button-active');
+
+                if (!window.vGamepad.connected) {
+                    window.vGamepad.connected = true;
+                    const event = new Event('gamepadconnected');
+                    event.gamepad = window.vGamepad;
+                    window.dispatchEvent(event);
+                }
+            }
+        };
+
+        window.unplugVirtualGamepad = function (btn) {
+            window.vGamepad.connected = false;
+            document.getElementById('controller-overlay').style.display = 'none';
+            if (btn) {
+                btn.classList.remove('sidebar-button-active');
+                const originalText = btn.innerText;
+                btn.innerText = 'Unplugged';
+                btn.style.color = 'white';
+                btn.style.background = 'rgba(255, 60, 60, 0.8)';
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.background = '';
+                    btn.style.color = '';
+                }, 1000);
+            }
+            const event = new Event('gamepaddisconnected');
+            event.gamepad = window.vGamepad;
+            window.dispatchEvent(event);
+        };
+
+        // 3. UI Interaction Engine
+        function blockEvent(e) { e.preventDefault(); e.stopImmediatePropagation(); return false; }
+        const overlay = document.getElementById('controller-overlay');
+        ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'pointerdown', 'pointermove', 'pointerup'].forEach(evt => {
+            overlay.addEventListener(evt, blockEvent, { passive: false });
+        });
+
+        const btnMap = { 'btn-a': 1, 'btn-b': 0, 'btn-x': 3, 'btn-y': 2, 'btn-lb': 4, 'btn-rb': 5, 'btn-lt': 6, 'btn-rt': 7, 'btn-select': 8, 'btn-start': 9, 'btn-l3': 10, 'btn-r3': 11, 'btn-up': 12, 'btn-down': 13, 'btn-left': 14, 'btn-right': 15, 'btn-guide': 16 };
+        function setButton(idx, pressed) {
+            window.vGamepad.buttons[idx].pressed = pressed;
+            window.vGamepad.buttons[idx].touched = pressed;
+            window.vGamepad.buttons[idx].value = pressed ? 1.0 : 0.0;
+        }
+
+        Object.keys(btnMap).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopImmediatePropagation(); setButton(btnMap[id], true); el.style.background = "rgba(255, 255, 255, 0.4)"; }, { passive: false });
+                el.addEventListener('touchend', (e) => { e.preventDefault(); e.stopImmediatePropagation(); setButton(btnMap[id], false); el.style.background = "rgba(0, 0, 0, 0.25)"; }, { passive: false });
+            }
+        });
+
+        // Fixed Joystick - Whole Zone Moves + Clean Initial Touch
+        function setupJoystick(zoneId, knobId, axisX, axisY) {
+            const zone = document.getElementById(zoneId);
+            const knob = document.getElementById(knobId);
+            if (!zone || !knob) return;
+
+            const maxDistance = 35;
+            let originalBottom = null;
+            let originalLeft = null;
+            let originalRight = null;
+            let isActive = false;
+            let hasMoved = false;
+
+            function updateStick(e) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+
+                const touch = e.targetTouches[0];
+                if (!touch) return;
+
+                const rect = zone.getBoundingClientRect();
+
+                if (!isActive) {
+                    isActive = true;
+                    hasMoved = false;
+
+                    // Save original position
+                    originalBottom = zone.style.bottom || '60px';
+                    if (zone.id === 'joy-left') originalLeft = zone.style.left || '220px';
+                    if (zone.id === 'joy-right') originalRight = zone.style.right || '220px';
+
+                    // Move whole zone to finger
+                    zone.style.transition = 'none';
+                    zone.style.bottom = (window.innerHeight - touch.clientY - 70) + 'px';
+
+                    if (zone.id === 'joy-left') {
+                        zone.style.left = (touch.clientX - 70) + 'px';
+                    } else {
+                        zone.style.right = (window.innerWidth - touch.clientX - 70) + 'px';
+                    }
+
+                    // Reset knob
+                    knob.style.transition = 'none';
+                    knob.style.transform = 'translate(0px, 0px)';
+                    return; // Don't send input on initial touch
+                }
+
+                // User has started moving
+                hasMoved = true;
+
+                let dx = touch.clientX - (rect.left + rect.width / 2);
+                let dy = touch.clientY - (rect.top + rect.height / 2);
+
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance > maxDistance) {
+                    dx = (dx / distance) * maxDistance;
+                    dy = (dy / distance) * maxDistance;
+                }
+
+                knob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+                window.vGamepad.axes[axisX] = dx / maxDistance;
+                window.vGamepad.axes[axisY] = dy / maxDistance;
+            }
+
+            function resetStick(e) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+
+                // Return zone to original position smoothly
+                zone.style.transition = 'all 0.25s ease-out';
+                zone.style.bottom = originalBottom;
+                if (zone.id === 'joy-left' && originalLeft) zone.style.left = originalLeft;
+                if (zone.id === 'joy-right' && originalRight) zone.style.right = originalRight;
+
+                knob.style.transition = 'transform 0.2s ease-out';
+                knob.style.transform = 'translate(0px, 0px)';
+
+                window.vGamepad.axes[axisX] = 0;
+                window.vGamepad.axes[axisY] = 0;
+
+                isActive = false;
+                hasMoved = false;
+            }
+
+            zone.addEventListener('touchstart', updateStick, { passive: false });
+            zone.addEventListener('touchmove', updateStick, { passive: false });
+            zone.addEventListener('touchend', resetStick, { passive: false });
+            zone.addEventListener('touchcancel', resetStick, { passive: false });
+        }
+        setupJoystick('joy-left', 'knob-left', 0, 1);
+        setupJoystick('joy-right', 'knob-right', 2, 3);
+    </script>
+
     <!-- Modal -->
     <div id="modal-overlay" class="modal-background modal-disabled">
         <!-- Modal Content -->

@@ -179,16 +179,16 @@ export class WebRTCTransport implements Transport {
         }
 
         if (this.location) {
-            const trickleIceSdpFrag = this.pendingIceCandidates.join("\r\n")
+            const trickleIceSdpFrag = this.pendingIceCandidates.map(x => `a=${x}`).join("\r\n")
 
             await fetchApi(this.api, this.location, "PATCH", {
                 noUrlModify: true,
                 trickleIceSdpFrag,
                 response: "ignore",
             })
-        }
 
-        this.pendingIceCandidates = []
+            this.pendingIceCandidates = []
+        }
 
         if (this.peer.iceGatheringState != "complete") {
             this.iceCandidateSendTimer = globalObject().setTimeout(this.boundSendIceCandidates, 2000)
@@ -271,6 +271,7 @@ export class WebRTCTransport implements Transport {
 
     async close(): Promise<void> {
         // TODO
+        this.peer.close()
     }
 
     private lastTotalDecodeTime = 0

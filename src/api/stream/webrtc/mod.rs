@@ -570,25 +570,21 @@ pub async fn webrtc_post(
 
                 match event {
                     ExternalStreamEvent::WebRTCAddIceCandidate { ice_sdp_frag } => {
-                        let session = match Session::parse(ice_sdp_frag.as_bytes()) {
-                            Ok(value) => value,
-                            Err(err) => {
-                                warn!(error = %err, ice_sdp_fragment = ?ice_sdp_frag, "failed to parse ice sdp fragment");
-                                continue;
-                            }
-                        };
-
-                        for attr in &session.attributes {
-                            if attr.attribute == "candidate" && let Some(value) = &attr.value
-                                && let Err(err) = peer.add_ice_candidate(RTCIceCandidateInit {
-                                    candidate: value.clone(),
+                        for line in ice_sdp_frag.lines() {
+                            #[allow(clippy::collapsible_if)]
+                            if let Some(candidate) = line.strip_prefix("a=") {
+                                if let Err(err) = peer.add_ice_candidate(RTCIceCandidateInit {
+                                    candidate: candidate.to_string(),
                                     sdp_mid: None,
                                     sdp_mline_index: None,
                                     username_fragment: None,
                                 })
                                 .await {
-                                    warn!(error = %err, candidate = ?value, "failed to add trickle ice candidate");
+                                    warn!(error = %err, candidate = ?candidate, "failed to add trickle ice candidate");
+                                } else {
+                                    debug!(candidate = ?candidate, "added remote ice candidate");
                                 };
+                            }
                         }
                     }
                     ExternalStreamEvent::Stop => {

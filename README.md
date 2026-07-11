@@ -267,7 +267,7 @@ Most options have command line arguments or environment variables associated wit
 ./web-server help
 ```
 
-For a full list of values look into the [Rust Config module](moonlight-web/common/src/config.rs).
+For a full list of values look into the [Rust Config module](src/config.rs).
 
 ### Bind Address 
 The address and port the website will run on
@@ -536,6 +536,7 @@ Changes:
   - This could make older Nvidia GameStream and Sunshine Servers unsupported
 - moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`
   - Change the Web Socket Endpoint when using a Reserve Proxy: See [Proxying via Apache2](#proxying-via-apache-2)
+- removed old unused `default_settings` value in the config
 
 ## Contributors
 Thanks to everyone who contributed to make this software better :).

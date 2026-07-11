@@ -8,7 +8,6 @@ use std::{
 
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
 use crate::api::bindings::RtcIceServer;
@@ -27,10 +26,6 @@ pub struct Config {
     pub streamer_path: String,
     #[serde(default)]
     pub log: LogConfig,
-    // TODO: remove this on next major, it was replaced by roles
-    #[deprecated]
-    #[serde(default)]
-    pub default_settings: Option<Value>,
 }
 
 impl Default for Config {
@@ -42,8 +37,6 @@ impl Default for Config {
             moonlight: Default::default(),
             webrtc: Default::default(),
             log: Default::default(),
-            #[allow(deprecated)]
-            default_settings: Default::default(),
         }
     }
 }

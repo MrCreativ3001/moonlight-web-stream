@@ -558,9 +558,15 @@ input[type=number] {
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 0;
 }
 
 .sidebar-button-image {
+    width: 100%;
+    height: 100%;
+    background-position: center;
+    background-image: url("../resources/arrow_left.svg");
+
     transition: all 0.3s linear;
 }
 

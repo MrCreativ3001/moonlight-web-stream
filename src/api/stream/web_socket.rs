@@ -24,7 +24,7 @@ use moonlight_common::{
     },
 };
 use tokio::{select, time::sleep};
-use tracing::{Instrument, debug, debug_span, error, info, instrument, trace, warn};
+use tracing::{Instrument, debug_span, error, info, instrument, trace, warn};
 
 use crate::{
     api::stream::create_control_packet_config,

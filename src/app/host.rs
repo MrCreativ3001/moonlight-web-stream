@@ -195,32 +195,6 @@ impl Host {
         app.storage.get_host(self.id).await
     }
 
-    pub async fn address_port(
-        &self,
-        user: &mut AuthenticatedUser,
-    ) -> Result<(String, u16), AppError> {
-        self.can_use(user).await?;
-
-        let app = self.app.access()?;
-
-        let host = app.storage.get_host(self.id).await?;
-
-        Ok((host.address, host.http_port))
-    }
-
-    pub async fn pair_info(
-        &self,
-        user: &mut AuthenticatedUser,
-    ) -> Result<StorageHostPairInfo, AppError> {
-        self.can_use(user).await?;
-
-        let app = self.app.access()?;
-
-        let host = app.storage.get_host(self.id).await?;
-
-        host.pair_info.ok_or(AppError::HostNotPaired)
-    }
-
     fn is_offline<T>(
         &self,
         result: Result<T, MoonlightClientError>,

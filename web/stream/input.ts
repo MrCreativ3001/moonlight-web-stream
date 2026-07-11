@@ -341,6 +341,7 @@ export class StreamInput {
         }))
     }
     sendMouseWheel(deltaX: number, deltaY: number) {
+        // TODO: scroll wheel not working for some reason?
         this.controlStream?.send(new ClientInputEvent.MouseScrollHorizontal({
             scrollX: deltaX
         }))

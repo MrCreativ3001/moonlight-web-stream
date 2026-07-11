@@ -346,9 +346,7 @@ class WebRtcControlStream implements IControlStream {
     private channel: RTCDataChannel | null = null
     private streamType: "simple" | "enet" = "simple"
 
-    // Simple control stream
     private batcher: InputBatcher = new InputBatcher()
-    private batchSendTimeout: number | null = null
 
     // Enet control stream
     private controlStream: ControlStream | null = null
@@ -365,11 +363,6 @@ class WebRtcControlStream implements IControlStream {
     setChannel(channel: RTCDataChannel, streamType: "simple" | "enet", config: ControlPacketConfig): void
     setChannel(channel: RTCDataChannel | null, streamType?: "simple" | "enet", config?: ControlPacketConfig): void {
         this.channel = channel
-
-        // Clean up the old timeout
-        if (this.batchSendTimeout != null) {
-            globalObject().clearTimeout(this.batchSendTimeout)
-        }
 
         // Clean up old control stream if present
         if (this.controlStream) {
@@ -469,9 +462,7 @@ class WebRtcControlStream implements IControlStream {
             this.sendRaw(packet)
         }
 
-        if (this.batchSendTimeout == null) {
-            this.batchSendTimeout = globalObject().setTimeout(this.boundSendBatchedInputs, 1)
-        }
+        this.sendBatchedInputs()
     }
 
     sendRaw(packet: ControlPacket): void {
@@ -508,10 +499,7 @@ class WebRtcControlStream implements IControlStream {
         return this.controlStream?.estimatedRtt() ?? null
     }
 
-    private boundSendBatchedInputs = this.sendBatchedInputs.bind(this)
     private sendBatchedInputs() {
-        this.batchSendTimeout = null
-
         for (const packet of this.batcher.removeBatchedInputs()) {
             this.sendRaw(packet)
         }
@@ -523,7 +511,6 @@ class WebRtcControlStream implements IControlStream {
             globalObject().clearTimeout(this.controlStreamPollTimeout)
         }
         this.controlStreamPollTimeout = null
-
 
         if (!this.controlStream) {
             return
@@ -546,9 +533,6 @@ class WebRtcControlStream implements IControlStream {
         while (event = this.controlStream.pollEvent()) {
             if (event.tag === ControlStreamEvent_Tags.Connect) {
                 this.enetConnected = true
-
-                // TODO: remove this, when the impl doesn't require this anymore
-                this.controlStream.sendRaw(new ControlPacket.StartB())
 
                 this.trySendBufferedPackets()
             } else if (event.tag === ControlStreamEvent_Tags.Packet) {

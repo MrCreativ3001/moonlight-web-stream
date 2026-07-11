@@ -78,9 +78,15 @@ export class WebRTCTransport implements Transport {
         return sdp
     }
     async setAnswer(response: WebRTCAnswer): Promise<void> {
-        console.debug("Server Sdp", JSON.stringify(response))
+        console.debug("server sdp", JSON.stringify(response))
 
-        this.logger?.debug(`Received whep response with location "${response.location}"`)
+        this.logger?.debug(`received whep response with location "${response.location}"`)
+        // Print ice candidates
+        for (const line of response.answerSdp.split("\r\n")) {
+            if (line.startsWith("a=candidate")) {
+                this.logger?.debug(`received remove ice candidate ${line.substring(2)}`)
+            }
+        }
 
         this.location = response.location
 

@@ -63,7 +63,6 @@ export class StreamInput {
 
     private controlStream: IControlStream | null = null
 
-    private touchSupported: boolean | null = null
     private localCursorPosition: [number, number] | null = null
     buffer: any
 
@@ -341,7 +340,6 @@ export class StreamInput {
         }))
     }
     sendMouseWheel(deltaX: number, deltaY: number) {
-        // TODO: scroll wheel not working for some reason?
         this.controlStream?.send(new ClientInputEvent.MouseScrollHorizontal({
             scrollX: deltaX
         }))
@@ -376,10 +374,6 @@ export class StreamInput {
     // If the next touch is a double tap?
     private nextTouchDoubleTap: boolean = false
 
-    private onTouchData(data: ArrayBuffer) {
-        const buffer = new ByteBuffer(new Uint8Array(data))
-        this.touchSupported = buffer.getBool()
-    }
     getLocalCursorState(): LocalCursorState {
         if (
             (this.config.touchMode != "localCursor" && this.config.mouseMode != "localCursor") ||
@@ -804,10 +798,6 @@ export class StreamInput {
             contactAreaMajor: touch.radiusX,
             contactAreaMinor: touch.radiusY,
         }))
-    }
-
-    isTouchSupported(): boolean | null {
-        return this.touchSupported
     }
 
     getCurrentPredictedTouchAction(): PredictedTouchAction {

@@ -53,8 +53,8 @@ async function detectCodecs(): Promise<VideoFormats> {
     }
     await Promise.all(promises)
 
-    // TODO: Firefox, Safari say they can play this codec, but they can't
-    codecs.av1High8444 = false
+    // TODO: Firefox, Safari, Chrome say they can play this codec, but they can't
+    codecs.h264High8444 = false
 
     return codecs
 }

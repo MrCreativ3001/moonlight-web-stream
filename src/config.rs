@@ -22,8 +22,6 @@ pub struct Config {
     pub web_server: WebServerConfig,
     #[serde(default)]
     pub moonlight: MoonlightConfig,
-    #[serde(default = "default_streamer_path")]
-    pub streamer_path: String,
     #[serde(default)]
     pub log: LogConfig,
 }
@@ -32,7 +30,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             data_storage: Default::default(),
-            streamer_path: default_streamer_path(),
             web_server: Default::default(),
             moonlight: Default::default(),
             webrtc: Default::default(),
@@ -330,8 +327,4 @@ fn default_moonlight_http_port() -> u16 {
 
 fn default_pair_device_name() -> String {
     "roth".to_string()
-}
-
-fn default_streamer_path() -> String {
-    "./streamer".to_string()
 }

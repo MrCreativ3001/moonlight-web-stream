@@ -105,6 +105,7 @@ impl Stream {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn is_alive(&self) -> Result<bool, AppError> {
         Ok(!self.inner.event_sender.is_closed())
     }

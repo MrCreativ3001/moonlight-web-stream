@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use crate::api::bindings::RtcIceServer;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub data_storage: StorageConfig,
@@ -24,18 +24,6 @@ pub struct Config {
     pub moonlight: MoonlightConfig,
     #[serde(default)]
     pub log: LogConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            data_storage: Default::default(),
-            web_server: Default::default(),
-            moonlight: Default::default(),
-            webrtc: Default::default(),
-            log: Default::default(),
-        }
-    }
 }
 
 // -- Log

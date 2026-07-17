@@ -85,11 +85,13 @@ jobs:
       with:
         shared-key: cross-${{ matrix.target }}
   
-    # Install cross
+    # Install cross, wasm-bindgen
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
       run: cargo binstall --force cross
+    - name: Install Wasm-Bindgen
+      run: cargo binstall --force 
   
     # Build
     - name: Build
@@ -100,8 +102,7 @@ jobs:
         npm run build
         mv dist static
   
-        rm -rf streamer web-server
-        mv target/${{ matrix.target }}/release/streamer${{ matrix.app-suffix }} streamer${{ matrix.app-suffix }}
+        rm -rf web-server
         mv target/${{ matrix.target }}/release/web-server${{ matrix.app-suffix }} web-server${{ matrix.app-suffix }}
   
     - name: Upload build artifact
@@ -109,7 +110,6 @@ jobs:
       with:
         name: moonlight-web-${{ matrix.target }}
         path: |
-          streamer${{ matrix.app-suffix }}
           web-server${{ matrix.app-suffix }}
           static
 

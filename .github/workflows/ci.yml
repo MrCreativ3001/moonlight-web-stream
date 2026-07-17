@@ -42,7 +42,7 @@ jobs:
       - name: Install cargo-shear
         run: cargo binstall --force --no-confirm cargo-shear
       - name: Cargo Shear
-        run: cargo shear --expand
+        run: cargo shear
   
       # Test
       - name: Test

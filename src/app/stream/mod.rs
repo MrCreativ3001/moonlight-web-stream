@@ -105,12 +105,6 @@ impl Stream {
         Ok(())
     }
 
-    pub async fn full_log(&self, user: &mut AuthenticatedUser) -> Result<String, AppError> {
-        self.has_permissions(user).await?;
-
-        todo!()
-    }
-
     pub fn is_alive(&self) -> Result<bool, AppError> {
         Ok(!self.inner.event_sender.is_closed())
     }

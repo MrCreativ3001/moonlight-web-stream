@@ -180,9 +180,6 @@ class ViewerApp implements Component {
 
     private hasShownFullscreenEscapeWarning = false
 
-    private keyboardViewportBaselineHeight: number | null = null
-    private streamVideoTopOffsetPx: number = 0
-
     constructor(api: Api, hostId: number, appId: number, bootstrapRole: DetailedRole, options?: Partial<Settings>) {
         this.api = api
 
@@ -318,6 +315,8 @@ class ViewerApp implements Component {
             document.title = `Stream: ${appName}`
         } else if (data.type == "connectionComplete") {
             this.sidebar.onCapabilitiesChange(data.capabilities)
+
+            this.armFullscreenOnNextInteraction()
         }
     }
 
@@ -335,6 +334,7 @@ class ViewerApp implements Component {
         this.stream.getAudioPlayer()?.onUserInteraction()
     }
 
+    // -- Auto Fullscreen
     private armFullscreenOnNextInteraction() {
         if (this.autoEnterFullscreenOnStart) {
             this.fullscreenOnNextInteractionArmed = true
@@ -742,6 +742,7 @@ class ViewerApp implements Component {
             setSidebar(this.sidebar)
         }
     }
+
     private renderLocalTouchCursor() {
         const localCursorState = this.stream.getInput().getLocalCursorState()
         if (!localCursorState?.visible) {
@@ -759,6 +760,10 @@ class ViewerApp implements Component {
         this.localTouchCursorDiv.style.left = `${rect.left + localCursorState.x * rect.width}px`
         this.localTouchCursorDiv.style.top = `${rect.top + localCursorState.y * rect.height}px`
     }
+
+    // -- Keyboard Mode
+    private keyboardViewportBaselineHeight: number | null = null
+    private streamVideoTopOffsetPx: number = 0
 
     onScreenKeyboardModeWillChange(event: KeyboardModeWillChangeEvent) {
         if (event.detail.enabled) {

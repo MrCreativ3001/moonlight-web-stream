@@ -571,9 +571,10 @@ Note: windows only has the gnu target `x86_64-pc-windows-gnu`
 Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
 
 To generate bindings to rust code it is using [Uniffi Bindgen React Native](https://github.com/jhugman/uniffi-bindgen-react-native).
-This might have dependencies on wasm-pack or wasm-bindgen.
+This has a dependency on wasm-bindgen.
 
 ```sh
+cargo install wasm-bindgen-cli
 npm install
 npm run build
 ```

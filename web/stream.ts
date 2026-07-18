@@ -1,30 +1,23 @@
 import "./polyfill/index.js"
 import { Api, apiGetRole, getApi } from "./api.js";
 import { Component } from "./component/index.js";
-import { showErrorPopup } from "./component/error.js";
-import { InfoEvent, Stream, StreamCapabilities } from "./stream/index.js"
 import { showNotification } from "./component/notification.js";
-import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { DetailedRole, StreamKeys, StreamPermissions } from "./api_bindings.js";
-import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
-import { FormModal } from "./component/modal/form.js";
-import { streamStatsToText } from "./stream/stats.js";
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
 import { emptyKeyModifiers } from "./stream/keyboard.js";
 import { LogLevel, setLogger as uniffiSetLogger, Logger as UniffiLogger, uniffiInitAsync } from "./uniffi/entry.js";
 import "./styles/index.ts"
-import { LogMessageType } from "./stream/log.js";
-import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
+import { DetailedRole, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n.js";
 import { requestKeyboardLock } from "./iframe.js";
+import { InfoEvent, Stream, StreamCapabilities } from "./stream/index.js";
+import { LogMessageType } from "./stream/log.js";
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -951,9 +944,6 @@ class ConnectionInfoModal implements Modal<void> {
             const text = I.stream.connectionComplete
             this.text.innerText = text
             this.debugLog(text)
-        } else if (data.type == "videoReady") {
-
-            this.eventTarget.dispatchEvent(new Event("ml-connected"))
         } else if (data.type == "addDebugLine") {
             const message = data.line.trim()
             if (message) {

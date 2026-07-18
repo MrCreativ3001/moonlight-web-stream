@@ -1,5 +1,4 @@
 import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButton, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
-import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton, TransportChannelId } from "../api_bindings.js"
 import { showNotification } from "../component/notification.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
@@ -245,7 +244,7 @@ export class StreamInput {
         }
     }
     onMouseWheel(event: WheelEvent) {
-        this.sendMouseWheel(event.deltaX, -event.deltaY)
+        this.sendAccumulatedScroll(event.deltaX, -event.deltaY)
     }
 
     sendMouseMove(movementX: number, movementY: number) {
@@ -371,11 +370,7 @@ export class StreamInput {
         this.scrollRemainderX -= integerX
         this.scrollRemainderY -= integerY
 
-        if (this.config.mouseScrollMode == "highres") {
-            this.sendMouseWheelHighRes(integerX, integerY)
-        } else if (this.config.mouseScrollMode == "normal") {
-            this.sendMouseWheel(integerX, integerY)
-        }
+        this.sendMouseWheel(integerX, integerY)
     }
 
     // -- Touch
@@ -658,7 +653,7 @@ export class StreamInput {
                     }
                 } else if (this.touchMouseAction == "scroll") {
                     // inverting horizontal scroll
-                    this.sendMouseWheel(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
+                    this.sendAccumulatedScroll(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
                 } else if (this.touchMouseAction == "screenKeyboard") {
                     // calculate if we should open the screen keyboard
                     const distanceY = touch.clientY - oldTouch.originY
@@ -901,11 +896,12 @@ export class StreamInput {
         return actuators
     }
 
+    // TODO: look at the controller code again
     private gamepads: Array<{ gamepadIndex: number, oldState: GamepadState } | null> = []
     private gamepadRumbleInterval: number | null = null
 
     onGamepadConnect(gamepad: Gamepad) {
-        if (!this.connected || !this.controllers) {
+        if (!this.connected) {
             this.bufferedControllers.push(gamepad.index)
             return
         }

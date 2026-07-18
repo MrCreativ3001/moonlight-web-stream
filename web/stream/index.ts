@@ -1,7 +1,4 @@
 import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api.js"
-import { App, StreamPermissions, } from "../api_bindings.js"
-import { Api } from "../api.js"
-import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamPermissions, StreamServerMessage, StreamSettings, TransportChannelId } from "../api_bindings.js"
 import { showNotification } from "../component/notification.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
@@ -19,6 +16,7 @@ import { WebRTCTransport } from "./transport/webrtc.js"
 import { allVideoCodecs, andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video.js"
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
 import { buildVideoPipeline, queryVideoPipelineInfo, VideoPipelineOptions } from "./video/pipeline.js"
+import { App, StreamPermissions } from "../api_bindings.js"
 
 export type ExecutionEnvironment = {
     main: boolean
@@ -81,8 +79,8 @@ function getVideoCodecHint(settings: Settings): VideoFormats {
     }
 
     if (isFirefox()) {
-        videoCodecHint.AV1_MAIN10 = false
-        videoCodecHint.AV1_HIGH10_444 = false
+        videoCodecHint.av1Main8 = false
+        videoCodecHint.av1Main10 = false
     }
 
     return videoCodecHint
@@ -162,30 +160,6 @@ export class Stream implements Component {
 
             this.eventTarget.dispatchEvent(event)
         }
-    }
-    private resetVideoReadyState() {
-        this.hasConnectionComplete = false
-        this.hasVideoReady = false
-        this.hasDispatchedVideoReady = false
-    }
-    private markConnectionComplete() {
-        this.hasConnectionComplete = true
-        this.tryDispatchVideoReady()
-    }
-    private markVideoReady() {
-        this.hasVideoReady = true
-        this.tryDispatchVideoReady()
-    }
-    private tryDispatchVideoReady() {
-        if (!this.hasConnectionComplete || !this.hasVideoReady || this.hasDispatchedVideoReady) {
-            return
-        }
-
-        this.hasDispatchedVideoReady = true
-        const event: InfoEvent = new CustomEvent("stream-info", {
-            detail: { type: "videoReady" }
-        })
-        this.eventTarget.dispatchEvent(event)
     }
 
     async startConnection() {

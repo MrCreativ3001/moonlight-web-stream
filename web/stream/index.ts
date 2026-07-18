@@ -29,6 +29,7 @@ export type StreamCapabilities = {
 export type InfoEvent = CustomEvent<
     { type: "app", appName: string } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
+    { type: "videoReady" } |
     { type: "addDebugLine", line: string, additional?: LogMessageInfo }
 >
 export type InfoEventListener = (event: InfoEvent) => void
@@ -601,8 +602,4 @@ export class Stream implements Component {
     getStreamerSize(): [number, number] {
         return this.streamerSize
     }
-}
-
-function createPrettyList(list: Array<string>): string {
-    return `[${list.join(", ")}]`
 }

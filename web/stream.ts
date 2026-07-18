@@ -294,6 +294,7 @@ class ViewerApp implements Component {
         const connectionInfo = new ConnectionInfoModal()
         const connectionInfoListener = connectionInfo.onInfo.bind(connectionInfo)
         this.stream.addInfoListener(connectionInfoListener)
+        showModal(connectionInfo)
 
         // Start animation frame loop
         this.onTouchUpdate()
@@ -939,6 +940,8 @@ class ConnectionInfoModal implements Modal<void> {
             const text = I.stream.connectionComplete
             this.text.innerText = text
             this.debugLog(text)
+
+            showModal(null)
         } else if (data.type == "addDebugLine") {
             const message = data.line.trim()
             if (message) {

@@ -5,7 +5,7 @@ import { getCurrentLanguage, getTranslations } from "../../i18n.js";
 import { InputComponent, SelectComponent } from "../input.js";
 import { createSelectRoleInput } from "./role_select.js";
 import { tryDeleteUser, UserEventListener } from "./index.js";
-import { showErrorPopup } from "../error.js";
+import { showNotification } from "../notification.js";
 
 export class DetailedUserPage implements Component {
 
@@ -89,7 +89,7 @@ export class DetailedUserPage implements Component {
 
         const role = this.role.getValue()
         if (!role) {
-            showErrorPopup(i.pleaseSelectRole)
+            showNotification(i.pleaseSelectRole)
             return
         }
 

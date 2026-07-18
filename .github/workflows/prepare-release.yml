@@ -1,0 +1,52 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Target version (e.g., 2.9.0)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to release from'
+        required: true
+        default: 'master'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update version and Tag
+        run: |
+          RAW_VERSION=${{ github.event.inputs.version }}
+          VERSION=${RAW_VERSION#v}
+
+          sed -i "0,/^version = .*/s//version = \"$VERSION\"/" Cargo.toml
+          cargo update --workspace
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: bump version to $VERSION"
+
+          git push origin ${{ github.event.inputs.branch }}
+
+          NEW_TAG="v$VERSION"
+          git tag $NEW_TAG
+          git push origin $NEW_TAG

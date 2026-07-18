@@ -3,7 +3,7 @@ import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp,
 import { Component, ComponentEvent } from "../index.js"
 import { getCurrentLanguage, getTranslations } from "../../i18n.js"
 import { setContextMenu } from "../context_menu.js"
-import { showErrorPopup } from "../error.js"
+import { showNotification } from "../notification.js"
 import { showMessage } from "../modal/index.js"
 import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE, HOST_OVERLAY_OFFLINE } from "../../resources/index.js"
 
@@ -157,7 +157,7 @@ export class Host implements Component {
             })
         }
         if (!host || !isDetailedHost(host)) {
-            showErrorPopup(i.failedToGetDetails(this.hostId))
+            showNotification(i.failedToGetDetails(this.hostId))
             return;
         }
         this.updateCache(host, this.userCache)
@@ -264,7 +264,7 @@ export class Host implements Component {
     updateCache(host: UndetailedHost | DetailedHost, user: DetailedUser | null) {
         const i = getTranslations(getCurrentLanguage()).host
         if (this.getHostId() != host.host_id) {
-            showErrorPopup(i.overwriteMismatch(this.getHostId(), host.host_id))
+            showNotification(i.overwriteMismatch(this.getHostId(), host.host_id))
             return
         }
 

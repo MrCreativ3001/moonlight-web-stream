@@ -486,8 +486,8 @@ input[type=number] {
 
 /** TODO: reorder stream sidebar */
 
-/** Errors */
-.error-list {
+/** Notifications */
+.notification-list {
     visibility: hidden;
     position: fixed;
     z-index: 1;
@@ -500,7 +500,7 @@ input[type=number] {
     margin-right: 1cm;
 }
 
-.error-element {
+.notification-element {
     visibility: visible;
     display: flex;
     flex-direction: row;
@@ -639,18 +639,22 @@ input[type=number] {
 }
 
 .actions-list .button-fit-content {
-    position: fixed;
-    left: var(--ml-topbar-padding-x);
-    top: 0;
     width: var(--ml-topbar-icon-button);
     height: var(--ml-topbar-height);
-    background-image: url("../resources/arrow_left.svg");
     background-repeat: no-repeat;
     background-position: center;
     background-size: var(--ml-topbar-icon-size);
     color: transparent;
     text-indent: -9999px;
     overflow: hidden;
+
+    &[data-variant="save-button"] {
+        background-image: url("../resources/save.svg");
+    }
+
+    &[data-variant="back-button"] {
+        background-image: url("../resources/arrow_left.svg");
+    }
 }
 
 /** Settings */
@@ -823,7 +827,7 @@ input[type=number] {
 /** Stream */
 .video-stream {
     position: fixed;
-    top: 50%;
+    top: var(--stream-video-top, 50%);
     left: 50%;
     transform: translate(-50%, -50%);
     max-width: 100vw;
@@ -882,6 +886,38 @@ canvas.video-stream {
     z-index: -1000;
     resize: none;
     translate: 200vw 200vh;
+}
+
+.stream-keyboard-floating-button {
+    position: fixed;
+    top: var(--stream-keyboard-button-top, 50%);
+    right: 12px;
+    transform: translateY(-100%);
+    width: 44px;
+    height: 44px;
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--accent-cyan);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--text-1);
+    font-size: 18px;
+    opacity: 0.78;
+    cursor: pointer;
+    contain: layout paint style;
+    touch-action: none;
+    will-change: transform;
+}
+
+.stream-keyboard-floating-button.visible {
+    display: flex;
+}
+
+.stream-keyboard-floating-button:active {
+    opacity: 1;
+    transform: translateY(-100%) scale(0.95);
 }
 
 /* Prevent starting animation for elements */

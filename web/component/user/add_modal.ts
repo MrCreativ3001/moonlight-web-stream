@@ -1,7 +1,7 @@
 import { Api, apiGetRoles } from "../../api.js";
 import { PostUserRequest, UndetailedRole } from "../../api_bindings.js";
 import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { showErrorPopup } from "../error.js";
+import { showNotification } from "../notification.js";
 import { InputComponent, SelectComponent } from "../input.js";
 import { FormModal } from "../modal/form.js";
 import { createSelectRoleInput } from "./role_select.js";
@@ -71,7 +71,7 @@ export class AddUserModal extends FormModal<PostUserRequest> {
         const role = this.role.getValue()
 
         if (!role) {
-            showErrorPopup(i.pleaseSelectRole)
+            showNotification(i.pleaseSelectRole)
             return null
         }
 

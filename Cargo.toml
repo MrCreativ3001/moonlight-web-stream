@@ -37,7 +37,7 @@ moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-ru
 ], default-features = false }
 
 # WebRTC
-webrtc = "0.17.1"
+webrtc = { version = "0.17.1", git = "https://github.com/MrCreativ3001/webrtc-rs.git", rev = "c9675e222245e95c056e2dcc0195fb076ffa9b89" }
 
 # Log
 log = { version = "0.4.28", features = ["serde"] }

@@ -1,5 +1,5 @@
 import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, } from "./api_bindings.js";
-import { showErrorPopup } from "./component/error.js";
+import { showNotification } from "./component/notification.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
 import { buildUrl } from "./config_.js";
@@ -62,7 +62,7 @@ export async function tryLogin(): Promise<Api | null> {
 
     if (await apiLogin(api, userAuth)) {
         if (!await apiAuthenticate(api)) {
-            showErrorPopup("Login was successful but authentication doesn't work!")
+            showNotification("Login was successful but authentication doesn't work!")
         }
         return api
     } else {
@@ -218,7 +218,9 @@ export async function fetchApi<Initial, Other>(api: Api, endpoint: string, metho
 export async function fetchApi(api: Api, endpoint: string, method: string = GET, init?: { response?: "json" | "ignore" | "jsonStreaming" } & ApiFetchInit, timeout: number = API_TIMEOUT) {
     const [url, request] = buildRequest(api, endpoint, method, init)
 
-    request.signal = AbortSignal.timeout(timeout)
+    if (!init?.noTimeout) {
+        request.signal = AbortSignal.timeout(timeout)
+    }
 
     let response
     try {
@@ -268,7 +270,7 @@ export async function apiLogin(api: Api, request: PostLoginRequest): Promise<boo
             if (response && (response.status == 401 || response.status == 404)) {
                 return false
             } else {
-                showErrorPopup(e.message)
+                showNotification(e.message)
                 return false
             }
         }

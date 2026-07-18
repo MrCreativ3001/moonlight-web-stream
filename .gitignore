@@ -18,3 +18,5 @@ web/uniffi
 
 # Server
 server
+
+/.idea

@@ -1,5 +1,8 @@
 import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api.js"
 import { App, StreamPermissions, } from "../api_bindings.js"
+import { Api } from "../api.js"
+import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamPermissions, StreamServerMessage, StreamSettings, TransportChannelId } from "../api_bindings.js"
+import { showNotification } from "../component/notification.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
 import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings.js"
@@ -76,7 +79,17 @@ function getVideoCodecHint(settings: Settings): VideoFormats {
     } else if (settings.videoCodec == "auto") {
         videoCodecHint = allVideoCodecs()
     }
+
+    if (isFirefox()) {
+        videoCodecHint.AV1_MAIN10 = false
+        videoCodecHint.AV1_HIGH10_444 = false
+    }
+
     return videoCodecHint
+}
+
+function isFirefox(): boolean {
+    return navigator.userAgent.includes("Firefox/")
 }
 
 const WEBRTC_CONNECT_TIMEOUT_MS = 15000
@@ -105,6 +118,9 @@ export class Stream implements Component {
     private stats: StreamStats
 
     private streamerSize: [number, number]
+    private hasConnectionComplete = false
+    private hasVideoReady = false
+    private hasDispatchedVideoReady = false
 
     constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number], permissions: StreamPermissions) {
         this.logger.addInfoListener((info, type) => {
@@ -146,6 +162,30 @@ export class Stream implements Component {
 
             this.eventTarget.dispatchEvent(event)
         }
+    }
+    private resetVideoReadyState() {
+        this.hasConnectionComplete = false
+        this.hasVideoReady = false
+        this.hasDispatchedVideoReady = false
+    }
+    private markConnectionComplete() {
+        this.hasConnectionComplete = true
+        this.tryDispatchVideoReady()
+    }
+    private markVideoReady() {
+        this.hasVideoReady = true
+        this.tryDispatchVideoReady()
+    }
+    private tryDispatchVideoReady() {
+        if (!this.hasConnectionComplete || !this.hasVideoReady || this.hasDispatchedVideoReady) {
+            return
+        }
+
+        this.hasDispatchedVideoReady = true
+        const event: InfoEvent = new CustomEvent("stream-info", {
+            detail: { type: "videoReady" }
+        })
+        this.eventTarget.dispatchEvent(event)
     }
 
     async startConnection() {

@@ -23,15 +23,7 @@ impl StoragePassword {
             return Err(AppError::PasswordEmpty);
         }
 
-        // TODO
-        // pkcs5::pbkdf2_hmac(
-        //     password.as_bytes(),
-        //     salt,
-        //     iterations as usize,
-        //     MessageDigest::sha256(),
-        //     out,
-        // )?;
-        todo!();
+        pbkdf2::pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, iterations, out);
 
         Ok(())
     }
@@ -65,23 +57,25 @@ impl StoragePassword {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod test {
     use crate::app::password::StoragePassword;
 
     #[test]
-    fn test_iterations_150_000() {
-        let password = "test";
-        // TODO
-        // let storage = StoragePassword {
-        // };
-        // "password": {
-        //   "salt": "c689708ce8e8ec2c0940d25a8c4ae2fb",
-        //   "hash": "467d82bff427486dfe08b48024093558b69fcf66480c83282009f9b2d67e4be9"
-        // },
-    }
-
-    #[test]
     fn test_iterations_600_000() {
-        todo!()
+        let password = "test";
+        let storage = StoragePassword {
+            salt: hex::decode("847040fce304a9bef9e7727f50f40d06")
+                .unwrap()
+                .try_into()
+                .unwrap(),
+            hash: hex::decode("a0d31b674cb2f97eaa3ac1366553db59e1a7b8c9d47cf210194a15fdd268c597")
+                .unwrap()
+                .try_into()
+                .unwrap(),
+            iterations: 600_000,
+        };
+
+        assert!(storage.verify(password).unwrap());
     }
 }

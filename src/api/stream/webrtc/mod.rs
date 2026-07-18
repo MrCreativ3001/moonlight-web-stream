@@ -22,6 +22,7 @@ use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
 };
 use moonlight_common::webrtc::WebRTCParseError;
+use moonlight_common::webrtc::answer::WebRTCSessionAnswer;
 use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
@@ -378,6 +379,12 @@ pub async fn webrtc_post(
 
     let (clientbound_control_sender, clientbound_control_receiver) = channel(50);
 
+    let apps = host.app_list().await?;
+    let app_title = apps
+        .into_iter()
+        .find(|app| app.id == session.app_id)
+        .map(|app| app.title);
+
     let config = host
         .start_stream(
             session.app_id,
@@ -530,6 +537,21 @@ pub async fn webrtc_post(
         .await
         .expect("web_post: peer.local_description()");
 
+    // Append additional data to the response
+    let mut answer_sdp =
+        Session::parse(answer.sdp.as_bytes()).expect("failed to get parse sdp answer");
+    let additional_answer = WebRTCSessionAnswer {
+        app_name: app_title,
+        microphone: false,
+    };
+    additional_answer.apply(&mut answer_sdp);
+
+    let mut answer = Vec::new();
+    answer_sdp
+        .write(&mut answer)
+        .expect("failed to write sdp answer");
+    let answer = String::from_utf8_lossy(&answer).to_string();
+
     info!("ice gathering completed, sending answer to client");
 
     // Add stream to the list of streams
@@ -611,7 +633,7 @@ pub async fn webrtc_post(
         format!("{path_prefix}/api/host/stream/webrtc/{}", stream_id.0),
     ));
 
-    Ok(response.content_type("application/sdp").body(answer.sdp))
+    Ok(response.content_type("application/sdp").body(answer))
 }
 
 #[patch("/{stream_id}")]

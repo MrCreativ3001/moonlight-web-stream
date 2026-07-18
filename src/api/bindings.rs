@@ -447,6 +447,7 @@ pub struct WebSocketStreamResponse {
     pub audio_coupled_streams: u32,
     pub audio_samples_per_frame: u32,
     pub audio_mapping: [u8; 8],
+    pub app_name: Option<String>,
 }
 
 // Virtual-Key Codes

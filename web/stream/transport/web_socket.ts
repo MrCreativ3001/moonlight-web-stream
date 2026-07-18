@@ -90,7 +90,8 @@ export class WebSocketTransport implements Transport {
                         samplesPerFrame: response.audio_samples_per_frame,
                         mapping: response.audio_mapping
                     },
-                    capabilities: { touch: true }
+                    capabilities: { touch: true },
+                    appName: response.app_name ?? "Unknown",
                 }
 
                 this.internalOnConnect()

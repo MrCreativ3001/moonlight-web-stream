@@ -1,5 +1,5 @@
 import { Api, fetchApi, WebRTCAnswer } from "../../api.js";
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, EstimatedRttInfo, InputBatcher, PacketDirection, UdpTransmit, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, EstimatedRttInfo, InputBatcher, PacketDirection, UdpTransmit, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject, uniffiMillisUntil, uniffiNow } from "../../util.js";
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
@@ -50,6 +50,7 @@ export class WebRTCTransport implements Transport {
     }
 
     private sdpOfferOptions: WebRtcSessionOffer | null = null
+    private sdpAnswer: WebRtcSessionAnswer | null = null
 
     async createOffer(options: TransportOptions): Promise<string> {
         this.logger?.debug("Creating webrtc offer")
@@ -90,8 +91,8 @@ export class WebRTCTransport implements Transport {
 
         this.location = response.location
 
-        const answer = webrtcSessionAnswerParse(response.answerSdp)
-        this.logger?.debug(`Server responded with extensions ${JSON.stringify(answer)}`)
+        this.sdpAnswer = webrtcSessionAnswerParse(response.answerSdp)
+        this.logger?.debug(`Server responded with extensions ${JSON.stringify(this.sdpAnswer)}`)
 
         await this.peer.setRemoteDescription({
             type: "answer",
@@ -133,7 +134,8 @@ export class WebRTCTransport implements Transport {
                 coupledStreams: 0,
                 samplesPerFrame: 0,
                 mapping: []
-            }
+            },
+            appName: this.sdpAnswer?.appName ?? "Unknown"
         }
         return this.connectData
     }

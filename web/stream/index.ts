@@ -1,5 +1,4 @@
 import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api.js"
-import { showNotification } from "../component/notification.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
 import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings.js"
@@ -16,7 +15,7 @@ import { WebRTCTransport } from "./transport/webrtc.js"
 import { allVideoCodecs, andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video.js"
 import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
 import { buildVideoPipeline, queryVideoPipelineInfo, VideoPipelineOptions } from "./video/pipeline.js"
-import { App, StreamPermissions } from "../api_bindings.js"
+import { StreamPermissions } from "../api_bindings.js"
 
 export type ExecutionEnvironment = {
     main: boolean
@@ -28,8 +27,7 @@ export type StreamCapabilities = {
 }
 
 export type InfoEvent = CustomEvent<
-    { type: "app", app: App } |
-    { type: "serverMessage", message: string } |
+    { type: "app", appName: string } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
     { type: "addDebugLine", line: string, additional?: LogMessageInfo }
 >
@@ -116,9 +114,6 @@ export class Stream implements Component {
     private stats: StreamStats
 
     private streamerSize: [number, number]
-    private hasConnectionComplete = false
-    private hasVideoReady = false
-    private hasDispatchedVideoReady = false
 
     constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number], permissions: StreamPermissions) {
         this.logger.addInfoListener((info, type) => {
@@ -167,14 +162,6 @@ export class Stream implements Component {
 
         const desiredTransport = this.transportOverride ?? this.settings.dataTransport
         this.debugLog(`Using transport: ${desiredTransport}`)
-
-        // TODO: how should those events be handled?
-        // const event: InfoEvent = new CustomEvent("stream-info", {
-        //     detail: { type: "connectionComplete", capabilities }
-        // })
-        // const event: InfoEvent = new CustomEvent("stream-info", {
-        //     detail: { type: "app", app: message.UpdateApp.app }
-        // })
 
         if (desiredTransport == "auto") {
             let shutdownReason = await this.tryWebRTCTransport()
@@ -360,13 +347,21 @@ export class Stream implements Component {
     private async onConnect(connectData: TransportConnectData) {
         this.logger.debug("connected successfully, creating video and audio pipelines")
 
+        // Dispatch app event
+        let event: InfoEvent = new CustomEvent("stream-info", {
+            detail: {
+                type: "app", appName: connectData.appName
+            }
+        })
+        this.eventTarget.dispatchEvent(event)
+
         // Set input
         this.input.onStreamStart(connectData.capabilities, [connectData.videoSetup.width, connectData.videoSetup.height])
 
         // Create pipelines
         await this.createPipelines(connectData)
 
-        const event: InfoEvent = new CustomEvent("stream-info", {
+        event = new CustomEvent("stream-info", {
             detail: {
                 type: "connectionComplete", capabilities: {
                     // TODO

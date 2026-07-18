@@ -37,6 +37,7 @@ export type TransportConnectData = {
     videoSetup: VideoRendererSetup,
     audioType: TransportAudioType,
     audioSetup: AudioPlayerSetup,
+    appName: string,
 }
 
 export interface Transport {

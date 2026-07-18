@@ -122,6 +122,13 @@ async fn handle_ws(
         return Err(AppError::HostNotPaired);
     }
 
+    // -- Get Apps
+    let apps = host.app_list().await?;
+    let app_title = apps
+        .into_iter()
+        .find(|app| app.id == stream_request.app_id)
+        .map(|app| app.title);
+
     // -- Start stream
     // get settings
     let mut settings = MoonlightStreamSettings {
@@ -193,6 +200,7 @@ async fn handle_ws(
         audio_coupled_streams: audio_setup.coupled_streams,
         audio_samples_per_frame: audio_setup.samples_per_frame,
         audio_mapping: audio_setup.mapping,
+        app_name: app_title,
     });
     info!(response = ?response, "sending response to client");
     if !send_ws_message(&mut ws_sender, response).await {

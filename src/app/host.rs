@@ -363,6 +363,20 @@ impl Host {
     /// before giving up. Also reported to clients as `expires_in_secs`.
     pub const PAIR_TIMEOUT_SECS: u64 = 300;
 
+    /// Whether a pairing attempt for this host is currently in flight.
+    ///
+    /// Only advisory (the attempt can finish right after this returns);
+    /// `pair` itself registers atomically and is the actual guard.
+    pub fn pair_in_progress(&self) -> Result<bool, AppError> {
+        let app = self.app.access()?;
+
+        let sessions = app
+            .pairing_sessions
+            .lock()
+            .expect("pairing_sessions lock poisoned");
+        Ok(sessions.contains_key(&self.id))
+    }
+
     /// Cancels the in-flight pairing attempt for this host, if any.
     pub fn pair_cancel(&self) -> Result<(), AppError> {
         let app = self.app.access()?;

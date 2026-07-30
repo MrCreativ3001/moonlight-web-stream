@@ -185,6 +185,17 @@ async fn pair_host(
 
     let mut host = user.host(host_id).await?;
 
+    // Advisory pre-check so a duplicate attempt is rejected before the client
+    // ever sees a pin; `Host::pair` still guards atomically against races.
+    if host.pair_in_progress()? {
+        let (reason, detail) = pair_fail_reason(&AppError::PairingInProgress);
+        return Ok(StreamedResponse::new(PostPairResponse1::PairFailed {
+            reason,
+            detail,
+        })
+        .0);
+    }
+
     let pin = PairPin::new_random(&OpenSSLCryptoBackend)?;
 
     let (stream_response, stream_sender) = StreamedResponse::new(PostPairResponse1::Pin {
@@ -251,4 +262,58 @@ async fn wake_host(
     host.wake(&mut user).await?;
 
     Ok(HttpResponse::Ok().finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use moonlight_common::http::pair::client::ClientPairingError;
+
+    fn reason_of(err: AppError) -> PairFailReason {
+        pair_fail_reason(&err).0
+    }
+
+    #[test]
+    fn pairing_lifecycle_errors_map_to_their_reason() {
+        assert_eq!(
+            reason_of(AppError::PairingInProgress),
+            PairFailReason::PairingInProgress
+        );
+        assert_eq!(
+            reason_of(AppError::PairingTimedOut),
+            PairFailReason::TimedOut
+        );
+        assert_eq!(
+            reason_of(AppError::PairingCancelled),
+            PairFailReason::Cancelled
+        );
+        assert_eq!(reason_of(AppError::HostPaired), PairFailReason::AlreadyPaired);
+    }
+
+    #[test]
+    fn moonlight_pairing_errors_map_to_their_reason() {
+        assert_eq!(
+            reason_of(AppError::Moonlight(MoonlightClientError::Pairing(
+                ClientPairingError::FailedWrongPin
+            ))),
+            PairFailReason::PinIncorrect
+        );
+        assert_eq!(
+            reason_of(AppError::Moonlight(MoonlightClientError::Pairing(
+                ClientPairingError::FailedAlreadyInProgress
+            ))),
+            PairFailReason::PairingInProgress
+        );
+        assert_eq!(
+            reason_of(AppError::Moonlight(MoonlightClientError::Offline)),
+            PairFailReason::HostUnreachable
+        );
+    }
+
+    #[test]
+    fn unknown_errors_fall_back_to_internal_with_detail() {
+        let (reason, detail) = pair_fail_reason(&AppError::Forbidden);
+        assert_eq!(reason, PairFailReason::Internal);
+        assert!(detail.is_some());
+    }
 }

@@ -37,6 +37,12 @@ pub async fn create_storage(
 // - If two options are in a Modify struct it means: First option = change the field, second option = is this value null
 
 // --- User ---
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorageOidcIdentity {
+    pub issuer: String,
+    pub subject: String,
+}
+
 #[derive(Clone)]
 pub struct StorageUser {
     pub id: UserId,
@@ -44,6 +50,8 @@ pub struct StorageUser {
     pub password: Option<StoragePassword>,
     pub role_id: RoleId,
     pub client_unique_id: String,
+    #[allow(dead_code)]
+    pub oidc_identity: Option<StorageOidcIdentity>,
 }
 #[derive(Clone)]
 pub struct StorageUserAdd {
@@ -51,12 +59,14 @@ pub struct StorageUserAdd {
     pub name: String,
     pub password: Option<StoragePassword>,
     pub client_unique_id: String,
+    pub oidc_identity: Option<StorageOidcIdentity>,
 }
 #[derive(Default, Clone)]
 pub struct StorageUserModify {
     pub role_id: Option<RoleId>,
     pub password: Option<Option<StoragePassword>>,
     pub client_unique_id: Option<String>,
+    pub oidc_identity: Option<Option<StorageOidcIdentity>>,
 }
 
 // --- Roles ---
@@ -189,6 +199,11 @@ pub trait Storage {
     /// The returned tuple can contain a StorageUser if the Storage thinks it's more efficient to query all data directly
     async fn get_user_by_name(&self, name: &str)
     -> Result<(UserId, Option<StorageUser>), AppError>;
+    async fn get_user_by_oidc_identity(
+        &self,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<(UserId, Option<StorageUser>), AppError>;
     async fn remove_user(&self, user_id: UserId) -> Result<(), AppError>;
     /// The returned tuple can contain a Vec<UserId> or Vec<StorageUser> if the Storage thinks it's more efficient to query all data directly
     async fn list_users(&self) -> Result<Either<Vec<UserId>, Vec<StorageUser>>, AppError>;

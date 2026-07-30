@@ -31,7 +31,10 @@ pub fn api_service() -> impl HttpServiceFactory {
             // -- Auth
             auth::login,
             auth::logout,
-            auth::authenticate
+            auth::authenticate,
+            auth::auth_metadata,
+            auth::oidc_login,
+            auth::oidc_callback
         ])
         .service(services![
             // -- Host

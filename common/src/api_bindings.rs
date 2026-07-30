@@ -25,6 +25,19 @@ pub struct PostLoginRequest {
     pub password: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, TS, Clone, PartialEq, Eq)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct AuthMetadataResponse {
+    pub oidc: Option<OidcAuthMetadata>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS, Clone, PartialEq, Eq)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct OidcAuthMetadata {
+    pub display_label: String,
+    pub login_url: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum HostState {

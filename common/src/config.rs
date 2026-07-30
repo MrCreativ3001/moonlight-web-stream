@@ -255,6 +255,8 @@ pub struct WebServerConfig {
     pub default_user_id: Option<u32>,
     pub default_role_id: Option<u32>,
     pub forwarded_header: Option<ForwardedHeaders>,
+    #[serde(default)]
+    pub oidc: Option<OidcConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -276,6 +278,7 @@ impl Default for WebServerConfig {
             default_user_id: None,
             default_role_id: None,
             forwarded_header: None,
+            oidc: None,
         }
     }
 }
@@ -310,6 +313,88 @@ impl Default for ForwardedHeaders {
 
 fn default_forwarded_headers_auto_create_user() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OidcConfig {
+    pub issuer_url: String,
+    pub client_id: String,
+    #[serde(default)]
+    pub client_secret: Option<String>,
+    pub redirect_url: String,
+    #[serde(default = "default_oidc_scopes")]
+    pub scopes: Vec<String>,
+    #[serde(default = "default_oidc_username_claim")]
+    pub username_claim: String,
+    #[serde(default)]
+    pub auto_create_missing_user: bool,
+    #[serde(default = "default_oidc_display_label")]
+    pub display_label: String,
+}
+
+fn default_oidc_scopes() -> Vec<String> {
+    vec![
+        "openid".to_string(),
+        "profile".to_string(),
+        "email".to_string(),
+    ]
+}
+
+fn default_oidc_username_claim() -> String {
+    "preferred_username".to_string()
+}
+
+fn default_oidc_display_label() -> String {
+    "OpenID Connect".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Config, OidcConfig};
+
+    #[test]
+    fn oidc_config_is_disabled_by_default() {
+        let config: Config = serde_json::from_str("{}").expect("default config should deserialize");
+
+        assert!(config.web_server.oidc.is_none());
+    }
+
+    #[test]
+    fn oidc_config_uses_secure_defaults_when_present() {
+        let oidc: OidcConfig = serde_json::from_str(
+            r#"{
+                "issuer_url": "https://idp.example.com/realms/moonlight",
+                "client_id": "moonlight-web",
+                "redirect_url": "https://example.com/api/oidc/callback"
+            }"#,
+        )
+        .expect("oidc config should deserialize");
+
+        assert_eq!(oidc.scopes, ["openid", "profile", "email"]);
+        assert_eq!(oidc.username_claim, "preferred_username");
+        assert!(!oidc.auto_create_missing_user);
+        assert_eq!(oidc.display_label, "OpenID Connect");
+        assert!(oidc.client_secret.is_none());
+    }
+
+    #[test]
+    fn oidc_config_serializes_defaults() {
+        let oidc = OidcConfig {
+            issuer_url: "https://idp.example.com/realms/moonlight".to_string(),
+            client_id: "moonlight-web".to_string(),
+            client_secret: None,
+            redirect_url: "https://example.com/api/oidc/callback".to_string(),
+            scopes: vec!["openid".to_string()],
+            username_claim: "sub".to_string(),
+            auto_create_missing_user: true,
+            display_label: "Company SSO".to_string(),
+        };
+
+        let json = serde_json::to_string(&oidc).expect("oidc config should serialize");
+
+        assert!(json.contains("\"issuer_url\""));
+        assert!(json.contains("\"display_label\":\"Company SSO\""));
+    }
 }
 
 // -- Moonlight

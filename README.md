@@ -16,6 +16,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
   - [Configuring https](#configuring-https)
   - [Proxying via Apache 2](#proxying-via-apache-2)
   - [Authentication with a Reverse Proxy](#authentication-using-a-reverse-proxy)
+  - [Authentication with OpenID Connect](#authentication-with-openid-connect)
   - [Using Web Socket Transport](#using-websocket-transport)
 - [Config](#config)
 - [Migrating to v2](#migrating-to-v2)
@@ -234,6 +235,63 @@ By default the [auto create missing user](#forwarded-header-auto-create-missing-
     }
 }
 ```
+
+### Authentication with OpenID Connect
+Moonlight Web can optionally use app-native OpenID Connect authorization-code login with PKCE. Local username/password login remains available as a break-glass path and is not replaced by OIDC.
+
+OIDC is disabled unless `web_server.oidc` is configured. Moonlight binds OIDC accounts only to the verified immutable identity pair `{issuer_url, ID-token subject}`. The configured `username_claim` is used only as display/provisioning data for a new OIDC user; it is never used to link an OIDC login to an existing local password user or admin break-glass account. If a new OIDC identity would provision a username that already exists, login fails closed. Missing OIDC users are not created unless `auto_create_missing_user` is explicitly set to `true`.
+
+Keycloak example:
+```json
+{
+    "web_server": {
+        "url_path_prefix": "",
+        "session_cookie_secure": true,
+        "first_login_create_admin": false,
+        "oidc": {
+            "issuer_url": "https://keycloak.example.com/realms/moonlight",
+            "client_id": "moonlight-web",
+            "client_secret": "REPLACE_WITH_CLIENT_SECRET_IF_CONFIDENTIAL",
+            "redirect_url": "https://example.com/api/oidc/callback",
+            "scopes": ["openid", "profile", "email"],
+            "username_claim": "preferred_username",
+            "auto_create_missing_user": true,
+            "display_label": "OpenID Connect"
+        }
+    }
+}
+```
+
+If Moonlight Web is served under a path prefix, include that prefix in both values:
+```json
+{
+    "web_server": {
+        "url_path_prefix": "/moonlight",
+        "oidc": {
+            "issuer_url": "https://keycloak.example.com/realms/moonlight",
+            "client_id": "moonlight-web",
+            "redirect_url": "https://example.com/moonlight/api/oidc/callback"
+        }
+    }
+}
+```
+
+Keycloak client requirements:
+- Enable Standard flow.
+- Require or allow PKCE with method `S256`.
+- Set the exact redirect URI, for example `https://example.com/api/oidc/callback`.
+- Use a confidential client and `client_secret` if required by your deployment; public clients can omit `client_secret`.
+- Ensure the configured `username_claim` exists in the ID token. The default claim is `preferred_username`.
+- Treat the username claim as administrator-controlled and unique. It is display/provisioning data, not the immutable login identity.
+- Use the realm issuer URL as `issuer_url`, for example `https://keycloak.example.com/realms/moonlight`.
+
+Store `client_secret` only in an owner-readable runtime config or secret file. Do not commit real client secrets, authorization codes, tokens, state, nonce, or PKCE verifier values.
+
+Before enabling OIDC on a new instance, create and verify the local break-glass administrator, then set `first_login_create_admin` to `false`. Leaving its default value of `true` on an empty, publicly reachable instance allows the existing first-login endpoint to create the initial administrator. Set `auto_create_missing_user` to `true` only when Keycloak users should be provisioned automatically into the default non-admin role; its secure default is `false`.
+
+Pending OIDC login transactions are held in process memory for five minutes. A server restart interrupts in-flight logins, and multi-process deployments require sticky routing to the process that initiated the login.
+
+Logging out of Moonlight Web currently clears only the local Moonlight session. It does not end the upstream IdP session in Keycloak or another provider.
 
 ### Using WebSocket Transport
 
@@ -512,6 +570,33 @@ Automatically create a new user when the requested user specified in the [userna
     }
 }
 ```
+
+### OpenID Connect
+Optional app-native OpenID Connect login. Omit `oidc` to disable it.
+
+```json
+{
+    "web_server": {
+        "oidc": {
+            "issuer_url": "https://keycloak.example.com/realms/moonlight",
+            "client_id": "moonlight-web",
+            "redirect_url": "https://example.com/api/oidc/callback"
+        }
+    }
+}
+```
+
+Options:
+- `issuer_url`: OIDC issuer URL used for discovery.
+- `client_id`: OIDC client ID.
+- `client_secret`: optional secret for confidential clients.
+- `redirect_url`: exact callback URL registered with the provider.
+- `scopes`: defaults to `["openid", "profile", "email"]`.
+- `username_claim`: defaults to `preferred_username`.
+- `auto_create_missing_user`: defaults to `false`. When enabled, a missing OIDC identity is created with the default normal user role, no local password, and a stored issuer+subject binding.
+- `display_label`: defaults to `OpenID Connect` and is shown on the login button.
+
+Local password login is still available for administrators as a break-glass path. OIDC logins do not attach to existing local users by username, including admin users. SAML is not implemented by this native OIDC integration.
 
 ## Migrating to v2
 1. Some config options have changed so backup your old config by renaming it to something like `old_config.json`.

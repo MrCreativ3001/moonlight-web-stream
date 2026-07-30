@@ -16,7 +16,8 @@
   },
   "scripts": {
     "dev": "npm run generate-bindings && npm-watch build-light",
-    "build": "npm run generate-bindings && npm run build-light",
+    "build": "npm run test:oidc-login-order && npm run generate-bindings && npm run build-light",
+    "test:oidc-login-order": "node tests/oidc-login-order.test.mjs",
     "build-light": "tsc && npm run copy-static",
     "generate-bindings": "cargo test export_bindings --package common",
     "copy-static": "cpx \"web/**/*.{html,json,css,svg,png,js,wasm}\" dist/"

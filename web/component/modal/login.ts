@@ -109,13 +109,13 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
     mountForm(form: HTMLFormElement): void {
         form.appendChild(this.text)
 
-        if (this.oidcLogin) {
-            form.appendChild(this.oidcButton)
-        }
-
         this.name.mount(form)
 
         this.password.mount(form)
         this.passwordFile.mount(form)
+
+        if (this.oidcLogin) {
+            form.appendChild(this.oidcButton)
+        }
     }
 }

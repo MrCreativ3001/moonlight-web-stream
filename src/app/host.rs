@@ -40,8 +40,15 @@ impl Debug for Host {
     }
 }
 
+// TODO: replace this by the moonlight common rust app id
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AppId(pub u32);
+
+impl From<AppId> for moonlight_common::AppId {
+    fn from(value: AppId) -> Self {
+        Self(value.0)
+    }
+}
 
 pub struct App {
     pub id: AppId,
@@ -49,10 +56,10 @@ pub struct App {
     pub is_hdr_supported: bool,
 }
 
-impl From<moonlight_common::http::app_list::App> for App {
-    fn from(value: moonlight_common::http::app_list::App) -> Self {
+impl From<moonlight_common::App> for App {
+    fn from(value: moonlight_common::App) -> Self {
         Self {
-            id: AppId(value.id),
+            id: AppId(value.id.0),
             title: value.title,
             is_hdr_supported: value.is_hdr_supported,
         }
@@ -463,7 +470,7 @@ impl Host {
 
         let app_image = self
             .use_request_client(&app, user, async |_this, host| {
-                let image = host.request_app_image(app_id.0).await?;
+                let image = host.request_app_image(app_id.into()).await?;
 
                 Ok::<_, AppError>(image)
             })

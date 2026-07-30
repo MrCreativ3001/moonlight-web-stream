@@ -107,10 +107,10 @@ pub struct App {
     pub is_hdr_supported: bool,
 }
 
-impl From<moonlight_common::http::app_list::App> for App {
-    fn from(value: moonlight_common::http::app_list::App) -> Self {
+impl From<moonlight_common::App> for App {
+    fn from(value: moonlight_common::App) -> Self {
         Self {
-            app_id: value.id,
+            app_id: value.id.0,
             title: value.title,
             is_hdr_supported: value.is_hdr_supported,
         }

@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use crate::config::Config;
+use crate::{app::host::AppId, config::Config};
 use actix_web::{HttpResponse, ResponseError, body::BoxBody, http::StatusCode, web::Bytes};
 use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
@@ -22,7 +22,7 @@ use tracing::{error, info, warn};
 
 use crate::app::{
     auth::{SessionToken, UserAuth},
-    host::{AppId, HostId},
+    host::HostId,
     password::StoragePassword,
     role::{Role, RoleId},
     storage::{

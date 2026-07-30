@@ -10,7 +10,7 @@ clap = { version = "4.5.53", features = ["derive", "env"] }
 ts-rs = "11.0.1"
 
 # Async
-tokio = "1.47.1"
+tokio = { version = "1.47.1", features = ["net", "fs", "process"] }
 futures = "0.3.31"
 futures-concurrency = "7.7.1"
 bytes = "1.12.0"

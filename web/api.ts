@@ -181,11 +181,10 @@ class StreamedJsonResponse<Initial, Other> {
 
             this.bufferedText += this.decoder.decode(value)
 
-            const split = this.bufferedText.split("\n", 2)
-            if (split.length == 2) {
-                this.bufferedText = split[1]
-
-                const text = split[0]
+            const newlineIndex = this.bufferedText.indexOf("\n")
+            if (newlineIndex >= 0) {
+                const text = this.bufferedText.slice(0, newlineIndex)
+                this.bufferedText = this.bufferedText.slice(newlineIndex + 1)
                 const json = JSON.parse(text)
 
                 return json

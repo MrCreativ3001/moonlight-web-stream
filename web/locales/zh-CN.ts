@@ -145,6 +145,17 @@ export const zhCN: Translations = {
         wakeUpSent: "已发送唤醒包。你的电脑可能需要一点时间才能启动。",
         alreadyPaired: "该主机已经配对！",
         pairPrompt: (name: string, pin: string) => `请在主机 ${name} 上输入以下 PIN 完成配对：\nPIN: ${pin}`,
+        pairCountdown: (secs: number) => `\u8bf7\u5728 ${Math.floor(secs / 60)}:${("0" + (secs % 60)).slice(-2)} \u5185\u5728\u4e3b\u673a\u4e0a\u8f93\u5165 PIN`,
+        pairCancel: "\u53d6\u6d88\u914d\u5bf9",
+        pairFailReason: {
+            PinIncorrect: "PIN \u4e0d\u5339\u914d\u3002\u5982\u679c\u91cd\u8bd5\u540e\u4ecd\u7136\u5931\u8d25\uff0c\u8bf7\u5728\u4e3b\u673a\u4e0a\u91cd\u542f Sunshine \u2014\u2014 \u6b8b\u7559\u7684\u914d\u5bf9\u4f1a\u8bdd\u53ef\u80fd\u4f1a\u963b\u585e\u65b0\u7684\u914d\u5bf9\u3002",
+            TimedOut: "\u5728\u4e3b\u673a\u4e0a\u8f93\u5165 PIN \u4e4b\u524d\uff0c\u914d\u5bf9\u5df2\u8d85\u65f6\u3002",
+            AlreadyPaired: "\u8be5\u4e3b\u673a\u5df2\u914d\u5bf9\uff01",
+            PairingInProgress: "\u8be5\u4e3b\u673a\u5df2\u6709\u53e6\u4e00\u4e2a\u914d\u5bf9\u8bf7\u6c42\u6b63\u5728\u8fdb\u884c\u3002\u8bf7\u7b49\u5f85\u5176\u5b8c\u6210\u6216\u5148\u53d6\u6d88\u5b83\u3002",
+            Cancelled: "\u914d\u5bf9\u5df2\u53d6\u6d88\u3002",
+            HostUnreachable: "\u65e0\u6cd5\u8fde\u63a5\u5230\u4e3b\u673a\u3002Sunshine \u662f\u5426\u6b63\u5728\u8fd0\u884c\uff1f",
+            Internal: "\u914d\u5bf9\u610f\u5916\u5931\u8d25\u3002",
+        },
         overwriteMismatch: (currentId: number, incomingId: number) => `尝试用主机 ${incomingId} 的数据覆盖主机 ${currentId}`,
         details: (host: any) =>
             `Web Id: ${host.host_id}\n` +

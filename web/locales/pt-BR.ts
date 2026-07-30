@@ -145,6 +145,17 @@ export const ptBR: Translations = {
         wakeUpSent: "Pacote Wake-on-LAN enviado. Pode levar um momento para o PC ligar.",
         alreadyPaired: "Este host já está pareado!",
         pairPrompt: (name: string, pin: string) => `Pareie o host ${name} com este PIN:\nPIN: ${pin}`,
+        pairCountdown: (secs: number) => `Digite o PIN no host em at\u00e9 ${Math.floor(secs / 60)}:${("0" + (secs % 60)).slice(-2)}`,
+        pairCancel: "Cancelar pareamento",
+        pairFailReason: {
+            PinIncorrect: "O PIN n\u00e3o corresponde. Se continuar falhando ap\u00f3s novas tentativas, reinicie o Sunshine no host \u2014 uma tentativa de pareamento obsoleta pode bloquear as novas.",
+            TimedOut: "O pareamento expirou antes de o PIN ser digitado no host.",
+            AlreadyPaired: "Este host j\u00e1 est\u00e1 pareado!",
+            PairingInProgress: "Outra tentativa de pareamento para este host j\u00e1 est\u00e1 em andamento. Aguarde a conclus\u00e3o ou cancele-a primeiro.",
+            Cancelled: "Pareamento cancelado.",
+            HostUnreachable: "N\u00e3o foi poss\u00edvel alcan\u00e7ar o host. O Sunshine est\u00e1 em execu\u00e7\u00e3o?",
+            Internal: "O pareamento falhou inesperadamente.",
+        },
         overwriteMismatch: (currentId: number, incomingId: number) => `tentativa de sobrescrever o host ${currentId} com dados do host ${incomingId}`,
         details: (host: any) =>
             `ID Web: ${host.host_id}\n` +

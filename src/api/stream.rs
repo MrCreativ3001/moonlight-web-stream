@@ -355,6 +355,15 @@ pub async fn start_host(
                 _ => {}
             }
         }
+
+        // The websocket dropped (tab closed, navigation, network loss). It is
+        // the client's liveness signal: with WebRTC transport no media flows
+        // through it, so without this the streamer would keep the moonlight
+        // session with the host running and stream to a dead peer until the
+        // peer connection happens to notice (issue #98). Stop the streamer;
+        // the ipc task above then closes the session and reaps the child.
+        info!("[Stream]: client websocket closed, stopping streamer");
+        ipc_sender.send(ServerIpcMessage::Stop).await;
     });
 
     Ok(response)

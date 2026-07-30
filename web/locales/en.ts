@@ -1,3 +1,4 @@
+import type { PairFailReason } from "../api_bindings.js"
 export const en = {
     index: {
         appTitle: "Moonlight Web",
@@ -143,6 +144,17 @@ export const en = {
         wakeUpSent: "Sent Wake Up packet. It might take a moment for your pc to start.",
         alreadyPaired: "This host is already paired!",
         pairPrompt: (name: string, pin: string) => `Please pair your host ${name} with this pin:\nPin: ${pin}`,
+        pairCountdown: (secs: number) => `Enter the PIN on the host within ${Math.floor(secs / 60)}:${("0" + (secs % 60)).slice(-2)}`,
+        pairCancel: "Cancel Pairing",
+        pairFailReason: {
+            PinIncorrect: "The PIN didn't match. If it keeps failing after retries, restart Sunshine on the host \u2014 a stale pairing attempt can block new ones.",
+            TimedOut: "Pairing timed out before the PIN was entered on the host.",
+            AlreadyPaired: "This host is already paired!",
+            PairingInProgress: "Another pairing attempt for this host is already running. Wait for it to finish or cancel it first.",
+            Cancelled: "Pairing was cancelled.",
+            HostUnreachable: "Couldn't reach the host. Is Sunshine running?",
+            Internal: "Pairing failed unexpectedly.",
+        } satisfies Record<PairFailReason, string>,
         overwriteMismatch: (currentId: number, incomingId: number) => `tried to overwrite host ${currentId} with data from ${incomingId}`,
         details: (host: any) =>
             `Web Id: ${host.host_id}\n` +

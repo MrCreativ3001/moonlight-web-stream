@@ -145,6 +145,17 @@ export const frFr: Translations = {
         wakeUpSent: "Signal de réveil envoyé. Le PC peut prendre un peu de temps pour démarrer.",
         alreadyPaired: "Hôte déjà appairé !",
         pairPrompt: (name: string, pin: string) => `Veuillez appairer votre hôte ${name} avec ce NIP :\nNIP: ${pin}`,
+        pairCountdown: (secs: number) => `Saisissez le code PIN sur l'h\u00f4te avant ${Math.floor(secs / 60)}:${("0" + (secs % 60)).slice(-2)}`,
+        pairCancel: "Annuler l'appairage",
+        pairFailReason: {
+            PinIncorrect: "Le code PIN ne correspond pas. Si l'\u00e9chec persiste apr\u00e8s plusieurs essais, red\u00e9marrez Sunshine sur l'h\u00f4te \u2014 une tentative d'appairage obsol\u00e8te peut bloquer les nouvelles.",
+            TimedOut: "L'appairage a expir\u00e9 avant la saisie du code PIN sur l'h\u00f4te.",
+            AlreadyPaired: "Cet h\u00f4te est d\u00e9j\u00e0 appair\u00e9 !",
+            PairingInProgress: "Une autre tentative d'appairage est d\u00e9j\u00e0 en cours pour cet h\u00f4te. Attendez qu'elle se termine ou annulez-la d'abord.",
+            Cancelled: "Appairage annul\u00e9.",
+            HostUnreachable: "Impossible de joindre l'h\u00f4te. Sunshine est-il lanc\u00e9 ?",
+            Internal: "L'appairage a \u00e9chou\u00e9 de mani\u00e8re inattendue.",
+        },
         overwriteMismatch: (currentId: number, incomingId: number) => `tentative d'écrasement de l'hôte ${currentId} avec les données de ${incomingId}`,
         details: (host: any) =>
             `Identifiant Web : ${host.host_id}\n` +

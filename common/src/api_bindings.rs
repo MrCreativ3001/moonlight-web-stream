@@ -169,19 +169,56 @@ pub struct PostPairRequest {
     pub host_id: u32,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum PairFailReason {
+    /// The PIN entered on the host did not match.
+    PinIncorrect,
+    /// The pairing window expired before a PIN was entered on the host.
+    TimedOut,
+    /// The host is already paired.
+    AlreadyPaired,
+    /// A pairing attempt for this host is already running (either from this
+    /// server or from another client on the host side).
+    PairingInProgress,
+    /// The pairing attempt was cancelled via `POST /pair/cancel`.
+    Cancelled,
+    /// The host could not be reached over the network.
+    HostUnreachable,
+    /// Any other error. See `detail`.
+    Internal,
+}
+
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum PostPairResponse1 {
     InternalServerError,
     PairError,
-    Pin(String),
+    PairFailed {
+        reason: PairFailReason,
+        detail: Option<String>,
+    },
+    Pin {
+        pin: String,
+        expires_in_secs: u64,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum PostPairResponse2 {
     PairError,
+    PairFailed {
+        reason: PairFailReason,
+        detail: Option<String>,
+    },
     Paired(DetailedHost),
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostPairCancelRequest {
+    pub host_id: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]

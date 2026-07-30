@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     io, mem,
     ops::Deref,
-    sync::{Arc, Weak},
+    sync::{Arc, Mutex as StdMutex, Weak},
 };
 
 use actix_web::{ResponseError, http::StatusCode, web::Bytes};
@@ -54,6 +54,14 @@ pub enum AppError {
     HostPaired,
     #[error("the host must be paired for this action")]
     HostNotPaired,
+    #[error("a pairing attempt for this host is already in progress")]
+    PairingInProgress,
+    #[error("the pairing attempt timed out before the pin was entered on the host")]
+    PairingTimedOut,
+    #[error("the pairing attempt was cancelled")]
+    PairingCancelled,
+    #[error("there is no pairing attempt in progress for this host")]
+    PairingNotInProgress,
     // -- Unauthorized
     #[error("the credentials don't exists")]
     CredentialsWrong,
@@ -99,6 +107,10 @@ impl ResponseError for AppError {
             Self::HostNotFound => StatusCode::NOT_FOUND,
             Self::HostNotPaired => StatusCode::FORBIDDEN,
             Self::HostPaired => StatusCode::NOT_MODIFIED,
+            Self::PairingInProgress => StatusCode::CONFLICT,
+            Self::PairingTimedOut => StatusCode::REQUEST_TIMEOUT,
+            Self::PairingCancelled => StatusCode::OK,
+            Self::PairingNotInProgress => StatusCode::NOT_FOUND,
             Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::RoleNotFound => StatusCode::NOT_FOUND,
             Self::UserAlreadyExists => StatusCode::CONFLICT,
@@ -136,6 +148,12 @@ struct AppInner {
     config: Config,
     storage: Arc<dyn Storage + Send + Sync>,
     app_image_cache: RwLock<HashMap<(UserId, HostId, AppId), Bytes>>,
+    /// Hosts with a pairing attempt in flight, with a sender to cancel it.
+    /// Guards against concurrent attempts for the same host: racing attempts
+    /// corrupt Sunshine's pending pair session (it keys sessions by client
+    /// uniqueid and never refreshes an existing entry), which makes every
+    /// later attempt fail until Sunshine restarts.
+    pairing_sessions: StdMutex<HashMap<HostId, tokio::sync::oneshot::Sender<()>>>,
 }
 
 pub type MoonlightClient = TokioHyperClient;
@@ -150,6 +168,7 @@ impl App {
             storage: create_storage(config.data_storage.clone()).await?,
             config,
             app_image_cache: Default::default(),
+            pairing_sessions: Default::default(),
         };
 
         Ok(Self {

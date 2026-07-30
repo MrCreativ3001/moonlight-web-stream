@@ -145,6 +145,17 @@ export const koKR: Translations = {
         wakeUpSent: "매직 패킷을 전송했습니다. PC가 켜질 때까지 잠시 기다려 주세요.",
         alreadyPaired: "이 호스트는 이미 페어링되어 있습니다!",
         pairPrompt: (name: string, pin: string) => `호스트 ${name}에서 아래 PIN 번호를 입력해 주세요:\nPIN: ${pin}`,
+        pairCountdown: (secs: number) => `${Math.floor(secs / 60)}:${("0" + (secs % 60)).slice(-2)} \uc548\uc5d0 \ud638\uc2a4\ud2b8\uc5d0\uc11c PIN\uc744 \uc785\ub825\ud558\uc138\uc694`,
+        pairCancel: "\ud398\uc5b4\ub9c1 \ucde8\uc18c",
+        pairFailReason: {
+            PinIncorrect: "PIN\uc774 \uc77c\uce58\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc7ac\uc2dc\ub3c4\ud574\ub3c4 \uacc4\uc18d \uc2e4\ud328\ud558\uba74 \ud638\uc2a4\ud2b8\uc5d0\uc11c Sunshine\uc744 \uc7ac\uc2dc\uc791\ud558\uc138\uc694 \u2014 \uc624\ub798\ub41c \ud398\uc5b4\ub9c1 \uc2dc\ub3c4\uac00 \uc0c8 \uc2dc\ub3c4\ub97c \ucc28\ub2e8\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.",
+            TimedOut: "\ud638\uc2a4\ud2b8\uc5d0\uc11c PIN\uc744 \uc785\ub825\ud558\uae30 \uc804\uc5d0 \ud398\uc5b4\ub9c1 \uc2dc\uac04\uc774 \ucd08\uacfc\ub418\uc5c8\uc2b5\ub2c8\ub2e4.",
+            AlreadyPaired: "\uc774 \ud638\uc2a4\ud2b8\ub294 \uc774\ubbf8 \ud398\uc5b4\ub9c1\ub418\uc5b4 \uc788\uc2b5\ub2c8\ub2e4!",
+            PairingInProgress: "\uc774 \ud638\uc2a4\ud2b8\uc5d0 \ub300\ud55c \ub2e4\ub978 \ud398\uc5b4\ub9c1 \uc2dc\ub3c4\uac00 \uc774\ubbf8 \uc9c4\ud589 \uc911\uc785\ub2c8\ub2e4. \uc644\ub8cc\ub420 \ub54c\uae4c\uc9c0 \uae30\ub2e4\ub9ac\uac70\ub098 \uba3c\uc800 \ucde8\uc18c\ud558\uc138\uc694.",
+            Cancelled: "\ud398\uc5b4\ub9c1\uc774 \ucde8\uc18c\ub418\uc5c8\uc2b5\ub2c8\ub2e4.",
+            HostUnreachable: "\ud638\uc2a4\ud2b8\uc5d0 \uc5f0\uacb0\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. Sunshine\uc774 \uc2e4\ud589 \uc911\uc778\uac00\uc694?",
+            Internal: "\ud398\uc5b4\ub9c1\uc774 \uc608\uae30\uce58 \uc54a\uac8c \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4.",
+        },
         overwriteMismatch: (currentId: number, incomingId: number) => `호스트 ${currentId}를 ${incomingId}의 데이터로 덮어쓰려 시도했습니다.`,
         details: (host: any) =>
             `웹 ID: ${host.host_id}\n` +

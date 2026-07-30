@@ -359,6 +359,41 @@ impl Host {
         }
     }
 
+    /// How long a pairing attempt waits for the pin to be entered on the host
+    /// before giving up. Also reported to clients as `expires_in_secs`.
+    pub const PAIR_TIMEOUT_SECS: u64 = 300;
+
+    /// Whether a pairing attempt for this host is currently in flight.
+    ///
+    /// Only advisory (the attempt can finish right after this returns);
+    /// `pair` itself registers atomically and is the actual guard.
+    pub fn pair_in_progress(&self) -> Result<bool, AppError> {
+        let app = self.app.access()?;
+
+        let sessions = app
+            .pairing_sessions
+            .lock()
+            .expect("pairing_sessions lock poisoned");
+        Ok(sessions.contains_key(&self.id))
+    }
+
+    /// Cancels the in-flight pairing attempt for this host, if any.
+    pub fn pair_cancel(&self) -> Result<(), AppError> {
+        let app = self.app.access()?;
+
+        let sender = app
+            .pairing_sessions
+            .lock()
+            .expect("pairing_sessions lock poisoned")
+            .remove(&self.id)
+            .ok_or(AppError::PairingNotInProgress)?;
+
+        // The receiver half lives inside `pair`; if it is already gone the
+        // attempt just finished on its own, which is fine.
+        let _ = sender.send(());
+        Ok(())
+    }
+
     pub async fn pair(
         &mut self,
         user: &mut AuthenticatedUser,
@@ -378,8 +413,77 @@ impl Host {
             return Err(AppError::HostPaired);
         }
 
+        // Register this attempt, rejecting a concurrent one for the same
+        // host. See `AppInner::pairing_sessions` for why racing attempts are
+        // dangerous rather than merely wasteful.
+        let mut cancel_receiver = {
+            let mut sessions = app
+                .pairing_sessions
+                .lock()
+                .expect("pairing_sessions lock poisoned");
+            if sessions.contains_key(&self.id) {
+                return Err(AppError::PairingInProgress);
+            }
+            let (sender, receiver) = tokio::sync::oneshot::channel();
+            sessions.insert(self.id, sender);
+            receiver
+        };
+
+        let result = tokio::select! {
+            result = tokio::time::timeout(
+                std::time::Duration::from_secs(Self::PAIR_TIMEOUT_SECS),
+                self.pair_inner(user_id, user.clone(), &app, pin),
+            ) => match result {
+                Ok(result) => result,
+                Err(_elapsed) => Err(AppError::PairingTimedOut),
+            },
+            _ = &mut cancel_receiver => Err(AppError::PairingCancelled),
+        };
+
+        app.pairing_sessions
+            .lock()
+            .expect("pairing_sessions lock poisoned")
+            .remove(&self.id);
+
+        match result {
+            Ok(modify) => self.modify(user, modify).await,
+            Err(err) => {
+                // On timeout/cancel the pair future was dropped mid-flight, so
+                // the library's own unpair-on-error cleanup did not run. Tell
+                // the host to drop its pending pair session so a fresh attempt
+                // can start cleanly.
+                if matches!(
+                    err,
+                    AppError::PairingTimedOut | AppError::PairingCancelled
+                ) {
+                    let mut user = user.clone();
+                    match self
+                        .use_client(&app, &mut user, async |_, host| host.unpair().await)
+                        .await
+                    {
+                        Ok(Ok(())) | Err(_) => {}
+                        Ok(Err(unpair_err)) => {
+                            tracing::debug!(
+                                "best-effort unpair after aborted pairing failed: {unpair_err}"
+                            );
+                        }
+                    }
+                }
+                Err(err)
+            }
+        }
+    }
+
+    async fn pair_inner(
+        &mut self,
+        user_id: UserId,
+        mut user: AuthenticatedUser,
+        app: &AppInner,
+        pin: PairPin,
+    ) -> Result<StorageHostModify, AppError> {
+        let user = &mut user;
         let modify = self
-            .use_client(&app, user, async |this, host| {
+            .use_client(app, user, async |this, host| {
                 let (client_identifier, client_secret) = OpenSSLCryptoBackend
                     .generate_client_identity()
                     .map_err(|err| {
@@ -419,7 +523,7 @@ impl Host {
             })
             .await??;
 
-        self.modify(user, modify).await
+        Ok(modify)
     }
 
     pub async fn wake(&self, user: &mut AuthenticatedUser) -> Result<(), AppError> {

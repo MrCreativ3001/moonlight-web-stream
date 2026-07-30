@@ -1,10 +1,11 @@
-import { DetailedHost, DetailedUser, UndetailedHost } from "../../api_bindings.js"
-import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp, apiGetUser, apiPatchHost } from "../../api.js"
+import { DetailedHost, DetailedUser, PairFailReason, UndetailedHost } from "../../api_bindings.js"
+import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiPostPairCancel, apiWakeUp, apiGetUser, apiPatchHost } from "../../api.js"
 import { Component, ComponentEvent } from "../index.js"
 import { getCurrentLanguage, getTranslations } from "../../i18n.js"
 import { setContextMenu } from "../context_menu.js"
 import { showNotification } from "../notification.js"
-import { showMessage } from "../modal/index.js"
+import { showMessage, showModal } from "../modal/index.js"
+import { PairModal } from "./pair_modal.js"
 import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE, HOST_OVERLAY_OFFLINE } from "../../resources/index.js"
 
 export type HostEventListener = (event: ComponentEvent<Host>) => void
@@ -234,12 +235,31 @@ export class Host implements Component {
             host_id: this.getHostId()
         })
 
-        if (typeof responseStream.response == "string") {
-            throw `failed to pair (stage 1): ${responseStream.response}`
+        const stage1 = responseStream.response
+        if (typeof stage1 == "string") {
+            // Legacy servers: "InternalServerError" | "PairError"
+            throw `failed to pair (stage 1): ${stage1}`
+        }
+        if ("PairFailed" in stage1) {
+            showMessage(this.pairFailMessage(stage1.PairFailed.reason, stage1.PairFailed.detail))
+            return
         }
 
+        const { pin, expires_in_secs } = stage1.Pin
+
         const messageAbort = new AbortController()
-        showMessage(i.pairPrompt(this.getCache()?.name ?? "", responseStream.response.Pin), { signal: messageAbort.signal })
+        const pairModal = new PairModal(
+            this.getCache()?.name ?? "",
+            pin,
+            Number(expires_in_secs),
+            { signal: messageAbort.signal },
+        )
+        showModal(pairModal).then(output => {
+            if (output == "cancelled") {
+                apiPostPairCancel(this.api, { host_id: this.getHostId() })
+                    .catch(err => showNotification(`${err}`))
+            }
+        })
 
         const resultResponse = await responseStream.next()
         messageAbort.abort()
@@ -247,10 +267,31 @@ export class Host implements Component {
         if (!resultResponse) {
             throw "missing stage 2 of pairing"
         } else if (typeof resultResponse == "string") {
+            // Legacy servers: "PairError"
             throw `failed to pair (stage 2): ${resultResponse}`
         }
 
+        if ("PairFailed" in resultResponse) {
+            const { reason, detail } = resultResponse.PairFailed
+            if (reason != "Cancelled") {
+                showMessage(this.pairFailMessage(reason, detail))
+            }
+            return
+        }
+
         this.updateCache(resultResponse.Paired, null)
+    }
+
+    private pairFailMessage(reason: PairFailReason, detail: string | null): string {
+        const i = getTranslations(getCurrentLanguage()).host
+        const message = i.pairFailReason[reason] ?? i.pairFailReason.Internal
+
+        // Reasons with a dedicated message are self-explanatory; for the
+        // catch-all, surface the technical detail to make bug reports useful.
+        if (reason == "Internal" && detail) {
+            return `${message}\n(${detail})`
+        }
+        return message
     }
 
     getHostId(): number {

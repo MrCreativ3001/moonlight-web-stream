@@ -1,21 +1,17 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{collections::HashMap, mem::swap, sync::Arc};
 
 use bytes::Bytes;
 use moonlight_common::{
     stream::{
-        proto::control::packet::ControlPacket,
-        tokio::MoonlightStream,
-        video::{VideoFormat, VideoFormats},
+        proto::video::frame::OwnedVideoFrame,
+        video::{VideoFormat, VideoFormats, VideoSetup},
     },
     webrtc::sdp::Session,
 };
-use tokio::spawn;
+use tokio::{
+    select, spawn,
+    sync::mpsc::{UnboundedSender, unbounded_channel},
+};
 use tracing::{Instrument, debug, debug_span, info, trace, warn};
 use webrtc::{
     api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC},
@@ -38,11 +34,197 @@ use webrtc::{
     rtp_transceiver::{
         RTCPFeedback,
         rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters},
+        rtp_sender::RTCRtpSender,
     },
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
 
 use crate::app::AppError;
+
+pub enum VideoChannelEvent {
+    SignalIdr,
+}
+
+enum State {
+    SelectVideoFormat {
+        video_formats: HashMap<VideoFormat, RTCRtpCodecParameters>,
+    },
+    Panic,
+    Sending {
+        rtcp_buffer: Vec<u8>,
+        rtcp_receiver: Arc<RTCRtpSender>,
+        frame_sender: UnboundedSender<OwnedVideoFrame>,
+    },
+}
+
+pub struct VideoChannel {
+    state: State,
+}
+
+impl VideoChannel {
+    pub fn new(sdp: Session) -> Result<Self, AppError> {
+        let video_formats = get_video_formats(&sdp);
+
+        Ok(Self {
+            state: State::SelectVideoFormat { video_formats },
+        })
+    }
+
+    pub async fn on_video_format_selected(
+        &mut self,
+        setup: VideoSetup,
+        peer: &RTCPeerConnection,
+    ) -> Result<(), AppError> {
+        let mut new_state = State::Panic;
+        swap(&mut new_state, &mut self.state);
+
+        let State::SelectVideoFormat { mut video_formats } = new_state else {
+            panic!("VideoChannel in an invalid state");
+        };
+
+        // Check video format
+        let format = setup.format;
+        let Some(codec) = video_formats.remove(&format) else {
+            return Err(AppError::WebRtcClientCodecNotSupported);
+        };
+
+        // Create video track
+        let clock_rate = codec.capability.clock_rate;
+        let track = Arc::new(TrackLocalStaticRTP::new(
+            codec.capability.clone(),
+            "video".to_string(),
+            "moonlight".to_string(),
+        ));
+
+        let video_sender = peer.add_track(track.clone()).await?;
+
+        let mut payloader = if format.contained_in(VideoFormats::MASK_H264) {
+            Box::new(H264Payloader::default()) as Box<dyn Payloader + Send + Sync>
+        } else if format.contained_in(VideoFormats::MASK_H265) {
+            Box::new(HevcPayloader::default()) as Box<dyn Payloader + Send + Sync>
+        } else {
+            Box::new(Av1Payloader::default()) as Box<dyn Payloader + Send + Sync>
+        };
+
+        let (frame_sender, mut frame_receiver) = unbounded_channel();
+
+        self.state = State::Sending {
+            rtcp_buffer: vec![0u8; 1500],
+            rtcp_receiver: video_sender,
+            frame_sender,
+        };
+
+        spawn(
+            async move {
+                let mut sequence_number = 0u16;
+
+                while let Some(frame) = frame_receiver.recv().await {
+                    let frame = frame.as_ref();
+
+                    let timestamp =
+                        (frame.metadata.timestamp.as_millis() * clock_rate as u128 / 1000) as u32;
+
+                    if track.all_binding_paused().await {
+                        trace!("video track all binding paused");
+                        // Don't send any packets when the track is paused because we don't want to increment the sequence number
+                        return;
+                    }
+
+                    let mut payloads = Vec::with_capacity(10);
+
+                    // Each buffer is one nal
+                    for buffer in &frame.buffers {
+                        let nal_payloads = payloader
+                            .payload(RTP_OUTBOUND_MTU, &Bytes::copy_from_slice(buffer.data))
+                            .expect("failed to payload frame");
+
+                        payloads.extend(nal_payloads);
+                    }
+
+                    let len = payloads.len();
+                    for (i, payload) in payloads.into_iter().enumerate() {
+                        sequence_number = sequence_number.wrapping_add(1);
+
+                        if let Err(err) = track
+                            .write_rtp_with_extensions(
+                                &Packet {
+                                    header: Header {
+                                        version: 2,
+                                        // Marker needs to mark the end of one frame
+                                        marker: i == len - 1,
+                                        sequence_number,
+                                        timestamp,
+                                        payload_type: codec.payload_type,
+                                        ..Default::default()
+                                    },
+                                    payload,
+                                },
+                                &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
+                                    min_delay: 0,
+                                    max_delay: 0,
+                                })],
+                            )
+                            .await
+                        {
+                            warn!(error = %err, "failed to send video packet");
+                        }
+                    }
+                }
+            }
+            .instrument(debug_span!("video frame relay")),
+        );
+
+        info!(setup = ?setup, codec = ?codec, "finished video track setup");
+
+        Ok(())
+    }
+
+    pub fn on_frame(&mut self, frame: OwnedVideoFrame) {
+        match &mut self.state {
+            State::SelectVideoFormat { .. } | State::Panic => {
+                panic!("VideoChannel is in an invalid state")
+            }
+            State::Sending { frame_sender, .. } => {
+                frame_sender.send(frame);
+            }
+        }
+    }
+
+    pub async fn drive(&mut self) -> Result<VideoChannelEvent, AppError> {
+        loop {
+            let State::Sending {
+                rtcp_buffer,
+                rtcp_receiver,
+                ..
+            } = &mut self.state
+            else {
+                panic!("VideoChannel is in an invalid state");
+            };
+
+            select! {
+                // This function seems cancel safe
+                result = rtcp_receiver.read(rtcp_buffer) => {
+                    let Ok((packets, _)) = result else {
+                        continue;
+                    };
+
+                    for packet in packets {
+                        let packet = packet.as_any();
+
+                        if packet.downcast_ref::<PictureLossIndication>().is_some() {
+                            debug!("got picture loss indication, set need idr flag");
+                            return Ok(VideoChannelEvent::SignalIdr);
+                        } else if let Some(ReceiverEstimatedMaximumBitrate { bitrate: _, .. }) =
+                            packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
+                        {
+                            // TODO
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 pub fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameters> {
     let mut formats = HashMap::default();
@@ -205,141 +387,6 @@ fn parse_fmtp(attribute_value: &str) -> Option<(u8, &str)> {
     let pt = pt_str.parse::<u8>().ok()?;
 
     Some((pt, sdp_fmtp_line))
-}
-
-pub async fn add_video_track(
-    peer: &RTCPeerConnection,
-    stream: &MoonlightStream,
-    mut video_formats: HashMap<VideoFormat, RTCRtpCodecParameters>,
-) -> Result<(), AppError> {
-    // Check video format
-    let format = stream.video_setup().format;
-    let Some(codec) = video_formats.remove(&format) else {
-        return Err(AppError::WebRtcClientCodecNotSupported);
-    };
-
-    // Create video track
-    let clock_rate = codec.capability.clock_rate;
-    let track = Arc::new(TrackLocalStaticRTP::new(
-        codec.capability.clone(),
-        "video".to_string(),
-        "moonlight".to_string(),
-    ));
-
-    let video_sender = peer.add_track(track.clone()).await?;
-
-    // Feedback
-    let need_idr = Arc::new(AtomicBool::new(false));
-    spawn({
-        let need_idr = need_idr.clone();
-
-        async move {
-            let mut buffer = [0; 1500];
-
-            while let Ok((packets, _)) = video_sender.read(&mut buffer).await {
-                for packet in packets {
-                    let packet = packet.as_any();
-
-                    if packet.downcast_ref::<PictureLossIndication>().is_some() {
-                        debug!("got picture loss indication, set need idr flag");
-                        need_idr.store(true, Ordering::Release);
-                    } else if let Some(ReceiverEstimatedMaximumBitrate { bitrate: _, .. }) =
-                        packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
-                    {
-                        // TODO
-                    }
-                }
-            }
-        }
-        .instrument(debug_span!("video rtcp feedback"))
-    });
-
-    let mut payloader = if format.contained_in(VideoFormats::MASK_H264) {
-        Box::new(H264Payloader::default()) as Box<dyn Payloader + Send + Sync>
-    } else if format.contained_in(VideoFormats::MASK_H265) {
-        Box::new(HevcPayloader::default()) as Box<dyn Payloader + Send + Sync>
-    } else {
-        Box::new(Av1Payloader::default()) as Box<dyn Payloader + Send + Sync>
-    };
-
-    // Spawn forwarding task
-    spawn({
-        let stream = stream.clone();
-        let need_idr = need_idr.clone();
-
-        async move {
-            let mut sequence_number = 0u16;
-
-            while let Ok(frame) = stream.poll_video_frame().await {
-                let frame = frame.as_ref();
-
-                let timestamp =
-                    (frame.metadata.timestamp.as_millis() * clock_rate as u128 / 1000) as u32;
-
-                if track.all_binding_paused().await {
-                    trace!("video track all binding paused");
-                    // Don't send any packets when the track is paused because we don't want to increment the sequence number
-                    continue;
-                }
-
-                let mut payloads = Vec::with_capacity(10);
-
-                // Each buffer is one nal
-                for buffer in &frame.buffers {
-                    let nal_payloads = payloader
-                        .payload(RTP_OUTBOUND_MTU, &Bytes::copy_from_slice(buffer.data))
-                        .expect("failed to payload frame");
-
-                    payloads.extend(nal_payloads);
-                }
-
-                let len = payloads.len();
-                for (i, payload) in payloads.into_iter().enumerate() {
-                    sequence_number = sequence_number.wrapping_add(1);
-
-                    if let Err(err) = track
-                        .write_rtp_with_extensions(
-                            &Packet {
-                                header: Header {
-                                    version: 2,
-                                    // Marker needs to mark the end of one frame
-                                    marker: i == len - 1,
-                                    sequence_number,
-                                    timestamp,
-                                    payload_type: codec.payload_type,
-                                    ..Default::default()
-                                },
-                                payload,
-                            },
-                            &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
-                                min_delay: 0,
-                                max_delay: 0,
-                            })],
-                        )
-                        .await
-                    {
-                        warn!(error = %err, "failed to send video packet");
-                    }
-                }
-
-                // Check if idr is needed
-                if need_idr
-                    .compare_exchange(true, false, Ordering::Acquire, Ordering::Acquire)
-                    .is_ok()
-                {
-                    info!("requesting idr");
-                    if let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
-                        warn!(error = %err, "failed to send idr request");
-                    }
-                }
-            }
-        }
-        .instrument(debug_span!("relay: video"))
-    });
-
-    info!(setup = ?stream.video_setup(), codec = ?codec, "finished video track setup");
-
-    Ok(())
 }
 
 fn rtcp_feedback() -> Vec<RTCPFeedback> {

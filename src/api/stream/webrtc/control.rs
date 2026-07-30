@@ -39,7 +39,7 @@ pub enum ControlChannelEvent {
     Packet(ControlPacket),
 }
 
-enum State {
+enum Protocol {
     Simple {
         config: ControlPacketConfig,
         send_queue: VecDeque<Bytes>,
@@ -55,11 +55,11 @@ pub struct ControlChannel {
     channel: Arc<RTCDataChannel>,
     on_open: oneshot::Receiver<()>,
     on_receive: mpsc::UnboundedReceiver<Bytes>,
-    state: State,
+    protocol: Protocol,
 }
 
 impl ControlChannel {
-    fn new(state: State, channel: Arc<RTCDataChannel>) -> Self {
+    fn new(protocol: Protocol, channel: Arc<RTCDataChannel>) -> Self {
         let (send_open, on_open) = oneshot::channel();
 
         channel.on_open(Box::new(move || {
@@ -82,14 +82,14 @@ impl ControlChannel {
             channel,
             on_open,
             on_receive,
-            state,
+            protocol,
         }
     }
     pub async fn new_simple(peer: &RTCPeerConnection) -> Result<Self, AppError> {
         let channel = peer.create_data_channel("moonlight.control", None).await?;
 
         Ok(Self::new(
-            State::Simple {
+            Protocol::Simple {
                 config: create_control_packet_config(),
                 send_queue: Default::default(),
             },
@@ -112,7 +112,7 @@ impl ControlChannel {
         let base_time = StdInstant::now();
 
         Ok(Self::new(
-            State::Enet {
+            Protocol::Enet {
                 base_time,
                 send_queue: Default::default(),
                 host: ControlHost::new(
@@ -130,8 +130,8 @@ impl ControlChannel {
     }
 
     pub fn send(&mut self, packet: ControlPacket) {
-        match &mut self.state {
-            State::Simple {
+        match &mut self.protocol {
+            Protocol::Simple {
                 config,
                 send_queue: queue,
             } => {
@@ -169,8 +169,8 @@ impl ControlChannel {
                 return pending().await;
             }
 
-            match &mut self.state {
-                State::Simple { config, send_queue } => {
+            match &mut self.protocol {
+                Protocol::Simple { config, send_queue } => {
                     let send_future = if let Some(transmit) = send_queue.front()
                         && matches!(self.channel.ready_state(), RTCDataChannelState::Open)
                     {
@@ -203,7 +203,7 @@ impl ControlChannel {
                         },
                     }
                 }
-                State::Enet {
+                Protocol::Enet {
                     base_time,
                     send_queue,
                     host,

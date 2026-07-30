@@ -410,7 +410,6 @@ pub async fn webrtc_post(
             return Err(err.into());
         }
     };
-    let moonlight_stream = Arc::new(moonlight_stream);
 
     // Add audio and video track forwarding
     if let Err(err) = add_audio_track(&peer, &moonlight_stream).await {

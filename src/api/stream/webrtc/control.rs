@@ -1,342 +1,290 @@
+use std::collections::VecDeque;
 use std::net::Ipv4Addr;
-use std::time::Instant as StdInstant;
 use std::{net::SocketAddr, sync::Arc};
 
 use actix_web::web::Bytes;
+use futures::future::{Either, pending};
+use moonlight_common::crypto::rustcrypto::RustCryptoBackend;
+use moonlight_common::stream::control::DEFAULT_CONTROL_PORT;
+use moonlight_common::stream::proto::Instant;
 use moonlight_common::stream::proto::control::peer::{
     ControlHostEvent, ControlPeerConfig, ControlPeerRole,
 };
+use moonlight_common::stream::proto::control::{
+    packet::{ControlPacket, ControlPacketConfig, EnetChannel, PacketDirection},
+    peer::{ControlHost, ControlHostConfig},
+};
 use moonlight_common::stream::proto::runtime::UdpStream;
-use moonlight_common::{
-    crypto::disabled::DisabledCryptoBackend,
-    stream::{
-        proto::{
-            Instant,
-            control::{
-                packet::{ControlPacket, ControlPacketConfig, EnetChannel, PacketDirection},
-                peer::{ControlHost, ControlHostConfig},
-            },
-        },
-        tokio::MoonlightStream,
-    },
-};
+use moonlight_common::stream::tokio::MoonlightStreamError;
 use tokio::select;
-use tokio::sync::Mutex;
-use tokio::time::sleep_until;
-use tokio::{
-    spawn,
-    sync::{Notify, mpsc::Receiver, oneshot},
-};
-use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::oneshot;
+use tokio::time::{Instant as StdInstant, sleep_until};
+use tracing::{debug, warn};
+use webrtc::data_channel::RTCDataChannel;
 use webrtc::{
     data_channel::{
-        data_channel_init::RTCDataChannelInit, data_channel_message::DataChannelMessage,
-        data_channel_state::RTCDataChannelState,
+        data_channel_init::RTCDataChannelInit, data_channel_state::RTCDataChannelState,
     },
     peer_connection::RTCPeerConnection,
 };
 
+use crate::api::stream::create_control_packet_config;
 use crate::app::AppError;
 
-pub async fn add_simple_control_channel(
-    peer: &RTCPeerConnection,
-    moonlight_stream: Arc<MoonlightStream>,
-    mut clientbound_control_receiver: Receiver<ControlPacket>,
-    control_config: &ControlPacketConfig,
-) -> Result<(), AppError> {
-    let control = peer.create_data_channel("moonlight.control", None).await?;
-    debug!("added simple control channel");
+pub enum ControlChannelEvent {
+    Active,
+    Inactive,
+    Packet(ControlPacket),
+}
 
-    let stream = moonlight_stream.clone();
+enum State {
+    Simple {
+        config: ControlPacketConfig,
+        send_queue: VecDeque<Bytes>,
+    },
+    Enet {
+        base_time: StdInstant,
+        send_queue: VecDeque<Bytes>,
+        host: ControlHost,
+    },
+}
 
-    // Spawn from client to host relay
-    control.on_message({
-        let control_config = control_config.clone();
-        let stream = stream.clone();
+pub struct ControlChannel {
+    channel: Arc<RTCDataChannel>,
+    on_open: oneshot::Receiver<()>,
+    on_receive: mpsc::UnboundedReceiver<Bytes>,
+    state: State,
+}
 
-        Box::new(move |message: DataChannelMessage| {
-            let control_config = control_config.clone();
-            let stream = stream.clone();
+impl ControlChannel {
+    fn new(state: State, channel: Arc<RTCDataChannel>) -> Self {
+        let (send_open, on_open) = oneshot::channel();
+
+        channel.on_open(Box::new(move || {
+            Box::pin(async move {
+                debug!("webrtc control channel opened");
+                let _ = send_open.send(());
+            })
+        }));
+
+        let (send_receive, on_receive) = unbounded_channel();
+        channel.on_message(Box::new(move |message| {
+            let send_receive = send_receive.clone();
 
             Box::pin(async move {
-                let Some(packet) = ControlPacket::deserialize(
-                    PacketDirection::ServerBound,
-                    &control_config,
-                    &message.data,
-                ) else {
-                    warn!(packet = ?message.data, "failed to deserialize client packet");
-                    return;
-                };
-
-                debug!(packet = ?packet, "relaying packet from client to host");
-
-                if let Err(err) = stream.send_raw(packet) {
-                    warn!(error = %err, "failed to relay input from client to host");
-                }
+                send_receive.send(message.data);
             })
-        })
-    });
+        }));
 
-    // Wait for the channel to open
-    let (on_control_open_sender, on_control_open) = oneshot::channel::<()>();
-    control.on_open({
-        let control = control.clone();
-        Box::new(move || {
-            let control = control.clone();
+        Self {
+            channel,
+            on_open,
+            on_receive,
+            state,
+        }
+    }
+    pub async fn new_simple(peer: &RTCPeerConnection) -> Result<Self, AppError> {
+        let channel = peer.create_data_channel("moonlight.control", None).await?;
 
-            Box::pin(async move {
-                let ready_state = control.ready_state();
-                debug!(ready_state = ?ready_state, "control channel ready state");
+        Ok(Self::new(
+            State::Simple {
+                config: create_control_packet_config(),
+                send_queue: Default::default(),
+            },
+            channel,
+        ))
+    }
+    pub async fn new_enet(peer: &RTCPeerConnection) -> Result<Self, AppError> {
+        let channel = peer
+            .create_data_channel(
+                "moonlight.control",
+                Some(RTCDataChannelInit {
+                    ordered: Some(false),
+                    max_retransmits: Some(0),
+                    protocol: Some("enet".to_string()),
+                    ..Default::default()
+                }),
+            )
+            .await?;
 
-                if ready_state == RTCDataChannelState::Open {
-                    debug!("notifying host to client relay that the control channel is open");
-                    let _ = on_control_open_sender.send(());
-                }
-            })
-        })
-    });
+        let base_time = StdInstant::now();
 
-    // Spawn from host to client relay
-    spawn({
-        let control_config = control_config.clone();
-        async move {
-            let _ = on_control_open.await;
+        Ok(Self::new(
+            State::Enet {
+                base_time,
+                send_queue: Default::default(),
+                host: ControlHost::new(
+                    Instant::from_std(base_time.into_std()),
+                    ControlHostConfig {
+                        peer_count: 1,
+                        peer_channel_count: EnetChannel::CHANNEL_COUNT,
+                    },
+                    Arc::new(RustCryptoBackend),
+                )
+                .map_err(MoonlightStreamError::from)?,
+            },
+            channel,
+        ))
+    }
 
-            while let Some(packet) = clientbound_control_receiver.recv().await
-                && !matches!(control.ready_state(), RTCDataChannelState::Closed)
-            {
-                let mut buffer = [0; _];
-                let len = match packet.serialize(&control_config, &mut buffer) {
+    pub fn send(&mut self, packet: ControlPacket) {
+        match &mut self.state {
+            State::Simple {
+                config,
+                send_queue: queue,
+            } => {
+                let mut buffer = [0; ControlPacket::MAX_SIZE];
+
+                let len = match packet.serialize(config, &mut buffer) {
                     Ok(value) => value,
                     Err(err) => {
-                        warn!(error = %err, "failed to relay control packet from host to client");
-                        continue;
+                        warn!(error = %err, "failed to relay control packet from server to client");
+                        return;
                     }
                 };
                 let buffer = &buffer[0..len];
 
-                if let Err(err) = control.send(&Bytes::copy_from_slice(buffer)).await {
-                    warn!(error = %err, "failed to relay control packet from host to client");
-                }
+                queue.push_front(Bytes::copy_from_slice(buffer));
             }
-
-            debug!("stopping relaying from host to client");
+            _ => todo!(),
         }
-        .instrument(debug_span!("relay: host to client"))
-    });
+    }
 
-    debug!("added events for simple control channel");
+    pub fn is_alive(&self) -> bool {
+        !matches!(self.channel.ready_state(), RTCDataChannelState::Closed)
+            && !self.on_receive.is_closed()
+    }
 
-    Ok(())
-}
-
-pub async fn add_enet_control_channel(
-    peer: &RTCPeerConnection,
-    moonlight_stream: Arc<MoonlightStream>,
-    mut clientbound_control_receiver: Receiver<ControlPacket>,
-    control_config: &ControlPacketConfig,
-) -> Result<(), AppError> {
-    let control = peer
-        .create_data_channel(
-            "moonlight.control",
-            Some(RTCDataChannelInit {
-                ordered: Some(false),
-                max_retransmits: Some(0),
-                protocol: Some("enet".to_string()),
-                ..Default::default()
-            }),
-        )
-        .await?;
-
-    let base_time = StdInstant::now();
-
-    let control_host = Arc::new(Mutex::new(
-        ControlHost::new(
-            Instant::from_std(base_time),
-            ControlHostConfig {
-                peer_channel_count: EnetChannel::CHANNEL_COUNT,
-                peer_count: 1,
-            },
-            Arc::new(DisabledCryptoBackend) as _,
-        )
-        .expect("new control host"),
-    ));
-
-    let poll_notify = Arc::new(Notify::new());
-
-    let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 178, 1).into(), 47999);
-
-    // Spawn receiving messages
-    control.on_message({
-        let poll_notify = poll_notify.clone();
-        let control_host = control_host.clone();
-
-        Box::new(move |message| {
-            let poll_notify = poll_notify.clone();
-            let control_host = control_host.clone();
-
-            Box::pin(async move {
-                trace!(packet = ?message, "received control channel enet message");
-
-                if message.is_string {
-                    warn!(packet = ?message.data, "received string over enet control channel! dropping message");
-                    return;
-                }
-
-                {
-                    let mut control_host = control_host.lock().await;
-
-                    if let Err(err)= control_host.handle_receive(
-                         Instant::from_std(base_time),
-                        addr,
-                        &message.data,
-                    ) {
-                        warn!(error = ?err, "failed to call handle_input with Receive on ControlHost");
-                    }
-                }
-
-                poll_notify.notify_one();
-            })
-        })
-    });
-
-    // Wait for the channel to open
-    let (on_control_open_sender, on_control_open) = oneshot::channel::<()>();
-    control.on_open({
-        let control = control.clone();
-
-        Box::new(move || {
-            let control = control.clone();
-
-            Box::pin(async move {
-                let ready_state = control.ready_state();
-                debug!(ready_state = ?ready_state, "control channel ready state");
-
-                if ready_state == RTCDataChannelState::Open {
-                    debug!("notifying host to client relay that the control channel is open");
-                    let _ = on_control_open_sender.send(());
-                }
-            })
-        })
-    });
-
-    // Wait for enet connect, handled in driver
-    let (on_enet_connect_sender, on_enet_open) = oneshot::channel::<()>();
-
-    // Spawn host to client messages
-    spawn({
-        let control_config = control_config.clone();
-        let control = control.clone();
-        let control_host = control_host.clone();
-        let poll_notify = poll_notify.clone();
-
-        async move {
-            let _ = on_enet_open.await;
-            debug!("starting host to client enet relay");
-
-            while let Some(packet) = clientbound_control_receiver.recv().await
-                && !matches!(control.ready_state(), RTCDataChannelState::Closed)
-            {
-                let (channel_id, kind) = packet.channel(control_config.server_version);
-
-                {
-                    let mut control_host = control_host.lock().await;
-
-                    // Broadcast to all configured peers
-                    debug!(packet = ?packet, "broadcasting enet packet");
-                    for id in control_host.configured_peers().collect::<Vec<_>>() {
-                        trace!(peer_id = ?id, packet = ?packet, "relaying packet from host to client");
-                        if let Err(err) = control_host.send(id, channel_id, kind, packet.clone()) {
-                            warn!(error = %err, "failed to relay control packet from host to client");
-                        }
-                    }
-                }
-
-                poll_notify.notify_one();
+    /// Returns [None] if the data channel was closed
+    ///
+    /// # Cancel Safety
+    /// This function is cancel safe.
+    /// If it is cancelled no state is lost.
+    pub async fn drive(&mut self) -> Result<ControlChannelEvent, AppError> {
+        loop {
+            if !self.is_alive() {
+                // There's nothing to do
+                return pending().await;
             }
 
-            debug!("stopping relaying from host to client");
-        }.instrument(debug_span!("relay: host to client"))
-    });
+            match &mut self.state {
+                State::Simple { config, send_queue } => {
+                    let send_future = if let Some(transmit) = send_queue.front()
+                        && matches!(self.channel.ready_state(), RTCDataChannelState::Open)
+                    {
+                        // This send function implementation seems cancel safe
+                        Either::Left(self.channel.send(transmit))
+                    } else {
+                        Either::Right(pending::<_>())
+                    };
 
-    // Spawn ControlHost Driver
-    spawn({
-        let stream = moonlight_stream.clone();
-        let control_config = control_config.clone();
-        let control = control.clone();
-        let control_host = control_host.clone();
-        let mut on_enet_open_sender = Some(on_enet_connect_sender);
+                    select! {
+                        result = self.on_receive.recv() => {
+                            let Some(packet) = result else {
+                                // The channel closed
+                                return Ok(ControlChannelEvent::Inactive);
+                            };
 
-        let poll_notify = poll_notify.clone();
-        async move {
-            let _ = on_control_open.await;
+                            let Some(packet) = ControlPacket::deserialize(PacketDirection::ServerBound, config, &packet) else {
+                                warn!(packet = ?packet, "failed to deserialize packet from webrtc client");
+                                continue;
+                            };
 
-            loop {
-                let timeout = {
-                    let mut control_host = control_host.lock().await;
+                            return Ok(ControlChannelEvent::Packet(packet));
+                        },
+                        result = send_future => {
+                            send_queue.pop_front();
 
-                    // Get events
-                    while let Some(event) =  control_host.poll_event() {
+                            if let Err(err) = result {
+                                warn!(error = %err, "failed to send packet on data channel");
+                            }
+                        },
+                    }
+                }
+                State::Enet {
+                    base_time,
+                    send_queue,
+                    host,
+                } => {
+                    // Poll outputs
+                    while let Some(event) = host.poll_event() {
                         match event {
-                            ControlHostEvent::Connected { id, sunshine_connect_data } => {
-                                if let Some(enet_open) = on_enet_open_sender.take() {
-                                    let _ = enet_open.send(());
-                                }
+                            ControlHostEvent::Connected { id, .. } => {
+                                host.configure_peer(
+                                    id,
+                                    ControlPeerConfig {
+                                        role: ControlPeerRole::Client,
+                                        encryption: None,
+                                        packets: create_control_packet_config(),
+                                    },
+                                );
 
-                                debug!(id = ?id, connect_data = ?sunshine_connect_data, "webrtc enet peer connected");
-
-                                // Configure peer
-                                if let Err(err)=  control_host.configure_peer(id, ControlPeerConfig {
-                                    encryption: None,
-                                    packets: control_config.clone(),
-                                    role: ControlPeerRole::Server,
-                                }) {
-                                    error!(peer_id = ?id, error = ?err, "failed to configure peer");
-                                    stream.stop();
-                                    return;
+                                if host.configured_peers().count() == 1 {
+                                    return Ok(ControlChannelEvent::Active);
                                 }
-
-                            debug!(peer_id = ?id, "enet control stream connected, configured peer");
-                            },
-                            ControlHostEvent::Disconnected { id } => info!(id = ?id, "webrtc enet peer disconnected"),
-                            ControlHostEvent::Receive { id: _, channel_id: _, packet } => {
-                                trace!(packet = ?packet, "received packet over enet");
-                                if let Err(err)=  stream.send_raw(packet.clone()){
-                                    warn!(error = %err, packet = ?packet, "failed to relay packet from client to host");
+                            }
+                            ControlHostEvent::Disconnected { .. } => {
+                                if host.configured_peers().count() < 1 {
+                                    return Ok(ControlChannelEvent::Inactive);
                                 }
+                            }
+                            ControlHostEvent::Receive { packet, .. } => {
+                                return Ok(ControlChannelEvent::Packet(packet));
                             }
                         }
                     }
 
-                    // Send data
-                    while let Some ((_, packet)) =control_host.pending_send() {
-                        let _ = control.send(&Bytes::copy_from_slice(packet)).await;
-                        control_host.consume_send();
+                    // Timeout
+                    let timeout = host
+                        .poll_timeout()
+                        .map(|timeout| {
+                            Either::Left(sleep_until(timeout.to_std(base_time.into_std()).into()))
+                        })
+                        .unwrap_or(Either::Right(pending::<()>()));
+
+                    // Sending
+                    while let Some((_, transmit)) = host.pending_send() {
+                        send_queue.push_back(Bytes::copy_from_slice(transmit));
+                        host.consume_send();
                     }
 
-                    // Get timeout
-                    control_host.poll_timeout()
-                };
+                    let send_future = if let Some(transmit) = send_queue.front()
+                        && matches!(self.channel.ready_state(), RTCDataChannelState::Open)
+                    {
+                        // This send function implementation seems cancel safe
+                        Either::Left(self.channel.send(transmit))
+                    } else {
+                        Either::Right(pending::<_>())
+                    };
 
-                select! {
-                    _ = sleep_until(timeout.expect("timeout").to_std(base_time).into()), if timeout.is_some() => {}
-                    _ = poll_notify.notified() => {}
-                }
+                    // Wait for event
+                    select! {
+                        // Try send
+                        result = send_future => {
+                            send_queue.pop_front();
 
-                let timeout = Instant::from_std(base_time);
+                            if let Err(err) = result {
+                                warn!(error = %err, "failed to send packet on data channel");
+                            }
+                        }
+                        // Try receive
+                        result = self.on_receive.recv() => {
+                            let Some(packet) = result else {
+                                return Ok(ControlChannelEvent::Inactive);
+                            };
 
-                {
-                    let mut control_host = control_host.lock().await;
-
-                    if let Err(err)= control_host.handle_timeout(timeout) {
-                        error!(error = %err, "error whilst handling timeout in webrtc control stream over enet, stopping stream");
-                        stream.stop();
-                        return;
+                            let now = Instant::from_std(StdInstant::now().into_std());
+                            host.handle_receive(now, SocketAddr::new(Ipv4Addr::new(192, 168, 178, 1).into(), DEFAULT_CONTROL_PORT), &packet).map_err(MoonlightStreamError::from)?;
+                        }
+                        _ = timeout =>  {
+                            let now = Instant::from_std(StdInstant::now().into_std());
+                            host.handle_timeout(now).map_err(MoonlightStreamError::from)?;
+                        }
                     }
                 }
             }
-        }.instrument(debug_span!("relay: enet driver"))
-    });
-
-    Ok(())
+        }
+    }
 }

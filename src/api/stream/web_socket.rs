@@ -14,7 +14,7 @@ use crate::api::{
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
 use bytes::Bytes;
-use futures::{StreamExt, stream::FuturesOrdered};
+use futures::{StreamExt, stream::FuturesUnordered};
 use moonlight_common::{
     AppId,
     crypto::rustcrypto::RustCryptoBackend,
@@ -223,7 +223,7 @@ async fn handle_ws(
     // Define variables for main loop
     let mut relay_stats_ticker = pin!(interval(Duration::from_secs(1)));
 
-    let mut ws_outgoing = FuturesOrdered::<Pin<Box<dyn Future<Output = bool>>>>::new();
+    let mut ws_outgoing = FuturesUnordered::<Pin<Box<dyn Future<Output = bool>>>>::new();
     let mut ws_stopped = false;
 
     // send response
@@ -370,13 +370,13 @@ async fn handle_ws(
 }
 
 fn send_ws_binary(
-    futures: &mut FuturesOrdered<Pin<Box<dyn Future<Output = bool>>>>,
+    futures: &mut FuturesUnordered<Pin<Box<dyn Future<Output = bool>>>>,
     ws_sender: &Session,
     bytes: Bytes,
 ) {
     let mut ws_sender = ws_sender.clone();
 
-    futures.push_back(Box::pin(async move {
+    futures.push(Box::pin(async move {
         if let Err(_) = ws_sender.binary(bytes).await {
             return false;
         }
@@ -386,13 +386,13 @@ fn send_ws_binary(
 }
 
 fn send_ws_message(
-    futures: &mut FuturesOrdered<Pin<Box<dyn Future<Output = bool>>>>,
+    futures: &mut FuturesUnordered<Pin<Box<dyn Future<Output = bool>>>>,
     ws_sender: &Session,
     message: WebSocketClientboundMessage,
 ) {
     let mut ws_sender = ws_sender.clone();
 
-    futures.push_back(Box::pin(async move {
+    futures.push(Box::pin(async move {
         trace!(message = ?message, "sending text message to client");
 
         let text = match serde_json::to_string(&message) {

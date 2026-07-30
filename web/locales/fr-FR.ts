@@ -41,6 +41,7 @@ export const frFr: Translations = {
     settings: {
         sidebar: "Barre latérale",
         sidebarEdge: "Bord de la barre latérale",
+        hideSidebarButton: "Masquer le bouton de la barre latérale (visible au survol)",
         left: "Gauche",
         right: "Droite",
         up: "Haut",

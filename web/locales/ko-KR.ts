@@ -41,6 +41,7 @@ export const koKR: Translations = {
     settings: {
         sidebar: "사이드바",
         sidebarEdge: "사이드바 위치",
+        hideSidebarButton: "사이드바 버튼 숨기기 (마우스를 올리면 표시)",
         left: "왼쪽",
         right: "오른쪽",
         up: "위",

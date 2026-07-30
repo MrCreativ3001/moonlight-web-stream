@@ -39,6 +39,7 @@ export const en = {
     settings: {
         sidebar: "Sidebar",
         sidebarEdge: "Sidebar Edge",
+        hideSidebarButton: "Hide Sidebar Button (reveal on hover)",
         left: "Left",
         right: "Right",
         up: "Up",

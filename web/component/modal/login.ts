@@ -8,6 +8,11 @@ export type UserAuth = {
     password: string
 }
 
+export type OidcLogin = {
+    displayLabel: string,
+    loginUrl: string,
+}
+
 export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
 
     private text: HTMLElement = document.createElement("h3")
@@ -15,12 +20,15 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
     private name: InputComponent
     private password: InputComponent
     private passwordFile: InputComponent
+    private oidcLogin?: OidcLogin
+    private oidcButton: HTMLButtonElement = document.createElement("button")
 
-    constructor() {
+    constructor(oidcLogin?: OidcLogin) {
         super()
         const i = getTranslations(getCurrentLanguage()).modal
 
         this.text.innerText = i.login
+        this.oidcLogin = oidcLogin
 
         this.name = new InputComponent("ml-api-name", "text", i.username, {
             formRequired: true
@@ -32,6 +40,19 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
 
         this.passwordFile = new InputComponent("ml-api-password-file", "file", i.passwordAsFile, { accept: ".txt" })
         this.passwordFile.addChangeListener(this.setFilePassword.bind(this))
+
+        this.oidcButton.type = "button"
+        this.oidcButton.innerText = oidcLogin ? `Sign in with ${oidcLogin.displayLabel}` : ""
+        this.oidcButton.addEventListener("click", () => {
+            if (!this.oidcLogin) {
+                return
+            }
+
+            const returnTo = `${window.location.pathname}${window.location.search}`
+            const loginUrl = new URL(this.oidcLogin.loginUrl, window.location.origin)
+            loginUrl.searchParams.set("return_to", returnTo)
+            window.location.assign(loginUrl.toString())
+        })
     }
 
     private async setFilePassword(event: ComponentEvent<InputComponent>) {
@@ -92,5 +113,9 @@ export class ApiUserPasswordPrompt extends FormModal<UserAuth> {
 
         this.password.mount(form)
         this.passwordFile.mount(form)
+
+        if (this.oidcLogin) {
+            form.appendChild(this.oidcButton)
+        }
     }
 }

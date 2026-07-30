@@ -88,7 +88,7 @@ default-run = "web-server"
 moonlight-common = { workspace = true }
 common = { workspace = true }
 
-tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "fs", "sync", "macros"] }
 futures-concurrency = "7.7.1"
 
 clap = { workspace = true, features = ["derive", "env"] }
@@ -116,6 +116,9 @@ thiserror.workspace = true
 async-trait.workspace = true
 hex.workspace = true
 sha2 = "0.10.9"
+base64 = "0.22.1"
+url = "2.5.7"
+openidconnect = "4.0.1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }

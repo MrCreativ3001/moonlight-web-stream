@@ -189,6 +189,7 @@ fn migrate_v2_to_v3(old: V2) -> V3 {
                             RoleType::Admin => ADMIN_ID,
                             RoleType::User => USER_ID,
                         },
+                        oidc_identity: None,
                     },
                 )
             })
@@ -216,6 +217,14 @@ pub struct V3User {
     pub name: String,
     pub password: Option<V2UserPassword>,
     pub client_unique_id: String,
+    #[serde(default)]
+    pub oidc_identity: Option<V3OidcIdentity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct V3OidcIdentity {
+    pub issuer: String,
+    pub subject: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

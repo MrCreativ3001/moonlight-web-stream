@@ -30,12 +30,12 @@ use crate::app::{
     role::RoleId,
     storage::{
         Either, Storage, StorageHost, StorageHostAdd, StorageHostCache, StorageHostModify,
-        StorageHostPairInfo, StorageQueryHosts, StorageRole, StorageRoleAdd,
+        StorageHostPairInfo, StorageOidcIdentity, StorageQueryHosts, StorageRole, StorageRoleAdd,
         StorageRoleDefaultSettings, StorageRoleModify, StorageRolePermissions, StorageUser,
         StorageUserAdd, StorageUserModify,
         json::versions::{
-            Json, V2, V2Host, V2HostCache, V2HostPairInfo, V2UserPassword, V3, V3Role,
-            V3RolePermissions, V3RoleType, V3User, migrate_to_latest,
+            Json, V2, V2Host, V2HostCache, V2HostPairInfo, V2UserPassword, V3, V3OidcIdentity,
+            V3Role, V3RolePermissions, V3RoleType, V3User, migrate_to_latest,
         },
     },
     user::{RoleType, UserId},
@@ -296,6 +296,13 @@ fn user_from_json(user_id: UserId, user: &V3User) -> StorageUser {
         }),
         role_id: RoleId(user.role_id),
         client_unique_id: user.client_unique_id.clone(),
+        oidc_identity: user
+            .oidc_identity
+            .as_ref()
+            .map(|identity| StorageOidcIdentity {
+                issuer: identity.issuer.clone(),
+                subject: identity.subject.clone(),
+            }),
     }
 }
 
@@ -488,19 +495,32 @@ impl Storage for JsonStorage {
                 iterations: password.iterations,
             }),
             client_unique_id: user.client_unique_id,
+            oidc_identity: user.oidc_identity.map(|identity| V3OidcIdentity {
+                issuer: identity.issuer,
+                subject: identity.subject,
+            }),
         };
 
-        {
-            match self.get_user_by_name(&user.name).await {
-                Err(AppError::UserNotFound) => {
-                    // Fallthrough
-                }
-                Ok(_) => return Err(AppError::UserAlreadyExists),
-                Err(err) => return Err(err),
+        let mut users = self.users.write().await;
+
+        // Enforce username and OIDC identity uniqueness while holding the users
+        // write lock so concurrent provisioning cannot pass a check-then-insert race.
+        for existing in users.values() {
+            let existing = existing.read().await;
+            let duplicate_name = existing.name == user.name;
+            let duplicate_oidc_identity = user.oidc_identity.as_ref().is_some_and(|identity| {
+                existing
+                    .oidc_identity
+                    .as_ref()
+                    .is_some_and(|existing_identity| {
+                        existing_identity.issuer == identity.issuer
+                            && existing_identity.subject == identity.subject
+                    })
+            });
+            if duplicate_name || duplicate_oidc_identity {
+                return Err(AppError::UserAlreadyExists);
             }
         }
-
-        let mut users = self.users.write().await;
 
         let mut id;
         loop {
@@ -526,6 +546,10 @@ impl Storage for JsonStorage {
             }),
             role_id: RoleId(user.role_id),
             client_unique_id: user.client_unique_id,
+            oidc_identity: user.oidc_identity.map(|identity| StorageOidcIdentity {
+                issuer: identity.issuer,
+                subject: identity.subject,
+            }),
         })
     }
     async fn modify_user(
@@ -550,6 +574,12 @@ impl Storage for JsonStorage {
         }
         if let Some(client_unique_id) = modify.client_unique_id {
             user.client_unique_id = client_unique_id;
+        }
+        if let Some(oidc_identity) = modify.oidc_identity {
+            user.oidc_identity = oidc_identity.map(|identity| V3OidcIdentity {
+                issuer: identity.issuer,
+                subject: identity.subject,
+            });
         }
 
         drop(user);
@@ -578,6 +608,31 @@ impl Storage for JsonStorage {
 
             let user_id = UserId(*user_id);
             let user = (user.name == name).then(|| user_from_json(user_id, &user));
+
+            (user_id, user)
+        }))
+        .await;
+
+        let user = results.into_iter().find(|(_, user)| user.is_some());
+
+        user.ok_or(AppError::UserNotFound)
+    }
+    async fn get_user_by_oidc_identity(
+        &self,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<(UserId, Option<StorageUser>), AppError> {
+        let users = self.users.read().await;
+
+        let results = join_all(users.iter().map(|(user_id, user)| async move {
+            let user = user.read().await;
+
+            let user_id = UserId(*user_id);
+            let user = user
+                .oidc_identity
+                .as_ref()
+                .is_some_and(|identity| identity.issuer == issuer && identity.subject == subject)
+                .then(|| user_from_json(user_id, &user));
 
             (user_id, user)
         }))

@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole } from "./api_bindings.js";
+import { App, AuthMetadataResponse, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole } from "./api_bindings.js";
 import { showNotification } from "./component/notification.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
@@ -52,7 +52,11 @@ export async function tryLogin(): Promise<Api | null> {
 
     let api = { host_url, bearer: null, user: null, role: null }
 
-    const prompt = new ApiUserPasswordPrompt()
+    const metadata = await apiAuthMetadata(api)
+    const prompt = new ApiUserPasswordPrompt(metadata?.oidc ? {
+        displayLabel: metadata.oidc.display_label,
+        loginUrl: metadata.oidc.login_url,
+    } : undefined)
     const userAuth = await showModal(prompt)
 
     if (userAuth == null) {
@@ -177,11 +181,10 @@ class StreamedJsonResponse<Initial, Other> {
 
             this.bufferedText += this.decoder.decode(value)
 
-            const split = this.bufferedText.split("\n", 2)
-            if (split.length == 2) {
-                this.bufferedText = split[1]
-
-                const text = split[0]
+            const newlineIndex = this.bufferedText.indexOf("\n")
+            if (newlineIndex >= 0) {
+                const text = this.bufferedText.slice(0, newlineIndex)
+                this.bufferedText = this.bufferedText.slice(newlineIndex + 1)
                 const json = JSON.parse(text)
 
                 return json
@@ -256,6 +259,17 @@ export async function apiLogin(api: Api, request: PostLoginRequest): Promise<boo
     }
 
     return true
+}
+
+export async function apiAuthMetadata(api: Api): Promise<AuthMetadataResponse | null> {
+    try {
+        return await fetchApi(api, "/auth/metadata", GET) as AuthMetadataResponse
+    } catch (e) {
+        if (e instanceof FetchError) {
+            return null
+        }
+        throw e
+    }
 }
 
 export async function apiLogout(api: Api): Promise<boolean> {

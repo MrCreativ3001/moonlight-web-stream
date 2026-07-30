@@ -63,6 +63,7 @@ pub async fn add_user(
                 password: Some(StoragePassword::new(&request.password)?),
                 role_id: RoleId(request.role_id),
                 client_unique_id: request.client_unique_id,
+                oidc_identity: None,
             },
         )
         .await?;
@@ -97,6 +98,7 @@ pub async fn patch_user(
                         password: new_password.map(Some),
                         role_id: request.role_id.map(RoleId),
                         client_unique_id: request.client_unique_id,
+                        oidc_identity: None,
                     },
                 )
                 .await?;

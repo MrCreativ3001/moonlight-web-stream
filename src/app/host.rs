@@ -378,6 +378,8 @@ impl Host {
             return Err(AppError::HostPaired);
         }
 
+        let device_name = app.config.moonlight.pair_device_name.clone();
+
         let modify = self
             .use_client(&app, user, async |this, host| {
                 let (client_identifier, client_secret) = OpenSSLCryptoBackend
@@ -390,7 +392,7 @@ impl Host {
                 host.pair(
                     &client_identifier,
                     &client_secret,
-                    "roth".to_string(),
+                    device_name,
                     pin,
                     OpenSSLCryptoBackend,
                 )

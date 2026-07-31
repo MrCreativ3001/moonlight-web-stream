@@ -302,11 +302,11 @@ impl ControlChannel {
                                 return Ok(ControlChannelEvent::Inactive);
                             };
 
-                            let now = Instant::from_std(StdInstant::now().into_std());
+                            let now = Instant::from_std(base_time.into_std());
                             host.handle_receive(now, SocketAddr::new(Ipv4Addr::new(192, 168, 178, 1).into(), DEFAULT_CONTROL_PORT), &packet).map_err(MoonlightStreamError::from)?;
                         }
                         _ = timeout =>  {
-                            let now = Instant::from_std(StdInstant::now().into_std());
+                            let now = Instant::from_std(base_time.into_std());
                             host.handle_timeout(now).map_err(MoonlightStreamError::from)?;
                         }
                         // Wake up on channel open

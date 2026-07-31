@@ -282,7 +282,7 @@ pub async fn webrtc_post(
     let mut video_channel = VideoChannel::new(&offer_sdp)?;
 
     // Create media engine
-    let mut media_engine = create_media_engine(&video_channel.supported_video_formats());
+    let mut media_engine = create_media_engine(video_channel.supported_video_formats());
 
     let ice_servers = generate_ice_servers(&app).await?;
 
@@ -405,7 +405,7 @@ pub async fn webrtc_post(
         )
         .await?;
 
-    let mut moonlight_stream = match MoonlightStream::connect(
+    let moonlight_stream = match MoonlightStream::connect(
         config,
         settings,
         Arc::new(RustCryptoBackend),
@@ -421,13 +421,13 @@ pub async fn webrtc_post(
     };
 
     // Add audio and video track forwarding
-    let mut audio_channel = match AudioChannel::new_track(&moonlight_stream, &peer).await {
+    let audio_channel = match AudioChannel::new_track(&moonlight_stream, &peer).await {
         Ok(value) => value,
         Err(err) => {
             error!(error = %err, "failed to add audio track to webrtc peer");
 
             peer.close().await?;
-            return Err(err.into());
+            return Err(err);
         }
     };
     if let Err(err) = video_channel
@@ -444,11 +444,11 @@ pub async fn webrtc_post(
 
     // -- Create control channel based on support
     let result = if session.control_enet {
-        ControlChannel::new_simple(&peer).await
-    } else {
         ControlChannel::new_enet(&peer).await
+    } else {
+        ControlChannel::new_simple(&peer).await
     };
-    let mut control_channel = match result {
+    let control_channel = match result {
         Err(err) => {
             error!("failed to add control stream to webrtc peer");
 

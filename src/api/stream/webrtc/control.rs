@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::oneshot;
 use tokio::time::{Instant as StdInstant, sleep_until};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::{
     data_channel::{
@@ -87,6 +87,8 @@ impl ControlChannel {
         }
     }
     pub async fn new_simple(peer: &RTCPeerConnection) -> Result<Self, AppError> {
+        info!("using simple control stream");
+
         let channel = peer.create_data_channel("moonlight.control", None).await?;
 
         Ok(Self::new(
@@ -99,6 +101,8 @@ impl ControlChannel {
         ))
     }
     pub async fn new_enet(peer: &RTCPeerConnection) -> Result<Self, AppError> {
+        info!("using control stream over enet");
+
         let channel = peer
             .create_data_channel(
                 "moonlight.control",
@@ -235,7 +239,7 @@ impl ControlChannel {
                                 if let Err(err) = host.configure_peer(
                                     id,
                                     ControlPeerConfig {
-                                        role: ControlPeerRole::Client,
+                                        role: ControlPeerRole::Server,
                                         encryption: None,
                                         packets: create_control_packet_config(),
                                     },

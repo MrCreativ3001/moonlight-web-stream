@@ -46,9 +46,7 @@ pub enum VideoChannelEvent {
 }
 
 enum State {
-    SelectVideoFormat {
-        video_formats: HashMap<VideoFormat, RTCRtpCodecParameters>,
-    },
+    SelectVideoFormat,
     Panic,
     Sending {
         rtcp_buffer: Vec<u8>,
@@ -58,16 +56,22 @@ enum State {
 }
 
 pub struct VideoChannel {
+    video_formats: HashMap<VideoFormat, RTCRtpCodecParameters>,
     state: State,
 }
 
 impl VideoChannel {
-    pub fn new(sdp: Session) -> Result<Self, AppError> {
-        let video_formats = get_video_formats(&sdp);
+    pub fn new(sdp: &Session) -> Result<Self, AppError> {
+        let video_formats_mapping = get_video_formats(sdp);
 
         Ok(Self {
-            state: State::SelectVideoFormat { video_formats },
+            video_formats: video_formats_mapping,
+            state: State::SelectVideoFormat,
         })
+    }
+
+    pub fn supported_video_formats(&self) -> &HashMap<VideoFormat, RTCRtpCodecParameters> {
+        &self.video_formats
     }
 
     pub async fn on_video_format_selected(
@@ -78,13 +82,9 @@ impl VideoChannel {
         let mut new_state = State::Panic;
         swap(&mut new_state, &mut self.state);
 
-        let State::SelectVideoFormat { mut video_formats } = new_state else {
-            panic!("VideoChannel in an invalid state");
-        };
-
         // Check video format
         let format = setup.format;
-        let Some(codec) = video_formats.remove(&format) else {
+        let Some(codec) = self.video_formats.remove(&format) else {
             return Err(AppError::WebRtcClientCodecNotSupported);
         };
 
@@ -181,11 +181,11 @@ impl VideoChannel {
 
     pub fn on_frame(&mut self, frame: OwnedVideoFrame) {
         match &mut self.state {
-            State::SelectVideoFormat { .. } | State::Panic => {
+            State::SelectVideoFormat | State::Panic => {
                 panic!("VideoChannel is in an invalid state")
             }
             State::Sending { frame_sender, .. } => {
-                frame_sender.send(frame);
+                let _ = frame_sender.send(frame);
             }
         }
     }
@@ -226,7 +226,7 @@ impl VideoChannel {
     }
 }
 
-pub fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameters> {
+fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameters> {
     let mut formats = HashMap::default();
 
     // -- Find and extract codec and sdp fmtp line

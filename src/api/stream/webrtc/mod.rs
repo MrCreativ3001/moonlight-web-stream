@@ -1,4 +1,6 @@
-use crate::api::stream::webrtc::audio::add_audio_track;
+use crate::api::stream::webrtc::audio::AudioChannel;
+use crate::api::stream::webrtc::control::{ControlChannel, ControlChannelEvent};
+use crate::api::stream::webrtc::video::{VideoChannel, VideoChannelEvent};
 use crate::config::PortRange;
 use actix_web::HttpRequest;
 use actix_web::body::{BoxBody, MessageBody};
@@ -9,12 +11,16 @@ use actix_web::{
     HttpResponse, HttpResponseBuilder, delete, get, http::StatusCode, http::header, options, patch,
     post,
 };
+use moonlight_common::AppId;
 use moonlight_common::crypto::rustcrypto::RustCryptoBackend;
 use moonlight_common::stream::audio::AudioConfig;
 use moonlight_common::stream::control::ActiveGamepads;
 use moonlight_common::stream::proto::MoonlightStreamSetup;
+use moonlight_common::stream::proto::audio::AudioStreamEvent;
+use moonlight_common::stream::proto::control::ControlStreamEvent;
 use moonlight_common::stream::proto::control::packet::ControlPacket;
-use moonlight_common::stream::tokio::MoonlightStream;
+use moonlight_common::stream::proto::video::VideoStreamEvent;
+use moonlight_common::stream::tokio::{MoonlightStream, MoonlightStreamEvent};
 use moonlight_common::stream::video::{
     ColorRange, ColorSpace, VideoCapabilities, VideoFormat, VideoFormats,
 };
@@ -49,10 +55,8 @@ use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RTPCodecType,
 };
 
-use crate::api::stream::webrtc::control::{add_enet_control_channel, add_simple_control_channel};
 use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
-use crate::api::stream::webrtc::video::{add_video_track, get_video_formats};
 use crate::api::stream::{apply_role_restrictions, create_control_packet_config};
 use crate::app::App;
 use crate::app::host::HostId;
@@ -235,6 +239,9 @@ pub async fn webrtc_post(
         return Err(AppError::HostNotPaired);
     }
 
+    // Get app
+    let app_id = AppId(session.app_id);
+
     // Create offer based on the sdp
     let offer = RTCSessionDescription::offer(session_description)?;
 
@@ -269,11 +276,11 @@ pub async fn webrtc_post(
 
     setting_engine.set_include_loopback_candidate(app.config().webrtc.include_loopback_candidates);
 
-    // Get video codecs
-    let video_codecs = get_video_formats(&offer_sdp);
+    // Create video
+    let mut video_channel = VideoChannel::new(&offer_sdp)?;
 
     // Create media engine
-    let mut media_engine = create_media_engine(&video_codecs);
+    let mut media_engine = create_media_engine(&video_channel.supported_video_formats());
 
     let ice_servers = generate_ice_servers(&app).await?;
 
@@ -307,17 +314,19 @@ pub async fn webrtc_post(
 
     info!("querying client for supported video and audio codecs");
 
+    // Video Formats
+    let supported_video_formats = video_channel
+        .supported_video_formats()
+        .keys()
+        .fold(VideoFormats::empty(), |formats, format| {
+            formats | format.into_formats()
+        });
+
     // TODO: query microphone support
     let microphone_enabled = false;
 
     // TODO: query audio support
     let audio_config = Some(AudioConfig::STEREO);
-
-    let supported_video_formats = video_codecs
-        .iter()
-        .fold(VideoFormats::empty(), |formats, (format, _)| {
-            formats | format.into_formats()
-        });
 
     debug!(
         supported_video_formats = %supported_video_formats,
@@ -377,17 +386,15 @@ pub async fn webrtc_post(
     // Start moonlight stream
     info!(settings = ?settings, "starting stream");
 
-    let (clientbound_control_sender, clientbound_control_receiver) = channel(50);
-
     let apps = host.app_list().await?;
     let app_title = apps
         .into_iter()
-        .find(|app| app.id == session.app_id)
+        .find(|app| app.id == app_id)
         .map(|app| app.title);
 
     let config = host
         .start_stream(
-            session.app_id,
+            app_id,
             &settings,
             aes_key,
             aes_iv,
@@ -396,7 +403,7 @@ pub async fn webrtc_post(
         )
         .await?;
 
-    let moonlight_stream = match MoonlightStream::connect(
+    let mut moonlight_stream = match MoonlightStream::connect(
         config,
         settings,
         Arc::new(RustCryptoBackend),
@@ -412,97 +419,42 @@ pub async fn webrtc_post(
     };
 
     // Add audio and video track forwarding
-    if let Err(err) = add_audio_track(&peer, &moonlight_stream).await {
-        error!(error = %err, "failed to add audio track to webrtc peer");
+    let mut audio_channel = match AudioChannel::new_track(&moonlight_stream, &peer).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!(error = %err, "failed to add audio track to webrtc peer");
 
-        peer.close().await?;
-        return Err(err.into());
-    }
-    if let Err(err) = add_video_track(&peer, &moonlight_stream, video_codecs).await {
+            peer.close().await?;
+            return Err(err.into());
+        }
+    };
+    if let Err(err) = video_channel
+        .on_video_format_selected(moonlight_stream.video_setup(), &peer)
+        .await
+    {
         error!(error = %err, "failed to add video track to webrtc peer");
 
         peer.close().await?;
         return Err(err);
-    };
+    }
 
     info!("started moonlight stream");
 
     // -- Create control channel based on support
-    let control_config = create_control_packet_config();
-
     let result = if session.control_enet {
-        add_enet_control_channel(
-            &peer,
-            moonlight_stream.clone(),
-            clientbound_control_receiver,
-            &control_config,
-        )
-        .await
+        ControlChannel::new_simple(&peer).await
     } else {
-        add_simple_control_channel(
-            &peer,
-            moonlight_stream.clone(),
-            clientbound_control_receiver,
-            &control_config,
-        )
-        .await
+        ControlChannel::new_enet(&peer).await
     };
-    if let Err(err) = result {
-        error!("failed to add control stream to webrtc peer");
+    let mut control_channel = match result {
+        Err(err) => {
+            error!("failed to add control stream to webrtc peer");
 
-        peer.close().await?;
-        return Err(err);
-    }
-
-    // forward packets
-    spawn({
-        let stream = moonlight_stream.clone();
-
-        async move {
-            while let Ok(packet) = stream.poll_packet().await {
-                if let ControlPacket::HdrMode {
-                    enabled: _,
-                    sunshine: _,
-                } = &packet
-                {
-                    // TODO: use the color space(hdr) extension, this seems to only be used on keyframes -> request one https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/color-space
-                }
-
-                if let Err(err) = clientbound_control_sender.send(packet).await {
-                    warn!(error = %err, packet = ?err.0, "failed to relay control packet to client");
-                }
-            }
+            peer.close().await?;
+            return Err(err);
         }
-    });
-
-    // -- Register webrtc peer listeners
-    peer.on_peer_connection_state_change(Box::new({
-        let peer = peer.clone();
-        let moonlight_stream = moonlight_stream.clone();
-
-        move |state: RTCPeerConnectionState| {
-            let peer = peer.clone();
-            let moonlight_stream = moonlight_stream.clone();
-
-            Box::pin(async move {
-                if matches!(
-                    state,
-                    RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
-                ) {
-                    info!("stopping stream because the webrtc peer state is failed");
-
-                    moonlight_stream.stop();
-                }
-                if matches!(state, RTCPeerConnectionState::Failed) {
-                    info!("closing webrtc peer because the peer connection state is failed");
-
-                    if let Err(err) = peer.close().await {
-                        warn!(error = %err, "failed to close webrtc peer");
-                    }
-                }
-            })
-        }
-    }));
+        Ok(value) => value,
+    };
 
     // Set remote description
     if let Err(err) = peer.set_remote_description(offer.clone()).await {
@@ -565,6 +517,81 @@ pub async fn webrtc_post(
     };
     let stream_id = stream.id();
     debug!(stream_id = ?stream_id, "registered stream inside of the app");
+
+    spawn({
+        let peer = peer.clone();
+        async move {
+            info!("started main webrtc loop");
+
+            loop {
+                if !moonlight_stream.is_alive() {
+                    info!("stopping stream because the moonlight stream is dead");
+                    break;
+                }
+
+                if matches!(peer.connection_state(), RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed) {
+                    let _ = moonlight_stream.disconnect();
+                }
+
+                let mut control_channel_active = false;
+
+                select! {
+                    result = moonlight_stream.drive() => {
+                        let event = result.unwrap();
+
+                        match event {
+                            MoonlightStreamEvent::Audio(AudioStreamEvent::OnFrame(frame)) => {
+                                audio_channel.on_frame(frame);
+                            }
+                            MoonlightStreamEvent::Video(VideoStreamEvent::SignalIdr) => {
+                                if let Err(err) = moonlight_stream.send_raw(ControlPacket::RequestIdr) {
+                                    warn!(error = %err, "failed to send idr");
+                                }
+                            }
+                            MoonlightStreamEvent::Video(VideoStreamEvent::OnFrame(frame)) => {
+                                video_channel.on_frame(frame);
+                            }
+                            MoonlightStreamEvent::Control(ControlStreamEvent::Packet(packet)) => {
+                                control_channel.send(packet);
+                            }
+                            _ => {}
+                        }
+                    }
+                    result = video_channel.drive() => {
+                        let event = result.unwrap();
+
+                        match event {
+                            VideoChannelEvent::SignalIdr => {
+                                if let Err(err) = moonlight_stream.send_raw(ControlPacket::RequestIdr) {
+                                    warn!(error = %err, "failed to send idr");
+                                }
+                            }
+                        }
+                    }
+                    result = control_channel.drive() => {
+                        let event = result.unwrap();
+
+                        match event {
+                            ControlChannelEvent::Active => control_channel_active = true,
+                            ControlChannelEvent::Inactive => control_channel_active = false,
+                            ControlChannelEvent::Packet(packet) => {
+                                if let Err(err) = moonlight_stream.send_raw(packet) {
+                                    warn!(error = %err, "failed to relay webrtc client packet to server");
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+
+            info!("stopped main webrtc loop, cleaning up");
+
+            if let Err(err) = peer.close().await {
+                warn!(error = %err, "failed to close webrtc peer");
+            }
+        }
+        .instrument(debug_span!("moonlight stream"))
+    });
 
     spawn({
         let peer = peer.clone();

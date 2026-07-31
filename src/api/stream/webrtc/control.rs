@@ -42,6 +42,7 @@ pub enum ControlChannelEvent {
 enum Protocol {
     Simple {
         config: ControlPacketConfig,
+        dispatched_active: bool,
         send_queue: VecDeque<Bytes>,
     },
     Enet {
@@ -74,7 +75,7 @@ impl ControlChannel {
             let send_receive = send_receive.clone();
 
             Box::pin(async move {
-                send_receive.send(message.data);
+                let _ = send_receive.send(message.data);
             })
         }));
 
@@ -91,6 +92,7 @@ impl ControlChannel {
         Ok(Self::new(
             Protocol::Simple {
                 config: create_control_packet_config(),
+                dispatched_active: false,
                 send_queue: Default::default(),
             },
             channel,
@@ -134,6 +136,7 @@ impl ControlChannel {
             Protocol::Simple {
                 config,
                 send_queue: queue,
+                ..
             } => {
                 let mut buffer = [0; ControlPacket::MAX_SIZE];
 
@@ -157,8 +160,6 @@ impl ControlChannel {
             && !self.on_receive.is_closed()
     }
 
-    /// Returns [None] if the data channel was closed
-    ///
     /// # Cancel Safety
     /// This function is cancel safe.
     /// If it is cancelled no state is lost.
@@ -170,7 +171,16 @@ impl ControlChannel {
             }
 
             match &mut self.protocol {
-                Protocol::Simple { config, send_queue } => {
+                Protocol::Simple {
+                    config,
+                    dispatched_active,
+                    send_queue,
+                } => {
+                    if !*dispatched_active {
+                        *dispatched_active = true;
+                        return Ok(ControlChannelEvent::Active);
+                    }
+
                     let send_future = if let Some(transmit) = send_queue.front()
                         && matches!(self.channel.ready_state(), RTCDataChannelState::Open)
                     {
@@ -201,6 +211,8 @@ impl ControlChannel {
                                 warn!(error = %err, "failed to send packet on data channel");
                             }
                         },
+                        // Wake up on channel open
+                        _ = &mut self.on_open => {}
                     }
                 }
                 Protocol::Enet {
@@ -212,14 +224,17 @@ impl ControlChannel {
                     while let Some(event) = host.poll_event() {
                         match event {
                             ControlHostEvent::Connected { id, .. } => {
-                                host.configure_peer(
+                                if let Err(err) = host.configure_peer(
                                     id,
                                     ControlPeerConfig {
                                         role: ControlPeerRole::Client,
                                         encryption: None,
                                         packets: create_control_packet_config(),
                                     },
-                                );
+                                ) {
+                                    warn!(error = %err, id = ?id,"failed to configure remote control peer");
+                                    continue;
+                                }
 
                                 if host.configured_peers().count() == 1 {
                                     return Ok(ControlChannelEvent::Active);
@@ -282,6 +297,8 @@ impl ControlChannel {
                             let now = Instant::from_std(StdInstant::now().into_std());
                             host.handle_timeout(now).map_err(MoonlightStreamError::from)?;
                         }
+                        // Wake up on channel open
+                        _ = &mut self.on_open => {}
                     }
                 }
             }

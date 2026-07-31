@@ -106,7 +106,7 @@ jobs:
         mv target/${{ matrix.target }}/release/web-server${{ matrix.app-suffix }} web-server${{ matrix.app-suffix }}
   
     - name: Upload build artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: moonlight-web-${{ matrix.target }}
         path: |

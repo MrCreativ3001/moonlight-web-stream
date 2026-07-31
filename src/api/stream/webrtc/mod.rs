@@ -1,7 +1,7 @@
 use crate::api::stream::webrtc::audio::AudioChannel;
-use crate::api::stream::webrtc::control::{ControlChannel, ControlChannelEvent};
+use crate::api::stream::webrtc::control::ControlChannel;
 use crate::api::stream::webrtc::stream::webrtc_loop;
-use crate::api::stream::webrtc::video::{VideoChannel, VideoChannelEvent};
+use crate::api::stream::webrtc::video::VideoChannel;
 use crate::config::PortRange;
 use actix_web::HttpRequest;
 use actix_web::body::{BoxBody, MessageBody};
@@ -17,11 +17,7 @@ use moonlight_common::crypto::rustcrypto::RustCryptoBackend;
 use moonlight_common::stream::audio::AudioConfig;
 use moonlight_common::stream::control::ActiveGamepads;
 use moonlight_common::stream::proto::MoonlightStreamSetup;
-use moonlight_common::stream::proto::audio::AudioStreamEvent;
-use moonlight_common::stream::proto::control::ControlStreamEvent;
-use moonlight_common::stream::proto::control::packet::ControlPacket;
-use moonlight_common::stream::proto::video::VideoStreamEvent;
-use moonlight_common::stream::tokio::{MoonlightStream, MoonlightStreamEvent};
+use moonlight_common::stream::tokio::MoonlightStream;
 use moonlight_common::stream::video::{
     ColorRange, ColorSpace, VideoCapabilities, VideoFormat, VideoFormats,
 };
@@ -36,7 +32,7 @@ use moonlight_common::webrtc::sdp::Session;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::{self, channel};
+use tokio::sync::mpsc::{self};
 use tokio::time::sleep;
 use tokio::{select, spawn};
 use tracing::{Instrument, debug, debug_span, error, info, instrument, warn};
@@ -56,9 +52,9 @@ use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RTPCodecType,
 };
 
+use crate::api::stream::apply_role_restrictions;
 use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
-use crate::api::stream::{apply_role_restrictions, create_control_packet_config};
 use crate::app::App;
 use crate::app::host::HostId;
 use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
@@ -520,7 +516,7 @@ pub async fn webrtc_post(
             )
             .await
             {
-                warn!(error = %err, "webrtc main loop errored, closing stream");
+                error!(error = %err, "webrtc main loop errored, closing stream");
             }
 
             info!("stopped main webrtc loop, cleaning up");

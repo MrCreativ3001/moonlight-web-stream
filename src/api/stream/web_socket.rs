@@ -243,7 +243,13 @@ async fn handle_ws(
             // drive the moonlight stream forward
             result = stream.drive() => {
                 // TODO: remove unwrap
-                let event = result.unwrap();
+                let event = match result {
+                    Err(err) => {
+                        error!(error = %err, "stream failed");
+                        break;
+                    }
+                    Ok(value) => value,
+                };
 
                 match event {
                     MoonlightStreamEvent::Audio(AudioStreamEvent::OnFrame(frame)) => {
@@ -377,7 +383,7 @@ fn send_ws_binary(
     let mut ws_sender = ws_sender.clone();
 
     futures.push(Box::pin(async move {
-        if let Err(_) = ws_sender.binary(bytes).await {
+        if ws_sender.binary(bytes).await.is_err() {
             return false;
         }
 

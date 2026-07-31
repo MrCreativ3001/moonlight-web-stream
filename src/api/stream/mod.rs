@@ -10,8 +10,11 @@ use crate::api::bindings::StreamPermissions;
 pub mod web_socket;
 pub mod webrtc;
 
+fn server_version() -> ServerVersion {
+    ServerVersion::new(7, 0, 0, 0)
+}
 fn create_control_packet_config() -> ControlPacketConfig {
-    ControlPacketConfig::new(ServerVersion::new(7, 0, 0, 0), true).expect("control packet config")
+    ControlPacketConfig::new(server_version(), true).expect("control packet config")
 }
 
 /// IMPORTANT: This doesn't handle transport restrictions!

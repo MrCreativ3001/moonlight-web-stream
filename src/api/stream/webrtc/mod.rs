@@ -1,5 +1,6 @@
 use crate::api::stream::webrtc::audio::AudioChannel;
 use crate::api::stream::webrtc::control::{ControlChannel, ControlChannelEvent};
+use crate::api::stream::webrtc::stream::webrtc_loop;
 use crate::api::stream::webrtc::video::{VideoChannel, VideoChannelEvent};
 use crate::config::PortRange;
 use actix_web::HttpRequest;
@@ -67,6 +68,7 @@ mod audio;
 mod control;
 mod convert;
 mod ice_servers;
+mod stream;
 mod video;
 
 pub async fn webrtc_middleware(
@@ -505,6 +507,31 @@ pub async fn webrtc_post(
 
     info!("ice gathering completed, sending answer to client");
 
+    spawn({
+        let peer = peer.clone();
+
+        async move {
+            if let Err(err) = webrtc_loop(
+                moonlight_stream,
+                &peer,
+                audio_channel,
+                video_channel,
+                control_channel,
+            )
+            .await
+            {
+                warn!(error = %err, "webrtc main loop errored, closing stream");
+            }
+
+            info!("stopped main webrtc loop, cleaning up");
+
+            if let Err(err) = peer.close().await {
+                warn!(error = %err, "failed to close webrtc peer");
+            }
+        }
+        .instrument(debug_span!("moonlight stream"))
+    });
+
     // Add stream to the list of streams
     let (event_sender, mut event_receiver) = mpsc::channel(20);
     let stream = match Stream::new(&app, &user, event_sender).await {
@@ -517,81 +544,6 @@ pub async fn webrtc_post(
     };
     let stream_id = stream.id();
     debug!(stream_id = ?stream_id, "registered stream inside of the app");
-
-    spawn({
-        let peer = peer.clone();
-        async move {
-            info!("started main webrtc loop");
-
-            loop {
-                if !moonlight_stream.is_alive() {
-                    info!("stopping stream because the moonlight stream is dead");
-                    break;
-                }
-
-                if matches!(peer.connection_state(), RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed) {
-                    let _ = moonlight_stream.disconnect();
-                }
-
-                let mut control_channel_active = false;
-
-                select! {
-                    result = moonlight_stream.drive() => {
-                        let event = result.unwrap();
-
-                        match event {
-                            MoonlightStreamEvent::Audio(AudioStreamEvent::OnFrame(frame)) => {
-                                audio_channel.on_frame(frame);
-                            }
-                            MoonlightStreamEvent::Video(VideoStreamEvent::SignalIdr) => {
-                                if let Err(err) = moonlight_stream.send_raw(ControlPacket::RequestIdr) {
-                                    warn!(error = %err, "failed to send idr");
-                                }
-                            }
-                            MoonlightStreamEvent::Video(VideoStreamEvent::OnFrame(frame)) => {
-                                video_channel.on_frame(frame);
-                            }
-                            MoonlightStreamEvent::Control(ControlStreamEvent::Packet(packet)) => {
-                                control_channel.send(packet);
-                            }
-                            _ => {}
-                        }
-                    }
-                    result = video_channel.drive() => {
-                        let event = result.unwrap();
-
-                        match event {
-                            VideoChannelEvent::SignalIdr => {
-                                if let Err(err) = moonlight_stream.send_raw(ControlPacket::RequestIdr) {
-                                    warn!(error = %err, "failed to send idr");
-                                }
-                            }
-                        }
-                    }
-                    result = control_channel.drive() => {
-                        let event = result.unwrap();
-
-                        match event {
-                            ControlChannelEvent::Active => control_channel_active = true,
-                            ControlChannelEvent::Inactive => control_channel_active = false,
-                            ControlChannelEvent::Packet(packet) => {
-                                if let Err(err) = moonlight_stream.send_raw(packet) {
-                                    warn!(error = %err, "failed to relay webrtc client packet to server");
-                                }
-                            },
-                        }
-                    }
-                }
-            }
-
-            info!("stopped main webrtc loop, cleaning up");
-
-            if let Err(err) = peer.close().await {
-                warn!(error = %err, "failed to close webrtc peer");
-            }
-        }
-        .instrument(debug_span!("moonlight stream"))
-    });
 
     spawn({
         let peer = peer.clone();

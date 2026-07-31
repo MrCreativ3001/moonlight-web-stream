@@ -30,7 +30,7 @@ use webrtc::{
     peer_connection::RTCPeerConnection,
 };
 
-use crate::api::stream::create_control_packet_config;
+use crate::api::stream::{create_control_packet_config, server_version};
 use crate::app::AppError;
 
 pub enum ControlChannelEvent {
@@ -151,7 +151,15 @@ impl ControlChannel {
 
                 queue.push_front(Bytes::copy_from_slice(buffer));
             }
-            _ => todo!(),
+            Protocol::Enet { host, .. } => {
+                for peer_id in host.configured_peers().collect::<Vec<_>>() {
+                    let (channel, kind) = packet.channel(server_version());
+
+                    if let Err(err) = host.send(peer_id, channel, kind, packet.clone()) {
+                        warn!(error = %err, peer_id = ?peer_id, packet = ?packet, "failed to broadcast packet to peer");
+                    }
+                }
+            }
         }
     }
 
@@ -212,7 +220,7 @@ impl ControlChannel {
                             }
                         },
                         // Wake up on channel open
-                        _ = &mut self.on_open => {}
+                        _ = &mut self.on_open, if !self.on_open.is_terminated() => {}
                     }
                 }
                 Protocol::Enet {
@@ -232,7 +240,7 @@ impl ControlChannel {
                                         packets: create_control_packet_config(),
                                     },
                                 ) {
-                                    warn!(error = %err, id = ?id,"failed to configure remote control peer");
+                                    warn!(error = %err, peer_id = ?id,"failed to configure remote control peer");
                                     continue;
                                 }
 
@@ -298,7 +306,7 @@ impl ControlChannel {
                             host.handle_timeout(now).map_err(MoonlightStreamError::from)?;
                         }
                         // Wake up on channel open
-                        _ = &mut self.on_open => {}
+                        _ = &mut self.on_open, if !self.on_open.is_terminated() => {}
                     }
                 }
             }

@@ -210,7 +210,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: moonlight-web-${{ matrix.arch }}-unknown-linux-gnu
+          name: moonlight-web-${{ matrix.arch }}-unknown-linux-musl
           path: ./docker/moonlight-web
 
       - name: Log in to Docker Hub

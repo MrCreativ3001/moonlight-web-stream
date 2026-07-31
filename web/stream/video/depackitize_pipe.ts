@@ -42,7 +42,10 @@ export class DepacketizeVideoPipe implements DataPipe {
         const frameType = this.buffer.getU8()
         const timestamp = this.buffer.getU32()
 
-        const duration = timestamp - this.lastTimestampMicroseconds
+        // The u32 timestamp wraps (~71 min of microseconds) and resets on
+        // host reconnect; a negative delta makes EncodedVideoChunk throw
+        // (duration must fit unsigned long long). Clamp to zero in that case.
+        const duration = Math.max(0, timestamp - this.lastTimestampMicroseconds)
         this.base.submitDecodeUnit({
             type: frameType == 0 ? "delta" : "key",
             data: buffer.slice(5),

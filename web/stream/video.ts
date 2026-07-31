@@ -1,99 +1,45 @@
 import { StreamSupportedVideoCodecs } from "../api_bindings.js"
+import { VideoFormats } from "../uniffi/moonlight_common_bindings.js"
 
-/// "maybe" means that we might support this codec but we can't know until we play the video
-export type VideoCodecSupportFlag = boolean | "maybe"
-
-export type VideoCodecSupport = {
-    H264: VideoCodecSupportFlag
-    H264_HIGH8_444: VideoCodecSupportFlag
-    H265: VideoCodecSupportFlag
-    H265_MAIN10: VideoCodecSupportFlag
-    H265_REXT8_444: VideoCodecSupportFlag
-    H265_REXT10_444: VideoCodecSupportFlag
-    AV1_MAIN8: VideoCodecSupportFlag
-    AV1_MAIN10: VideoCodecSupportFlag
-    AV1_HIGH8_444: VideoCodecSupportFlag
-    AV1_HIGH10_444: VideoCodecSupportFlag
-} & Record<string, VideoCodecSupportFlag>
-
-export const CAPABILITIES_CODECS: Record<keyof VideoCodecSupport, { mimeType: string, fmtpLine: Array<string> }> = {
-    // H264
-    "H264": { mimeType: "video/H264", fmtpLine: ["profile-level-id=42e01f"] },
-    "H264_HIGH8_444": { mimeType: "video/H264", fmtpLine: ["profile-level-id=640032"] },
-    // H265
-    "H265": { mimeType: "video/H265", fmtpLine: [] }, // <-- Safari H265 fmtpLine is empty (for some dumb reason)
-    "H265_MAIN10": { mimeType: "video/H265", fmtpLine: ["profile-id=2", "tier-flag=0", "tx-mode=SRST"] },
-    "H265_REXT8_444": { mimeType: "video/H265", fmtpLine: ["profile-id=4", "tier-flag=0", "tx-mode=SRST"] },
-    "H265_REXT10_444": { mimeType: "video/H265", fmtpLine: ["profile-id=5", "tier-flag=0", "tx-mode=SRST"] },
-    // Av1
-    "AV1_MAIN8": { mimeType: "video/AV1", fmtpLine: [] }, // <-- Safari AV1 fmtpLine is empty
-    "AV1_MAIN10": { mimeType: "video/AV1", fmtpLine: [] }, // <-- Safari AV1 fmtpLine is empty
-    "AV1_HIGH8_444": { mimeType: "video/AV1", fmtpLine: ["profile=1"] },
-    "AV1_HIGH10_444": { mimeType: "video/AV1", fmtpLine: ["profile=1"] },
-}
-
-export function emptyVideoCodecs(): VideoCodecSupport {
+export function emptyVideoCodecs(): VideoFormats {
     return {
-        H264: false,
-        H264_HIGH8_444: false,
-        H265: false,
-        H265_MAIN10: false,
-        H265_REXT8_444: false,
-        H265_REXT10_444: false,
-        AV1_MAIN8: false,
-        AV1_MAIN10: false,
-        AV1_HIGH8_444: false,
-        AV1_HIGH10_444: false
+        h264: false,
+        h264High8444: false,
+        h265: false,
+        h265Main10: false,
+        h265Rext8444: false,
+        h265Rext10444: false,
+        av1Main8: false,
+        av1Main10: false,
+        av1High8444: false,
+        av1High10444: false
     }
 }
 
-export function maybeVideoCodecs(): VideoCodecSupport {
+export function allVideoCodecs(): VideoFormats {
     return {
-        H264: "maybe",
-        H264_HIGH8_444: "maybe",
-        H265: "maybe",
-        H265_MAIN10: "maybe",
-        H265_REXT8_444: "maybe",
-        H265_REXT10_444: "maybe",
-        AV1_MAIN8: "maybe",
-        AV1_MAIN10: "maybe",
-        AV1_HIGH8_444: "maybe",
-        AV1_HIGH10_444: "maybe"
+        h264: true,
+        h264High8444: true,
+        h265: true,
+        h265Main10: true,
+        h265Rext8444: true,
+        h265Rext10444: true,
+        av1Main8: true,
+        av1Main10: true,
+        av1High8444: true,
+        av1High10444: true
     }
 }
 
-export function allVideoCodecs(): VideoCodecSupport {
-    return {
-        H264: true,
-        H264_HIGH8_444: true,
-        H265: true,
-        H265_MAIN10: true,
-        H265_REXT8_444: true,
-        H265_REXT10_444: true,
-        AV1_MAIN8: true,
-        AV1_MAIN10: true,
-        AV1_HIGH8_444: true,
-        AV1_HIGH10_444: true
-    }
-}
-
-export function andVideoCodecs(a: VideoCodecSupport, b: VideoCodecSupport): VideoCodecSupport {
+export function andVideoCodecs(a: VideoFormats, b: VideoFormats): VideoFormats {
     const output: any = {}
 
-    for (const codec in a) {
+    for (const codec2 in a) {
+        const codec = codec2 as keyof VideoFormats
         const supportedA = a[codec]
         const supportedB = b[codec]
 
-        let supported: VideoCodecSupportFlag = false
-        if (supportedA === true && supportedB === true) {
-            supported = true
-        } else if (
-            (supportedA === "maybe" && supportedB === "maybe") ||
-            (supportedA === "maybe" && supportedB === true) ||
-            (supportedB === "maybe" && supportedA === true)
-        ) {
-            supported = "maybe"
-        }
+        let supported = supportedA && supportedB
 
         output[codec] = supported
     }
@@ -101,8 +47,10 @@ export function andVideoCodecs(a: VideoCodecSupport, b: VideoCodecSupport): Vide
     return output
 }
 
-export function hasAnyCodec(codecs: VideoCodecSupport): boolean {
-    for (const key in codecs) {
+export function hasAnyCodec(codecs: VideoFormats): boolean {
+    for (const key2 in codecs) {
+        const key = key2 as keyof VideoFormats
+
         if (codecs[key]) {
             return true
         }
@@ -111,37 +59,37 @@ export function hasAnyCodec(codecs: VideoCodecSupport): boolean {
     return false
 }
 
-export function createSupportedVideoFormatsBits(support: VideoCodecSupport): number {
+export function createSupportedVideoFormatsBits(formats: VideoFormats): number {
     let mask = 0
 
-    if (support.H264) {
+    if (formats.h264) {
         mask |= StreamSupportedVideoCodecs.H264
     }
-    if (support.H264_HIGH8_444) {
+    if (formats.h264High8444) {
         mask |= StreamSupportedVideoCodecs.H264_HIGH8_444
     }
-    if (support.H265) {
+    if (formats.h265) {
         mask |= StreamSupportedVideoCodecs.H265
     }
-    if (support.H265_MAIN10) {
+    if (formats.h265Main10) {
         mask |= StreamSupportedVideoCodecs.H265_MAIN10
     }
-    if (support.H265_REXT8_444) {
+    if (formats.h265Rext8444) {
         mask |= StreamSupportedVideoCodecs.H265_REXT8_444
     }
-    if (support.H265_REXT10_444) {
+    if (formats.h265Rext10444) {
         mask |= StreamSupportedVideoCodecs.H265_REXT10_444
     }
-    if (support.AV1_MAIN8) {
+    if (formats.av1Main8) {
         mask |= StreamSupportedVideoCodecs.AV1_MAIN8
     }
-    if (support.AV1_MAIN10) {
+    if (formats.av1Main10) {
         mask |= StreamSupportedVideoCodecs.AV1_MAIN10
     }
-    if (support.AV1_HIGH8_444) {
+    if (formats.av1High8444) {
         mask |= StreamSupportedVideoCodecs.AV1_HIGH8_444
     }
-    if (support.AV1_HIGH10_444) {
+    if (formats.av1High10444) {
         mask |= StreamSupportedVideoCodecs.AV1_HIGH10_444
     }
 

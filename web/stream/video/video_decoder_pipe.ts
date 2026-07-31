@@ -1,37 +1,44 @@
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject } from "../../util.js";
 import { ByteBuffer } from "../buffer.js";
 import { Logger } from "../log.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
-import { emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
+import { emptyVideoCodecs, } from "../video.js";
 import { CodecStreamTranslator, H264StreamVideoTranslator, H265StreamVideoTranslator, VIDEO_DECODER_CODECS_OUT_OF_BAND } from "./annex_b_translator.js";
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
 
-export const VIDEO_DECODER_CODECS_IN_BAND: Record<keyof VideoCodecSupport, string> = {
+export const VIDEO_DECODER_CODECS_IN_BAND: Record<keyof VideoFormats, string> = {
     // avc1 = out of band config, avc3 = in band with sps, pps, idr
-    "H264": "avc3.42E01E",
-    "H264_HIGH8_444": "avc3.640032",
+    "h264": "avc3.42E01E",
+    "h264High8444": "avc3.640032",
     // hvc1 = out of band config, hev1 = in band with sps, pps, idr
-    "H265": "hev1.1.6.L93.B0",
-    "H265_MAIN10": "hev1.2.4.L120.90",
-    "H265_REXT8_444": "hev1.6.6.L93.90",
-    "H265_REXT10_444": "hev1.6.10.L120.90",
+    "h265": "hev1.1.6.L93.B0",
+    "h265Main10": "hev1.2.4.L120.90",
+    "h265Rext8444": "hev1.6.6.L93.90",
+    "h265Rext10444": "hev1.6.10.L120.90",
     // av1 doesn't have in band and out of band distinction
-    "AV1_MAIN8": "av01.0.04M.08",
-    "AV1_MAIN10": "av01.0.04M.10",
-    "AV1_HIGH8_444": "av01.0.08M.08",
-    "AV1_HIGH10_444": "av01.0.08M.10"
+    "av1Main8": "av01.0.04M.08",
+    "av1Main10": "av01.0.04M.10",
+    "av1High8444": "av01.0.08M.08",
+    "av1High10444": "av01.0.08M.10"
 }
 
-async function detectCodecs(): Promise<VideoCodecSupport> {
+async function detectCodecs(): Promise<VideoFormats> {
     if (!("isConfigSupported" in VideoDecoder)) {
-        return maybeVideoCodecs()
+        const codecs = emptyVideoCodecs()
+
+        // We're just guessing that this browser supports h264
+        codecs.h264 = true
+        return codecs
     }
 
     const codecs = emptyVideoCodecs()
     const promises = []
 
-    for (const codec in codecs) {
+    for (const codec2 in codecs) {
+        const codec = codec2 as keyof VideoFormats
+
         promises.push((async () => {
             const supportedInBand = await VideoDecoder.isConfigSupported({
                 codec: VIDEO_DECODER_CODECS_IN_BAND[codec]
@@ -46,8 +53,8 @@ async function detectCodecs(): Promise<VideoCodecSupport> {
     }
     await Promise.all(promises)
 
-    // TODO: Firefox, Safari say they can play this codec, but they can't
-    codecs.H264_HIGH8_444 = false
+    // TODO: Firefox, Safari, Chrome say they can play this codec, but they can't
+    codecs.h264High8444 = false
 
     return codecs
 }
@@ -139,17 +146,17 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         await this.trySetConfig(codec)
 
         if (!this.config) {
-            if (setup.codec == "H264" || setup.codec == "H264_HIGH8_444") {
+            if (setup.codec == "h264" || setup.codec == "h264High8444") {
                 this.translator = new H264StreamVideoTranslator(this.logger ?? undefined)
 
                 const codec = VIDEO_DECODER_CODECS_OUT_OF_BAND[setup.codec]
                 await this.trySetConfig(codec)
-            } else if (setup.codec == "H265" || setup.codec == "H265_MAIN10" || setup.codec == "H265_REXT8_444" || setup.codec == "H265_REXT10_444") {
+            } else if (setup.codec == "h265" || setup.codec == "h265Main10" || setup.codec == "h265Rext8444" || setup.codec == "h265Rext10444") {
                 this.translator = new H265StreamVideoTranslator(this.logger ?? undefined)
 
                 const codec = VIDEO_DECODER_CODECS_OUT_OF_BAND[setup.codec]
                 await this.trySetConfig(codec)
-            } else if (setup.codec == "AV1_MAIN8" || setup.codec == "AV1_MAIN10" || setup.codec == "AV1_HIGH8_444" || setup.codec == "AV1_HIGH10_444") {
+            } else if (setup.codec == "av1Main8" || setup.codec == "av1Main10" || setup.codec == "av1High8444" || setup.codec == "av1High10444") {
                 this.errored = true
                 this.logger?.debug("Av1 stream translator is not implemented currently!", { type: "fatalDescription" })
                 return

@@ -1,4 +1,5 @@
-import { LogMessageType } from "../api_bindings"
+
+export type LogMessageType = "fatal" | "ifErrorDescription" | "fatalDescription" | "recover" | "informError"
 
 export type LogMessageInfo = {
     type?: LogMessageType

@@ -1,81 +1,79 @@
-import { TransportChannelId } from "../../api_bindings.js"
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, ServerType, VideoFormats } from "../../uniffi/moonlight_common_bindings.js"
+import { AudioPlayer, AudioPlayerSetup, TrackAudioPlayer } from "../audio/index.js"
+import { StreamCapabilities } from "../index.js"
+import { DataPipe } from "../pipeline/pipes.js"
 import { StatValue } from "../stats.js"
-import { VideoCodecSupport } from "../video.js"
-
-export type TransportChannelIdKey = keyof typeof TransportChannelId
-export type TransportChannelIdValue = typeof TransportChannelId[TransportChannelIdKey]
+import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index.js"
 
 export type TransportVideoType = "videotrack" // TrackTransportChannel
     | "data" // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298
 
-
-export type TransportVideoSetup = {
-    // List containing all supported types, priority highest=0, lowest=biggest index
-    type: Array<TransportVideoType>
-}
-
 export type TransportAudioType = "audiotrack" // TrackTransportChannel
     | "data" // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L356
 
-
-export type TransportAudioSetup = {
-    // List containing all supported types, priority highest=0, lowest=biggest index
-    type: Array<TransportAudioType>
-}
-
-// TOOD: common transport channel types: e.g. reliable / unreliable, ordered usw
-export type TransportChannelOption = {
-    ordered: boolean
-    reliable: boolean
-    // default = false
-    serverCreated?: boolean
-}
 // failednoconnect => a connection failed without firstly being established
 // failed => a connection was ungracefully closed
 // disconnect => a connection was gracefully closed
 export type TransportShutdown = "failednoconnect" | "failed" | "disconnect"
 
+export type TransportOptions = {
+    appId: number,
+    width: number,
+    height: number,
+    fps: number,
+    bitrate: number,
+    hdr: boolean,
+    localAudioPlayMode: boolean,
+    /// These are the available video codecs when using data transport
+    supportedCodecs: VideoFormats,
+    preferredCodecs?: VideoFormats,
+    preferredAudio?: number,
+    hostId: number,
+}
+
+export type TransportConnectData = {
+    capabilities: StreamCapabilities,
+    videoType: TransportVideoType,
+    videoSetup: VideoRendererSetup,
+    audioType: TransportAudioType,
+    audioSetup: AudioPlayerSetup,
+    appName: string,
+}
+
 export interface Transport {
     readonly implementationName: string
 
-    getChannel(id: TransportChannelIdValue): TransportChannel
+    readonly controlStream: IControlStream
 
-    setupHostVideo(setup: TransportVideoSetup): Promise<VideoCodecSupport>
-    setupHostAudio(setup: TransportAudioSetup): Promise<void>
-
+    onconnect: ((connectData: TransportConnectData) => void) | null
     onclose: ((shutdown: TransportShutdown) => void) | null
     close(): Promise<void>
+
+    // -- Only allowed after onconnect was called
+    setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>
+    setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>
+
+    setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
+    setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
 
     getStats(): Promise<Record<string, StatValue>>
 }
 
-export type TransportChannel = VideoTrackTransportChannel | AudioTrackTransportChannel | DataTransportChannel
-interface TransportChannelBase {
-    readonly type: string
+export function generateControlPacketConfig(): ControlPacketConfig {
+    const config = controlPacketConfigNew(
+        { major: 7, minor: 0, patch: 0, sunshineIdentifier: -1, serverType: ServerType.Sunshine },
+        true
+    )
+    if (!config) {
+        throw "generated invalid packet config"
+    }
 
-    readonly canReceive: boolean
-    readonly canSend: boolean
+    return config
 }
 
-export interface TrackTransportChannel extends TransportChannelBase {
-    setTrack(track: MediaStreamTrack | null): void
+export interface IControlStream {
+    send(input: ClientInputEvent): void
+    sendRaw(packet: ControlPacket): void
 
-    addTrackListener(listener: (track: MediaStreamTrack) => void): void
-    removeTrackListener(listener: (track: MediaStreamTrack) => void): void
-}
-export interface VideoTrackTransportChannel extends TrackTransportChannel {
-    readonly type: "videotrack"
-}
-export interface AudioTrackTransportChannel extends TrackTransportChannel {
-    readonly type: "audiotrack"
-}
-
-export interface DataTransportChannel extends TransportChannelBase {
-    readonly type: "data"
-
-    addReceiveListener(listener: (data: ArrayBuffer) => void): void
-    removeReceiveListener(listener: (data: ArrayBuffer) => void): void
-
-    send(message: ArrayBuffer): void
-    estimatedBufferedBytes(): number | null
+    onreceive: ((packet: ControlPacket) => void) | null
 }

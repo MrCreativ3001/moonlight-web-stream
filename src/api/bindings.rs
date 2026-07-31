@@ -1,16 +1,17 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display};
 
 use moonlight_common::{
     ServerState,
-    stream::control::{ControllerButtons, ControllerCapabilities, KeyModifiers, MouseButton},
     stream::video::{ColorSpace, VideoFormats},
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::{api_bindings_ext::TsAny, ts_consts};
+use crate::ts_consts;
 
-const EXPORT_PATH: &str = "../../web/api_bindings.ts";
+use super::bindings_ext::TsAny;
+
+const EXPORT_PATH: &str = "../web/api_bindings.ts";
 
 #[derive(Serialize, Deserialize, Debug, TS, Clone)]
 #[ts(export, export_to = EXPORT_PATH)]
@@ -106,10 +107,10 @@ pub struct App {
     pub is_hdr_supported: bool,
 }
 
-impl From<moonlight_common::http::app_list::App> for App {
-    fn from(value: moonlight_common::http::app_list::App) -> Self {
+impl From<moonlight_common::App> for App {
+    fn from(value: moonlight_common::App) -> Self {
         Self {
-            app_id: value.id,
+            app_id: value.id.0,
             title: value.title,
             is_hdr_supported: value.is_hdr_supported,
         }
@@ -298,19 +299,6 @@ pub struct UndetailedRole {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub struct StreamSettings {
-    pub bitrate_kbps: u32,
-    pub width: u32,
-    pub height: u32,
-    pub fps: u32,
-    pub play_audio_local: bool,
-    /// This is using the [VideoFormats]
-    pub supported_codecs: u32,
-    pub hdr: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
 pub struct StreamPermissions {
     pub allow_add_hosts: bool,
     /// If [None] there's no limit
@@ -377,104 +365,6 @@ pub struct GetRolesResponse {
 }
 
 // -- Stream
-
-#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
-#[ts(export, export_to = EXPORT_PATH)]
-#[serde(rename_all = "lowercase")]
-pub enum TransportChannelMethod {
-    WebRTC,
-    WebSocket,
-}
-
-ts_consts!(
-    pub TransportChannelId(export_bindings_transport_channel_id: EXPORT_PATH) as u8:
-
-    pub const GENERAL: u8 = 0;
-    pub const STATS: u8 = 1;
-    pub const HOST_VIDEO: u8 = 2;
-    pub const HOST_AUDIO: u8 = 3;
-    pub const MOUSE_RELIABLE: u8 = 4;
-    pub const MOUSE_ABSOLUTE: u8 = 5;
-    pub const MOUSE_RELATIVE: u8 = 6;
-    pub const KEYBOARD: u8 = 7;
-    pub const TOUCH: u8 = 8;
-    pub const CONTROLLERS: u8 = 9;
-    pub const CONTROLLER0: u8 = 10;
-    pub const CONTROLLER1: u8 = 11;
-    pub const CONTROLLER2: u8 = 12;
-    pub const CONTROLLER3: u8 = 13;
-    pub const CONTROLLER4: u8 = 14;
-    pub const CONTROLLER5: u8 = 15;
-    pub const CONTROLLER6: u8 = 16;
-    pub const CONTROLLER7: u8 = 17;
-    pub const CONTROLLER8: u8 = 18;
-    pub const CONTROLLER9: u8 = 19;
-    pub const CONTROLLER10: u8 = 20;
-    pub const CONTROLLER11: u8 = 21;
-    pub const CONTROLLER12: u8 = 22;
-    pub const CONTROLLER13: u8 = 23;
-    pub const CONTROLLER14: u8 = 24;
-    pub const CONTROLLER15: u8 = 25;
-    pub const RTT: u8 = 26;
-);
-
-#[derive(Serialize, Deserialize, Debug, TS, Clone, Copy, PartialEq, Eq)]
-#[ts(export, export_to = EXPORT_PATH)]
-#[serde(rename_all = "lowercase")]
-pub enum RtcSdpType {
-    Offer,
-    Answer,
-    Pranswer,
-    Rollback,
-    Unspecified,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub struct RtcSessionDescription {
-    pub ty: RtcSdpType,
-    pub sdp: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub struct RtcIceCandidate {
-    pub candidate: String,
-    pub sdp_mid: Option<String>,
-    pub sdp_mline_index: Option<u16>,
-    pub username_fragment: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub enum StreamSignalingMessage {
-    Description(RtcSessionDescription),
-    AddIceCandidate(RtcIceCandidate),
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub enum TransportType {
-    WebRTC,
-    WebSocket,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub enum StreamClientMessage {
-    Init {
-        host_id: u32,
-        app_id: u32,
-        video_frame_queue_size: usize,
-        audio_sample_queue_size: usize,
-    },
-    WebRtc(StreamSignalingMessage),
-    SetTransport(TransportType),
-    StartStream {
-        settings: StreamSettings,
-    },
-}
-
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Default)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct RtcIceServer {
@@ -488,7 +378,7 @@ pub struct RtcIceServer {
 }
 
 impl Display for RtcIceServer {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "urls=[{}], username=\"{}\", credential=\"{}\"",
@@ -501,114 +391,63 @@ impl Display for RtcIceServer {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub struct StreamCapabilities {
-    pub touch: bool,
+pub enum StreamStatsServerboundMessage {
+    Ping(u32),
+}
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum StreamStatsClientboundMessage {
+    Pong(u32),
+    RelayRtt { rtt_ms: u32, rtt_variance_ms: u32 },
+}
+
+ts_consts!(
+    pub WebSocketChannel(export_bindings_websocket_channels: EXPORT_PATH) as u8:
+
+    pub const CONTROL: u8 = 0;
+    pub const VIDEO: u8 = 1;
+    pub const AUDIO: u8 = 2;
+);
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub enum WebSocketServerboundMessage {
+    Request(WebSocketStreamRequest),
+    Stats(StreamStatsServerboundMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-#[serde(rename_all = "camelCase")]
-#[ts(rename_all = "camelCase")]
-pub enum LogMessageType {
-    Fatal,
-    IfErrorDescription,
-    FatalDescription,
-    Recover,
-    InformError,
+pub struct WebSocketStreamRequest {
+    pub host_id: u32,
+    pub app_id: u32,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub bitrate: u32,
+    pub hdr: bool,
+    pub local_audio_play_mode: bool,
+    pub supported_codecs: u32,
+    pub preferred_codecs: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub enum StreamServerMessage {
-    Setup {
-        ice_servers: Vec<RtcIceServer>,
-    },
-    WebRtc(StreamSignalingMessage),
-    // Optional Info
-    UpdateApp {
-        app: App,
-    },
-    DebugLog {
-        message: String,
-        ty: Option<LogMessageType>,
-    },
-    ConnectionComplete {
-        capabilities: StreamCapabilities,
-        /// Use VideoSupportedCodec to figure this out
-        format: u32,
-        width: u32,
-        height: u32,
-        fps: u32,
-        audio_sample_rate: u32,
-        audio_channel_count: u32,
-        audio_streams: u32,
-        audio_coupled_streams: u32,
-        audio_samples_per_frame: u32,
-        audio_mapping: [u8; 8],
-    },
-    ConnectionTerminated {
-        error_code: i32,
-    },
+pub enum WebSocketClientboundMessage {
+    Response(WebSocketStreamResponse),
+    Stats(StreamStatsClientboundMessage),
 }
-
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
-pub enum GeneralServerMessage {
-    ConnectionStatusUpdate { status: ConnectionStatus },
-    HdrModeUpdate { enabled: bool },
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub enum GeneralClientMessage {
-    Stop,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub enum ConnectionStatus {
-    Ok,
-    Poor,
-}
-
-impl From<moonlight_common::stream::c::bindings::ConnectionStatus> for ConnectionStatus {
-    fn from(value: moonlight_common::stream::c::bindings::ConnectionStatus) -> Self {
-        use moonlight_common::stream::c::bindings::ConnectionStatus;
-        match value {
-            ConnectionStatus::Ok => Self::Ok,
-            ConnectionStatus::Poor => Self::Poor,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub struct StatsHostProcessingLatency {
-    pub min_host_processing_latency_ms: f64,
-    pub max_host_processing_latency_ms: f64,
-    pub avg_host_processing_latency_ms: f64,
-}
-
-#[derive(Serialize, Deserialize, Debug, TS)]
-#[ts(export, export_to = EXPORT_PATH)]
-pub enum StreamerStatsUpdate {
-    Rtt {
-        /// The host to the streamer
-        rtt_ms: f64,
-        /// The host to the streamer
-        rtt_variance_ms: f64,
-    },
-    Video {
-        host_processing_latency: Option<StatsHostProcessingLatency>,
-        min_streamer_processing_time_ms: f64,
-        max_streamer_processing_time_ms: f64,
-        avg_streamer_processing_time_ms: f64,
-    },
-    BrowserRtt {
-        /// The browser to the streamer
-        /// Used with ws protocol to know backlog
-        rtt_ms: f64,
-    },
+pub struct WebSocketStreamResponse {
+    pub video_codec: u32,
+    pub audio_sample_rate: u32,
+    pub audio_channel_count: u32,
+    pub audio_streams: u32,
+    pub audio_coupled_streams: u32,
+    pub audio_samples_per_frame: u32,
+    pub audio_mapping: [u8; 8],
+    pub app_name: Option<String>,
 }
 
 // Virtual-Key Codes
@@ -1068,62 +907,6 @@ ts_consts!(
     pub const VK_PA1: u16 = 0xFD;
     // Clear key
     pub const VK_OEM_CLEAR: u16 = 0xFE;
-);
-
-// Key Modifiers
-ts_consts!(
-    pub StreamKeyModifiers(export_bindings_key_modifiers: EXPORT_PATH):
-
-    pub const MASK_SHIFT: i8 = KeyModifiers::SHIFT.bits();
-    pub const MASK_CTRL: i8 = KeyModifiers::CTRL.bits();
-    pub const MASK_ALT: i8 = KeyModifiers::ALT.bits();
-    pub const MASK_META: i8 = KeyModifiers::META.bits();
-);
-
-// Mouse Buttons
-ts_consts!(
-    pub StreamMouseButton(export_bindings_mouse_buttons: EXPORT_PATH):
-
-    pub const LEFT: i32 = MouseButton::Left as i32;
-    pub const MIDDLE: i32 = MouseButton::Middle as i32;
-    pub const RIGHT: i32 = MouseButton::Right as i32;
-    pub const X1: i32 = MouseButton::X1 as i32;
-    pub const X2: i32 = MouseButton::X2 as i32;
-);
-
-// Controller Buttons
-ts_consts!(
-    pub StreamControllerButton(export_bindings_controller_buttons: EXPORT_PATH):
-
-    pub const BUTTON_A: u32       = ControllerButtons::A.bits();
-    pub const BUTTON_B: u32       = ControllerButtons::B.bits();
-    pub const BUTTON_X: u32       = ControllerButtons::X.bits();
-    pub const BUTTON_Y: u32       = ControllerButtons::Y.bits();
-    pub const BUTTON_UP: u32      = ControllerButtons::UP.bits();
-    pub const BUTTON_DOWN: u32    = ControllerButtons::DOWN.bits();
-    pub const BUTTON_LEFT: u32    = ControllerButtons::LEFT.bits();
-    pub const BUTTON_RIGHT: u32   = ControllerButtons::RIGHT.bits();
-    pub const BUTTON_LB: u32      = ControllerButtons::LB.bits();
-    pub const BUTTON_RB: u32      = ControllerButtons::RB.bits();
-    pub const BUTTON_PLAY: u32    = ControllerButtons::PLAY.bits();
-    pub const BUTTON_BACK: u32    = ControllerButtons::BACK.bits();
-    pub const BUTTON_LS_CLK: u32  = ControllerButtons::LS_CLK.bits();
-    pub const BUTTON_RS_CLK: u32  = ControllerButtons::RS_CLK.bits();
-    pub const BUTTON_SPECIAL: u32 = ControllerButtons::SPECIAL.bits();
-    pub const BUTTON_PADDLE1: u32 = ControllerButtons::PADDLE1.bits();
-    pub const BUTTON_PADDLE2: u32 = ControllerButtons::PADDLE2.bits();
-    pub const BUTTON_PADDLE3: u32 = ControllerButtons::PADDLE3.bits();
-    pub const BUTTON_PADDLE4: u32 = ControllerButtons::PADDLE4.bits();
-    pub const BUTTON_TOUCHPAD: u32 =ControllerButtons::TOUCHPAD.bits();
-    pub const BUTTON_MISC: u32     =ControllerButtons::MISC.bits();
-);
-
-// Controller Buttons
-ts_consts!(
-    pub StreamControllerCapabilities(export_bindings_controller_capabilities: EXPORT_PATH):
-
-    pub const CAPABILITY_RUMBLE: u16 = ControllerCapabilities::RUMBLE.bits();
-    pub const CAPABILITY_TRIGGER_RUMBLE: u16 = ControllerCapabilities::TRIGGER_RUMBLE.bits();
 );
 
 #[derive(Serialize, Deserialize, Debug, TS)]

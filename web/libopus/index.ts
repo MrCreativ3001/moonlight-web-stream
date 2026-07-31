@@ -104,7 +104,7 @@ export class OpusMultistreamDecoder {
      * @param decodeFec Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.
      * @returns Number of samples decoded
      */
-    decodeFloat(input: ArrayBuffer | null, output: Float32Array, frameSize: number, decodeFec: boolean): number {
+    decodeFloat(input: Uint8Array | null, output: Float32Array, frameSize: number, decodeFec: boolean): number {
         const outputSize = this.channels * frameSize * 4
         // 4 bytes per float
         if (output.byteLength < outputSize) {
@@ -115,7 +115,7 @@ export class OpusMultistreamDecoder {
 
         if (input) {
             this.inputBuffer.ensureSize(input.byteLength)
-            this.inputBuffer.writeBuffer(new Uint8Array(input))
+            this.inputBuffer.writeBuffer(input)
         }
 
         this.outputBuffer.ensureSize(outputSize)

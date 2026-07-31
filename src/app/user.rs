@@ -5,26 +5,28 @@ use std::{
     time::Duration,
 };
 
-use common::api_bindings::{self, DetailedUser};
 use moonlight_common::{
     high::MoonlightClientError,
     http::{
         ClientInfo,
-        client::{RequestError, async_client::RequestClient},
+        client::{RequestError, async_client::RequestClient as _},
         server_info::{ServerInfoEndpoint, ServerInfoRequest},
     },
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::app::{
-    AppError, AppRef, MoonlightClient,
-    auth::{SessionToken, UserAuth},
-    host::{Host, HostId},
-    password::StoragePassword,
-    role::{Role, RoleId},
-    storage::{
-        StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
+use crate::{
+    api::bindings::DetailedUser,
+    app::{
+        AppError, AppRef, RequestClient,
+        auth::{SessionToken, UserAuth},
+        host::{Host, HostId},
+        password::StoragePassword,
+        role::{Role, RoleId},
+        storage::{
+            StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
+        },
     },
 };
 
@@ -34,7 +36,7 @@ pub enum RoleType {
     Admin,
 }
 
-impl From<RoleType> for api_bindings::RoleType {
+impl From<RoleType> for crate::api::bindings::RoleType {
     fn from(value: RoleType) -> Self {
         match value {
             RoleType::User => Self::User,
@@ -43,9 +45,9 @@ impl From<RoleType> for api_bindings::RoleType {
     }
 }
 
-impl From<api_bindings::RoleType> for RoleType {
-    fn from(value: common::api_bindings::RoleType) -> Self {
-        use common::api_bindings::RoleType;
+impl From<crate::api::bindings::RoleType> for RoleType {
+    fn from(value: crate::api::bindings::RoleType) -> Self {
+        use crate::api::bindings::RoleType;
 
         match value {
             RoleType::User => Self::User,
@@ -320,7 +322,7 @@ impl AuthenticatedUser {
 
         let unique_id = self.host_unique_id().await?;
 
-        let client = MoonlightClient::with_defaults()
+        let client = RequestClient::with_defaults()
             .map_err(|err| MoonlightClientError::Backend(Box::new(err)))?;
 
         let info = match client

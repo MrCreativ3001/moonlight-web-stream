@@ -23,7 +23,6 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: nightly-2026-02-13
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
 
@@ -43,7 +42,7 @@ jobs:
       - name: Install cargo-shear
         run: cargo binstall --force --no-confirm cargo-shear
       - name: Cargo Shear
-        run: cargo shear --expand
+        run: cargo shear
   
       # Test
       - name: Test
@@ -59,9 +58,8 @@ jobs:
             app-suffix: .exe
           - target: x86_64-unknown-linux-gnu
             app-suffix: ""
-          # TODO: fix musl build by disabling SIMD in moonlight-common-c
-          #- target: x86_64-unknown-linux-musl
-          #  app-suffix: ""
+          - target: x86_64-unknown-linux-musl
+            app-suffix: ""
           - target: aarch64-unknown-linux-gnu
             app-suffix: ""
           - target: aarch64-unknown-linux-musl
@@ -78,22 +76,22 @@ jobs:
     # Install node
     - uses: actions/setup-node@v6
       with:
-        node-version: 24
+        node-version: 26
         cache: npm
   
     # Install rust
     - uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: nightly-2026-02-13
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: cross-${{ matrix.target }}
   
-    # Install cross
+    # Install cross, wasm-bindgen
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
       run: cargo binstall --force cross
+    - name: Install Wasm-Bindgen
+      run: cargo binstall --force wasm-bindgen-cli
   
     # Build
     - name: Build
@@ -104,8 +102,7 @@ jobs:
         npm run build
         mv dist static
   
-        rm -rf streamer web-server
-        mv target/${{ matrix.target }}/release/streamer${{ matrix.app-suffix }} streamer${{ matrix.app-suffix }}
+        rm -rf web-server
         mv target/${{ matrix.target }}/release/web-server${{ matrix.app-suffix }} web-server${{ matrix.app-suffix }}
   
     - name: Upload build artifact
@@ -113,7 +110,6 @@ jobs:
       with:
         name: moonlight-web-${{ matrix.target }}
         path: |
-          streamer${{ matrix.app-suffix }}
           web-server${{ matrix.app-suffix }}
           static
 

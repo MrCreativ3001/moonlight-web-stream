@@ -12,6 +12,7 @@ def create_self_signed_cert(key_path, cert_path):
 
     # create a self-signed cert
     cert = crypto.X509()
+    cert.set_version(2)
     cert.get_subject().C = "UK"
     cert.get_subject().ST = "London"
     cert.get_subject().L = "London"
@@ -23,7 +24,7 @@ def create_self_signed_cert(key_path, cert_path):
     cert.gmtime_adj_notAfter(10*365*24*60*60)
     cert.set_issuer(cert.get_subject())
     cert.set_pubkey(k)
-    cert.sign(k, 'sha1')
+    cert.sign(k, 'sha256')
 
     open(cert_path, "wb").write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
     open(key_path, "wb").write(crypto.dump_privatekey(crypto.FILETYPE_PEM, k))

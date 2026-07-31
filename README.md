@@ -22,6 +22,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
   - [Using Web Socket Transport](#using-websocket-transport)
 - [Config](#config)
 - [Migrating to v2](#migrating-to-v2)
+- [Migrating to v3](#migrating-to-v3)
 - [Contributors](#contributors)
 - [Building](#building)
 
@@ -88,15 +89,8 @@ If a direct WebRTC connection cannot be established, you have a few options:
             {
                 "urls": [
                     "stun:stun.l.google.com:19302",
-                    "stun:stun.l.google.com:5349",
                     "stun:stun1.l.google.com:3478",
-                    "stun:stun1.l.google.com:5349",
-                    "stun:stun2.l.google.com:19302",
-                    "stun:stun2.l.google.com:5349",
-                    "stun:stun3.l.google.com:3478",
-                    "stun:stun3.l.google.com:5349",
-                    "stun:stun4.l.google.com:19302",
-                    "stun:stun4.l.google.com:5349",
+                    "stun:stun.l.google.com:5349"
                 ]
             },
             {
@@ -195,9 +189,9 @@ Define MOONLIGHT_STREAMER YOUR_LOCAL_IP:YOUR_PORT
 ProxyPreserveHost on
         
 # Important: This WebSocket will help negotiate the WebRTC Peers
-<Location ${MOONLIGHT_SUBPATH}/api/host/stream>
-        ProxyPass ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream
-        ProxyPassReverse ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream
+<Location ${MOONLIGHT_SUBPATH}/api/host/stream/web_socket>
+        ProxyPass ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream/web_socket
+        ProxyPassReverse ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream/web_socket
 </Location>
 
 ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/
@@ -269,7 +263,7 @@ Most options have command line arguments or environment variables associated wit
 ./web-server help
 ```
 
-For a full list of values look into the [Rust Config module](moonlight-web/common/src/config.rs).
+For a full list of values look into the [Rust Config module](src/config.rs).
 
 ### Bind Address 
 The address and port the website will run on
@@ -332,15 +326,8 @@ A list of ice servers for webrtc to use.
             {
                 "urls": [
                     "stun:stun.l.google.com:19302",
-                    "stun:stun.l.google.com:5349",
                     "stun:stun1.l.google.com:3478",
-                    "stun:stun1.l.google.com:5349",
-                    "stun:stun2.l.google.com:19302",
-                    "stun:stun2.l.google.com:5349",
-                    "stun:stun3.l.google.com:3478",
-                    "stun:stun3.l.google.com:5349",
-                    "stun:stun4.l.google.com:19302",
-                    "stun:stun4.l.google.com:5349",
+                    "stun:stun.l.google.com:5349"
                 ]
             }
         ]
@@ -530,52 +517,59 @@ Other changes:
   - change all instances of `ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}/`<br> to `ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/`
   - [Proxying via Apache 2](https://github.com/MrCreativ3001/moonlight-web-stream/tree/v2?tab=readme-ov-file#proxying-via-apache-2)
 
+## Migrating to v3
+Changes:
+- replaced openssl by rustls
+  - This makes older v1 and v2 server certificates incompatible
+- replaced moonlight-common-c by moonlight-common-rust
+  - This could make older Nvidia GameStream and Sunshine Servers unsupported
+- moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`
+  - Change the Web Socket Endpoint when using a Reserve Proxy: See [Proxying via Apache2](#proxying-via-apache-2)
+- removed old unused `default_settings` value in the config
+
 ## Contributors
-- Thanks to [@Argon2000](https://github.com/Argon2000) for implementing a canvas renderer, which makes this run in the Tesla browser.
-- Thanks to [@Maneetbal](https://github.com/Maneetbal) for creating a new beautiful GUI.
-- Thanks to [@chromaticpipe](https://github.com/chromaticpipe) for making Github CI.
-- Thanks to [@qiin2333](https://github.com/qiin2333) for implementing HDR support.
-- Thanks to [@Idefix2020](https://github.com/Idefix2020) for fixing the context menu and implementing caching for app images
+Thanks to everyone who contributed to make this software better :).
+
+<a href = "https://github.com/Tanu-N-Prabhu/Python/graphs/contributors">
+  <img src = "https://contrib.rocks/image?repo=MrCreativ3001/moonlight-web-stream"/>
+</a>
 
 ## Building
-Make sure you've cloned this repo with all it's submodules
+Clone this repository:
 ```sh
 git clone https://github.com/MrCreativ3001/moonlight-web-stream.git
 ```
-A [Rust](https://www.rust-lang.org/tools/install) [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) installation is required.
+A [Rust](https://www.rust-lang.org/tools/install) installation is required.
 
-There are 2 ways to build Moonlight Web:
-- Build it on your system
+Moonlight Web consists the [web server binary](#building-the-web-server) and a [web frontend](#building-the-frontend):
 
-  When you want to build it on your system take a look at how to compile the web server and streamer binary:
-  - [moonlight web server](#crate-moonlight-web-server)
-  - [moonlight web streamer](#crate-moonlight-web-streamer)
-  - [moonlight common rust](https://github.com/MrCreativ3001/moonlight-common-rust/tree/master/examples#client-common-c)
-
-- Compile using [Cargo Cross](https://github.com/cross-rs/cross) (doesn't work on most targets because cross-rs images use outdated c/cpp compilers)
-
-  After you've got a successful installation of cross just run the command in the project root directory.
-  This will compile the [web server](#crate-moonlight-web-server) and the [streamer](#crate-moonlight-web-streamer).
-  ```sh
-  cross build --release --target YOUR_TARGET
-  ```
-  Note: windows only has the gnu target `x86_64-pc-windows-gnu`
-
-### Crate: Moonlight Web Server
-This is the web server for Moonlight Web found at `src/`.
-It'll spawn a multiple [streamers](#crate-moonlight-web-server) as a subprocess for handling each stream.
-
-Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
+### Building the Web Server
+Run
 ```sh
+cargo build --release
+```
+.
+
+You can use [Cargo Cross](https://github.com/cross-rs/cross) for cross compilation:
+```sh
+cross build --release --target YOUR_TARGET
+```
+Note: windows only has the gnu target `x86_64-pc-windows-gnu`
+
+### Building the Frontend
+Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
+
+To generate bindings to rust code it is using [Uniffi Bindgen React Native](https://github.com/jhugman/uniffi-bindgen-react-native).
+This has a dependency on wasm-bindgen.
+
+```sh
+cargo install wasm-bindgen-cli
 npm install
 npm run build
 ```
+
 The build output will be in `dist/`.
 
 If you're compiling in:
 - debug mode -> the folder needs to be called `dist/`
 - release mode -> the folder needs to be called `static/`
-
-### Crate: Moonlight Web Streamer
-This is the streamer subprocess of the [web server](#crate-moonlight-web-server) and found at `streamer/`.
-It'll communicate via stdin and stdout with the web server to negotiate the WebRTC peers and then continue to communicate via the peer.

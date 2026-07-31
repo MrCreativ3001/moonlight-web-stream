@@ -8,11 +8,22 @@ use actix_web::{
 use crate::api::{
     app::{get_app_image, get_apps},
     auth::auth_middleware,
-    host::{delete_host, get_host, list_hosts, pair_host, patch_host, post_host, wake_host},
+    host::{
+        cancel_host, delete_host, get_host, list_hosts, pair_host, patch_host, post_host, wake_host,
+    },
     role::{add_role, delete_role, get_role, list_roles, patch_role},
     settings::{get_default_settings, get_permissions},
+    stream::{
+        web_socket::web_socket_stream,
+        webrtc::{
+            webrtc_delete, webrtc_get, webrtc_middleware, webrtc_options, webrtc_patch, webrtc_post,
+        },
+    },
     user::{add_user, delete_user, get_user, list_users, patch_user},
 };
+
+pub mod bindings;
+pub(super) mod bindings_ext;
 
 pub mod app;
 pub mod auth;
@@ -42,6 +53,7 @@ pub fn api_service() -> impl HttpServiceFactory {
             wake_host,
             delete_host,
             pair_host,
+            cancel_host,
         ])
         .service(services![
             // -- Apps
@@ -70,8 +82,17 @@ pub fn api_service() -> impl HttpServiceFactory {
             get_permissions
         ])
         .service(services![
-            // -- Stream
-            stream::start_host,
-            stream::cancel_host,
+            // -- Web Socket Stream
+            web_socket_stream,
         ])
+        .service(
+            // -- WebRTC Stream
+            web::scope("/host/stream/webrtc")
+                .wrap(from_fn(webrtc_middleware))
+                .service(webrtc_options)
+                .service(webrtc_get)
+                .service(webrtc_post)
+                .service(webrtc_patch)
+                .service(webrtc_delete),
+        )
 }

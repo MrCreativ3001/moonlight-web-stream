@@ -1,8 +1,9 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole } from "./api_bindings.js";
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, } from "./api_bindings.js";
 import { showNotification } from "./component/notification.js";
 import { showMessage, showModal } from "./component/modal/index.js";
 import { ApiUserPasswordPrompt } from "./component/modal/login.js";
 import { buildUrl } from "./config_.js";
+import { WebRtcLinkHeader_Tags, webrtcLinkHeaderParse } from "./uniffi/moonlight_common_bindings.js";
 
 // IMPORTANT: this should be a bit bigger than the moonlight-common reqwest backend timeout if some hosts are offline!
 const API_TIMEOUT = 12000
@@ -70,6 +71,7 @@ export async function tryLogin(): Promise<Api | null> {
     }
 }
 
+const OPTIONS = "OPTIONS"
 const GET = "GET"
 const POST = "POST"
 const PATCH = "PATCH"
@@ -84,10 +86,14 @@ export type Api = {
 }
 
 export type ApiFetchInit = {
-    json?: any,
+    noUrlModify?: boolean,
     query?: any,
     noTimeout?: boolean,
-}
+} & (
+        { json?: any, }
+        | { sdp?: string }
+        | { trickleIceSdpFrag?: string }
+    )
 
 export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
     return (host as DetailedHost).https_port !== undefined
@@ -106,7 +112,12 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
     }
     const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-    const url = `${api.host_url}${endpoint}${queryString}`
+    let url
+    if (init?.noUrlModify) {
+        url = `${endpoint}${queryString}`
+    } else {
+        url = `${api.host_url}${endpoint}${queryString}`
+    }
 
     const headers: any = {
     };
@@ -115,14 +126,24 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
         headers["Authorization"] = `Bearer ${api.bearer}`;
     }
 
-    if (init?.json) {
-        headers["Content-Type"] = "application/json";
+    let body = null
+    if (init) {
+        if ("json" in init) {
+            headers["Content-Type"] = "application/json"
+            body = JSON.stringify(init.json)
+        } else if ("sdp" in init) {
+            headers["Content-Type"] = "application/sdp"
+            body = init.sdp
+        } else if ("trickleIceSdpFrag" in init) {
+            headers["Content-Type"] = "application/trickle-ice-sdpfrag"
+            body = init.trickleIceSdpFrag
+        }
     }
 
     const request: RequestInit = {
         method: method,
         headers,
-        body: init?.json && JSON.stringify(init.json),
+        body,
         credentials: "include"
     }
 
@@ -424,4 +445,81 @@ export async function apiHostCancel(api: Api, request: PostCancelRequest): Promi
     })
 
     return response as PostCancelResponse
+}
+
+export type WebRTCConfiguration = {
+    iceServers: Array<RTCIceServer>
+}
+
+export async function apiWebRTCConfiguration(api: Api): Promise<WebRTCConfiguration> {
+    const ENDPOINT = "/host/stream/webrtc"
+
+    const [url, request] = buildRequest(api, ENDPOINT, OPTIONS)
+
+    let response
+    try {
+        response = await fetch(url, request)
+    } catch (e: any) {
+        throw new FetchError("unknown", ENDPOINT, OPTIONS, e)
+    }
+
+    const iceServers: Array<RTCIceServer> = []
+
+    const rawLinks = response.headers.get("Link")
+    if (rawLinks) {
+        const links = webrtcLinkHeaderParse(rawLinks)
+        for (const link of links) {
+            if (link.tag == WebRtcLinkHeader_Tags.IceServer) {
+                iceServers.push({
+                    urls: link.inner.url,
+                    username: link.inner.username,
+                    credential: link.inner.credential,
+                })
+            }
+        }
+    }
+
+    return {
+        iceServers
+    }
+}
+
+export type WebRTCAnswer = {
+    answerSdp: string,
+    location: string | null,
+}
+
+export async function apiWebRTCOffer(api: Api, offerSdp: string): Promise<WebRTCAnswer> {
+    const ENDPOINT = "/host/stream/webrtc"
+
+    const [url, request] = buildRequest(api, ENDPOINT, POST, { sdp: offerSdp })
+
+    let response
+    try {
+        response = await fetch(url, request)
+    } catch (e: any) {
+        throw new FetchError("unknown", ENDPOINT, POST, e)
+    }
+
+    // 201 == Created
+    if (response.status != 201) {
+        // TODO
+        throw "TODO"
+    }
+
+    // Get sdp
+    const answerSdp = await response.text()
+
+    // get location, if set
+    let location = null
+    for (const [name, value] of response.headers) {
+        if (name.trim().toLowerCase() == "location") {
+            location = value
+        }
+    }
+
+    return {
+        answerSdp,
+        location,
+    }
 }

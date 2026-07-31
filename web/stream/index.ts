@@ -1,33 +1,35 @@
-import { Api } from "../api.js"
-import { App, ConnectionStatus, GeneralClientMessage, GeneralServerMessage, StreamCapabilities, StreamClientMessage, StreamPermissions, StreamServerMessage, StreamSettings, TransportChannelId } from "../api_bindings.js"
-import { showNotification } from "../component/notification.js"
+import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
-import { AudioPlayer } from "./audio/index.js"
+import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings.js"
+import { wait } from "../util.js"
+import { AudioPlayer, AudioPlayerSetup } from "./audio/index.js"
 import { buildAudioPipeline } from "./audio/pipeline.js"
-import { BIG_BUFFER, ByteBuffer } from "./buffer.js"
 import { defaultStreamInputConfig, StreamInput } from "./input.js"
 import { Logger, LogMessageInfo } from "./log.js"
 import { gatherPipeInfo } from "./pipeline/index.js"
 import { StreamStats } from "./stats.js"
-import { Transport, TransportShutdown } from "./transport/index.js"
+import { Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./transport/index.js"
 import { WebSocketTransport } from "./transport/web_socket.js"
 import { WebRTCTransport } from "./transport/webrtc.js"
-import { allVideoCodecs, andVideoCodecs, createSupportedVideoFormatsBits, emptyVideoCodecs, getSelectedVideoCodec, hasAnyCodec, VideoCodecSupport } from "./video.js"
-import { VideoRenderer } from "./video/index.js"
-import { buildVideoPipeline, VideoPipelineOptions } from "./video/pipeline.js"
+import { allVideoCodecs, andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video.js"
+import { VideoRenderer, VideoRendererSetup } from "./video/index.js"
+import { buildVideoPipeline, queryVideoPipelineInfo, VideoPipelineOptions } from "./video/pipeline.js"
+import { StreamPermissions } from "../api_bindings.js"
 
 export type ExecutionEnvironment = {
     main: boolean
     worker: boolean
 }
 
+export type StreamCapabilities = {
+    touch: boolean
+}
+
 export type InfoEvent = CustomEvent<
-    { type: "app", app: App } |
-    { type: "serverMessage", message: string } |
+    { type: "app", appName: string } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
     { type: "videoReady" } |
-    { type: "connectionStatus", status: ConnectionStatus } |
     { type: "addDebugLine", line: string, additional?: LogMessageInfo }
 >
 export type InfoEventListener = (event: InfoEvent) => void
@@ -56,28 +58,28 @@ export function getStreamerSize(settings: Settings, viewerScreenSize: [number, n
     return [width, height]
 }
 
-function getVideoCodecHint(settings: Settings): VideoCodecSupport {
+function getVideoCodecHint(settings: Settings): VideoFormats {
     let videoCodecHint = emptyVideoCodecs()
     if (settings.videoCodec == "h264") {
-        videoCodecHint.H264 = true
-        videoCodecHint.H264_HIGH8_444 = true
+        videoCodecHint.h264 = true
+        videoCodecHint.h264High8444 = true
     } else if (settings.videoCodec == "h265") {
-        videoCodecHint.H265 = true
-        videoCodecHint.H265_MAIN10 = true
-        videoCodecHint.H265_REXT8_444 = true
-        videoCodecHint.H265_REXT10_444 = true
+        videoCodecHint.h265 = true
+        videoCodecHint.h265Main10 = true
+        videoCodecHint.h265Rext8444 = true
+        videoCodecHint.h265Rext10444 = true
     } else if (settings.videoCodec == "av1") {
-        videoCodecHint.AV1_MAIN8 = true
-        videoCodecHint.AV1_MAIN10 = true
-        videoCodecHint.AV1_HIGH8_444 = true
-        videoCodecHint.AV1_HIGH10_444 = true
+        videoCodecHint.av1Main8 = true
+        videoCodecHint.av1Main10 = true
+        videoCodecHint.av1High8444 = true
+        videoCodecHint.av1High10444 = true
     } else if (settings.videoCodec == "auto") {
         videoCodecHint = allVideoCodecs()
     }
 
     if (isFirefox()) {
-        videoCodecHint.AV1_MAIN10 = false
-        videoCodecHint.AV1_HIGH10_444 = false
+        videoCodecHint.av1Main8 = false
+        videoCodecHint.av1Main10 = false
     }
 
     return videoCodecHint
@@ -104,8 +106,6 @@ export class Stream implements Component {
     private divElement = document.createElement("div")
     private eventTarget = new EventTarget()
 
-    private ws: WebSocket
-    private iceServers: Array<RTCIceServer> | null = null
     private transportOverride: TransportType | null = null
 
     private videoRenderer: VideoRenderer | null = null
@@ -115,9 +115,6 @@ export class Stream implements Component {
     private stats: StreamStats
 
     private streamerSize: [number, number]
-    private hasConnectionComplete = false
-    private hasVideoReady = false
-    private hasDispatchedVideoReady = false
 
     constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number], permissions: StreamPermissions) {
         this.logger.addInfoListener((info, type) => {
@@ -134,9 +131,6 @@ export class Stream implements Component {
 
         this.streamerSize = getStreamerSize(settings, viewerScreenSize)
 
-        this.ws = this.createControlWebSocket()
-        this.sendInitMessage()
-
         // Stream Input
         const streamInputConfig = defaultStreamInputConfig()
         Object.assign(streamInputConfig, {
@@ -150,6 +144,8 @@ export class Stream implements Component {
 
         // Stream Stats
         this.stats = new StreamStats(this.logger)
+
+        this.startConnection()
     }
 
     private debugLog(message: string, additional?: LogMessageInfo) {
@@ -159,135 +155,6 @@ export class Stream implements Component {
             })
 
             this.eventTarget.dispatchEvent(event)
-        }
-    }
-    private resetVideoReadyState() {
-        this.hasConnectionComplete = false
-        this.hasVideoReady = false
-        this.hasDispatchedVideoReady = false
-    }
-    private markConnectionComplete() {
-        this.hasConnectionComplete = true
-        this.tryDispatchVideoReady()
-    }
-    private markVideoReady() {
-        this.hasVideoReady = true
-        this.tryDispatchVideoReady()
-    }
-    private tryDispatchVideoReady() {
-        if (!this.hasConnectionComplete || !this.hasVideoReady || this.hasDispatchedVideoReady) {
-            return
-        }
-
-        this.hasDispatchedVideoReady = true
-        const event: InfoEvent = new CustomEvent("stream-info", {
-            detail: { type: "videoReady" }
-        })
-        this.eventTarget.dispatchEvent(event)
-    }
-
-    private async onMessage(message: StreamServerMessage) {
-        if ("DebugLog" in message) {
-            const debugLog = message.DebugLog
-
-            this.debugLog(debugLog.message, {
-                type: debugLog.ty ?? undefined
-            })
-        } else if ("UpdateApp" in message) {
-            const event: InfoEvent = new CustomEvent("stream-info", {
-                detail: { type: "app", app: message.UpdateApp.app }
-            })
-
-            this.eventTarget.dispatchEvent(event)
-        } else if ("ConnectionComplete" in message) {
-            const capabilities = message.ConnectionComplete.capabilities
-            const formatRaw = message.ConnectionComplete.format
-            const width = message.ConnectionComplete.width
-            const height = message.ConnectionComplete.height
-            const fps = message.ConnectionComplete.fps
-
-            const audioSampleRate = message.ConnectionComplete.audio_sample_rate
-            const audioChannelCount = message.ConnectionComplete.audio_channel_count
-            const audioStreams = message.ConnectionComplete.audio_streams
-            const audioCoupledStreams = message.ConnectionComplete.audio_coupled_streams
-            const audioSamplesPerFrame = message.ConnectionComplete.audio_samples_per_frame
-            const audioMapping = message.ConnectionComplete.audio_mapping
-
-            const format = getSelectedVideoCodec(formatRaw)
-            if (format == null) {
-                this.debugLog(`Video Format ${formatRaw} was not found! Couldn't start stream!`, { type: "fatal" })
-                return
-            }
-
-            const event: InfoEvent = new CustomEvent("stream-info", {
-                detail: { type: "connectionComplete", capabilities }
-            })
-
-            this.eventTarget.dispatchEvent(event)
-
-            this.input.onStreamStart(capabilities, [width, height])
-
-            this.stats.setVideoInfo(format ?? "Unknown", width, height, fps)
-            // HDR state will be set when server sends HdrModeUpdate message
-            // Don't initialize from settings.hdr because that's just the user's preference,
-            // not the actual HDR state (which depends on host support, display, and codec)
-            if (this.settings.hdr) {
-                this.debugLog("HDR requested by user, waiting for host confirmation...")
-            }
-
-            // we should allow streaming without audio
-            if (!this.audioPlayer) {
-                showNotification("Failed to find supported audio player -> audio is missing.")
-            }
-
-            if (!this.videoRenderer || !this.audioPlayer) {
-                throw "Video renderer or audio player not initialized!"
-            }
-
-            await Promise.all([
-                this.videoRenderer.setup({
-                    codec: format,
-                    fps,
-                    width,
-                    height,
-                }),
-                this.audioPlayer.setup({
-                    sampleRate: audioSampleRate,
-                    channels: audioChannelCount,
-                    streams: audioStreams,
-                    coupledStreams: audioCoupledStreams,
-                    samplesPerFrame: audioSamplesPerFrame,
-                    mapping: audioMapping,
-                })
-            ])
-
-            this.markConnectionComplete()
-        } else if ("ConnectionTerminated" in message) {
-            const code = message.ConnectionTerminated.error_code
-
-            this.debugLog(`ConnectionTerminated with code ${code}`, { type: "fatalDescription" })
-        }
-        // -- WebRTC Config
-        else if ("Setup" in message) {
-            const iceServers = message.Setup.ice_servers
-
-            this.iceServers = iceServers
-
-            this.debugLog(`window.isSecureContext: ${window.isSecureContext}`)
-            this.debugLog(`Using WebRTC Ice Servers: ${createPrettyList(
-                iceServers.map(server => server.urls).reduce((list, url) => list.concat(url), [])
-            )}`)
-
-            await this.startConnection()
-        }
-        // -- WebRTC
-        else if ("WebRtc" in message) {
-            const webrtcMessage = message.WebRtc
-            if (this.transport instanceof WebRTCTransport) {
-                this.transport.onReceiveMessage(webrtcMessage)
-            } else {
-                this.debugLog(`Received WebRTC message but transport is currently ${this.transport?.implementationName}`)
-            }
         }
     }
 
@@ -302,8 +169,7 @@ export class Stream implements Component {
 
             if (shutdownReason == "failednoconnect") {
                 this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.", { type: "ifErrorDescription" })
-                await this.restartWithFreshTransportFallback("websocket")
-                return
+                await this.tryWebSocketTransport()
             }
         } else if (desiredTransport == "webrtc") {
             await this.tryWebRTCTransport()
@@ -316,186 +182,41 @@ export class Stream implements Component {
 
     private transport: Transport | null = null
 
-    private createControlWebSocket(): WebSocket {
-        const wsApiHost = this.api.host_url.replace(/^http(s)?:/, "ws$1:")
-        const ws = new WebSocket(`${wsApiHost}/host/stream`)
-
-        ws.addEventListener("error", (event) => {
-            if (this.ws !== ws) {
-                return
-            }
-            this.onError(event)
-        })
-        ws.addEventListener("open", () => {
-            if (this.ws !== ws) {
-                return
-            }
-            this.onWsOpen()
-        })
-        ws.addEventListener("close", () => {
-            if (this.ws !== ws) {
-                return
-            }
-            this.onWsClose()
-        })
-        ws.addEventListener("message", (event) => {
-            if (this.ws !== ws) {
-                return
-            }
-            this.onRawWsMessage(event)
-        })
-
-        return ws
-    }
-    private sendInitMessage() {
-        this.sendWsMessage({
-            Init: {
-                host_id: this.hostId,
-                app_id: this.appId,
-                video_frame_queue_size: this.settings.videoFrameQueueSize,
-                audio_sample_queue_size: this.settings.audioSampleQueueSize,
-            }
-        })
-    }
-    private async restartWithFreshTransportFallback(transport: TransportType): Promise<void> {
-        this.transportOverride = transport
-        this.resetVideoReadyState()
-
-        if (this.transport) {
-            await this.transport.close()
-            this.transport = null
-        }
-
-        this.wsSendBuffer.length = 0
-        const oldWs = this.ws
-
-        if (oldWs.readyState == WebSocket.OPEN || oldWs.readyState == WebSocket.CONNECTING) {
-            oldWs.close()
-            await new Promise<void>((resolve) => {
-                const timeout = window.setTimeout(() => resolve(), 1000)
-                oldWs.addEventListener("close", () => {
-                    window.clearTimeout(timeout)
-                    resolve()
-                }, { once: true })
-            })
-        }
-
-        await new Promise((resolve) => window.setTimeout(resolve, FALLBACK_RECONNECT_DELAY_MS))
-
-        this.ws = this.createControlWebSocket()
-        this.sendInitMessage()
-    }
-
     private setTransport(transport: Transport) {
         if (this.transport) {
+            this.debugLog("Closing old transport")
             this.transport.close()
         }
+        this.debugLog("Setting new transport")
 
         this.transport = transport
 
-        this.input.setTransport(this.transport)
+        this.input.setControlStream(this.transport.controlStream)
         this.stats.setTransport(this.transport)
-
-        const rtt = this.transport.getChannel(TransportChannelId.RTT)
-        if (rtt.type == "data") {
-            rtt.addReceiveListener((data) => {
-                const buffer = new ByteBuffer(data.byteLength)
-                buffer.putU8Array(new Uint8Array(data))
-                buffer.flip()
-
-                const ty = buffer.getU8()
-                if (ty == 0) {
-                    rtt.send(data)
-                }
-            })
-        } else {
-            this.debugLog("Failed to get rtt as data transport channel. Cannot respond to rtt packets")
-        }
-
-        // Setup GENERAL channel listener for HDR mode updates
-        const generalChannel = this.transport.getChannel(TransportChannelId.GENERAL)
-        this.debugLog(`[GENERAL] Setting up GENERAL channel listener, type=${generalChannel.type}`)
-        if (generalChannel.type === "data") {
-            generalChannel.addReceiveListener((data: ArrayBuffer) => {
-                this.onGeneralChannelMessage(data)
-            })
-            this.debugLog(`[GENERAL] GENERAL channel listener registered`)
-        } else {
-            this.debugLog(`[GENERAL] Cannot register listener, channel type is not 'data'`)
-        }
     }
 
-    private onGeneralChannelMessage(data: ArrayBuffer) {
-        this.debugLog(`[GENERAL] Received message on GENERAL channel, size=${data.byteLength}`)
-        const buffer = new Uint8Array(data)
-        if (buffer.length < 2) {
-            this.debugLog(`[GENERAL] Message too short: ${buffer.length} bytes`)
-            return
+    private async createTransportOptions(): Promise<TransportOptions | null> {
+        const codecHint = getVideoCodecHint(this.settings)
+
+        const dataCodecs = await this.queryVideoCodecs("data")
+
+        if (!hasAnyCodec(codecHint)) {
+            this.debugLog("Couldn't find any supported video format. Change the codec option to H264 in the settings if you're unsure which codecs are supported.", { type: "fatalDescription" })
+            return null
         }
 
-        const textLength = (buffer[0] << 8) | buffer[1]
-        if (buffer.length < 2 + textLength) {
-            this.debugLog(`[GENERAL] Message incomplete: expected ${2 + textLength} bytes, got ${buffer.length}`)
-            return
+        return {
+            hostId: this.hostId,
+            appId: this.appId,
+            width: this.streamerSize[0],
+            height: this.streamerSize[1],
+            fps: this.settings.fps,
+            bitrate: this.settings.bitrate,
+            hdr: this.settings.hdr,
+            localAudioPlayMode: this.settings.playAudioLocal,
+            supportedCodecs: dataCodecs,
+            preferredCodecs: codecHint,
         }
-
-        const text = new TextDecoder().decode(buffer.slice(2, 2 + textLength))
-        this.debugLog(`[GENERAL] Parsed message: ${text}`)
-        try {
-            const message: GeneralServerMessage = JSON.parse(text)
-            this.handleGeneralMessage(message)
-        } catch (err) {
-            this.debugLog(`Failed to parse general message: ${err}`)
-        }
-    }
-
-    private handleGeneralMessage(message: GeneralServerMessage) {
-        if ("HdrModeUpdate" in message) {
-            const hdrUpdate = message.HdrModeUpdate
-            if (hdrUpdate) {
-                const enabled = hdrUpdate.enabled
-                this.debugLog(`HDR mode ${enabled ? "enabled" : "disabled"}`)
-                this.setHdrMode(enabled)
-            }
-        } else if ("ConnectionStatusUpdate" in message) {
-            const statusUpdate = message.ConnectionStatusUpdate
-            if (statusUpdate) {
-                const status = statusUpdate.status
-                const event: InfoEvent = new CustomEvent("stream-info", {
-                    detail: { type: "connectionStatus", status }
-                })
-                this.eventTarget.dispatchEvent(event)
-            }
-        }
-    }
-
-    private setHdrMode(enabled: boolean) {
-        this.stats.setHdrEnabled(enabled)
-        if (this.videoRenderer) {
-            if ("setHdrMode" in this.videoRenderer && typeof this.videoRenderer.setHdrMode === "function") {
-                this.videoRenderer.setHdrMode(enabled)
-            }
-        }
-    }
-
-    private sendGeneralMessage(message: GeneralClientMessage): boolean {
-        const general = this.transport?.getChannel(TransportChannelId.GENERAL)
-
-        if (!general || general.type != "data") {
-            return false
-        }
-
-        const text = JSON.stringify(message)
-
-        const buffer = BIG_BUFFER
-        buffer.reset()
-        buffer.putU16(text.length)
-        buffer.putUtf8Raw(text)
-        buffer.flip()
-
-        general.send(buffer.getRemainingBuffer().buffer)
-
-        return true
     }
 
     private async tryWebRTCTransport(): Promise<TransportShutdown> {
@@ -506,64 +227,75 @@ export class Stream implements Component {
 
         this.debugLog("Trying WebRTC transport")
 
-        this.sendWsMessage({
-            SetTransport: "WebRTC"
+        // Get configuration
+        const config = await apiWebRTCConfiguration(this.api)
+
+        this.debugLog("Received WebRTC Config, Creating Transport")
+
+        // Create transport
+        const transport = new WebRTCTransport(
+            this.api,
+            {
+                iceServers: config.iceServers,
+            },
+            this.logger
+        )
+        transport.controlStream.onreceive = this.boundReceivePacket
+
+        const onConnect = new Promise<TransportConnectData>(resolve => {
+            transport.onconnect = resolve
+        })
+        const onClose = new Promise<TransportShutdown>(resolve => {
+            transport.onclose = resolve
         })
 
-        if (!this.iceServers) {
-            this.debugLog(`Failed to try WebRTC Transport: no ice servers available`)
+        const options = await this.createTransportOptions()
+        if (!options) {
             return "failednoconnect"
         }
 
-        const transport = new WebRTCTransport(this.logger)
-        transport.onsendmessage = (message) => this.sendWsMessage({ WebRtc: message })
+        try {
+            // Create offer
+            const offer = await transport.createOffer(options)
 
-        transport.initPeer({
-            iceServers: this.iceServers
-        })
-        this.setTransport(transport)
+            // Send Request
+            this.debugLog("Sending Offer and waiting for Answer")
+            const answer = await apiWebRTCOffer(this.api, offer)
+            this.debugLog("Got Response")
 
-        const videoCodecSupport = await this.createPipelines()
-        if (!videoCodecSupport) {
-            this.debugLog("No video pipeline was found for the codec that was specified. If you're unsure which codecs are supported use H264.", { type: "fatalDescription" })
+            // Apply answer
+            await transport.setAnswer(answer)
+        } catch (error) {
+            this.debugLog(`failed to connect using webrtc because ${error}`)
 
             await transport.close()
             return "failednoconnect"
         }
 
-        // Starting the stream will start negotiation
-        await this.startStream(videoCodecSupport)
+        // Set Transport
+        this.setTransport(transport)
 
         // Wait for negotiation, but don't let a stuck ICE check block fallback forever.
-        const result = await new Promise<boolean>((resolve) => {
-            const timeout = window.setTimeout(async () => {
-                this.debugLog(`WebRTC negotiation timed out after ${WEBRTC_CONNECT_TIMEOUT_MS}ms`)
-                transport.onconnect = null
-                transport.onclose = null
-                await transport.close()
-                resolve(false)
-            }, WEBRTC_CONNECT_TIMEOUT_MS)
+        const onTimeout: Promise<TransportShutdown> =
+            wait(WEBRTC_CONNECT_TIMEOUT_MS)
+                .then(() => "failednoconnect")
 
-            transport.onconnect = () => {
-                window.clearTimeout(timeout)
-                resolve(true)
-            }
-            transport.onclose = () => {
-                window.clearTimeout(timeout)
-                resolve(false)
-            }
-        })
-        this.debugLog(`WebRTC negotiation success: ${result}`)
-
-        if (!result) {
-            return "failednoconnect"
+        const connectData: TransportShutdown | TransportConnectData = await Promise.race([
+            onConnect,
+            onClose,
+            onTimeout,
+        ])
+        if (typeof connectData == "string") {
+            this.debugLog(`webrtc connection failed: ${connectData}`)
+            await transport.close()
+            // connection failed
+            return connectData
         }
 
-        return new Promise((resolve) => {
-            transport.onclose = (shutdown) => {
-                resolve(shutdown)
-            }
-        })
+        // -- Connection successful
+        await this.onConnect(connectData)
+
+        return await onClose
     }
     private async tryWebSocketTransport() {
         if (!this.permissions.allow_transport_websockets) {
@@ -573,30 +305,75 @@ export class Stream implements Component {
 
         this.debugLog("Trying Web Socket transport")
 
-        this.sendWsMessage({
-            SetTransport: "WebSocket"
-        })
-
-        const transport = new WebSocketTransport(this.ws, BIG_BUFFER, this.logger)
-
-        this.setTransport(transport)
-
-        const videoCodecSupport = await this.createPipelines()
-        if (!videoCodecSupport) {
-            this.debugLog("Failed to start stream because no video pipeline with support for the specified codec was found!", { type: "fatalDescription" })
+        const options = await this.createTransportOptions()
+        if (!options) {
             return
         }
 
-        await this.startStream(videoCodecSupport)
+        const transport = new WebSocketTransport(this.api, this.logger)
 
-        return new Promise((resolve) => {
-            transport.onclose = (shutdown) => {
-                resolve(shutdown)
-            }
+        // Add listeners
+        transport.controlStream.onreceive = this.boundReceivePacket
+
+        const onConnect = new Promise<TransportConnectData>(resolve => {
+            transport.onconnect = resolve
         })
+        const onClose = new Promise<TransportShutdown>(resolve => {
+            transport.onclose = resolve
+        })
+
+        // Start stream
+        await transport.startStream(options)
+
+        this.setTransport(transport)
+
+        const connectData = await Promise.race([
+            onConnect,
+            onClose,
+        ])
+
+        if (typeof connectData == "string") {
+            this.debugLog(`web socket connection failed: ${connectData}`)
+            await transport.close()
+            // connection failed
+            return connectData
+        }
+
+        // -- Connection successful
+        this.onConnect(connectData)
+
+        return await onClose
     }
 
-    private async createPipelines(): Promise<VideoCodecSupport | null> {
+    private async onConnect(connectData: TransportConnectData) {
+        this.logger.debug("connected successfully, creating video and audio pipelines")
+
+        // Dispatch app event
+        let event: InfoEvent = new CustomEvent("stream-info", {
+            detail: {
+                type: "app", appName: connectData.appName
+            }
+        })
+        this.eventTarget.dispatchEvent(event)
+
+        // Set input
+        this.input.onStreamStart(connectData.capabilities, [connectData.videoSetup.width, connectData.videoSetup.height])
+
+        // Create pipelines
+        await this.createPipelines(connectData)
+
+        event = new CustomEvent("stream-info", {
+            detail: {
+                type: "connectionComplete", capabilities: {
+                    // TODO
+                    touch: true
+                }
+            }
+        })
+        this.eventTarget.dispatchEvent(event)
+    }
+
+    private async createPipelines(connectData: TransportConnectData): Promise<void> {
         // Print supported pipes
         const pipesInfo = await gatherPipeInfo()
 
@@ -608,21 +385,57 @@ export class Stream implements Component {
         }
         this.logger.debug(`}`)
 
-        // Create pipelines
-        const [supportedVideoCodecs] = await Promise.all([this.createVideoRenderer(), this.createAudioPlayer()])
+        const codecSupport = emptyVideoCodecs()
+        codecSupport[connectData.videoSetup.codec] = true
 
-        const videoPipelineName = `${this.transport?.getChannel(TransportChannelId.HOST_VIDEO).type} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
+        // Create pipelines
+        await Promise.all([
+            this.createVideoRenderer(connectData.videoType, connectData.videoSetup),
+            this.createAudioPlayer(connectData.audioType, connectData.audioSetup)
+        ])
+
+        const videoPipelineName = `${connectData.videoType} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
         this.debugLog(`Using video pipeline: ${videoPipelineName}`)
 
-        const audioPipelineName = `${this.transport?.getChannel(TransportChannelId.HOST_AUDIO).type} (transport) -> ${this.audioPlayer?.implementationName} (player)`
+        const audioPipelineName = `${connectData.audioType} (transport) -> ${this.audioPlayer?.implementationName} (player)`
         this.debugLog(`Using audio pipeline: ${audioPipelineName}`)
 
         this.stats.setVideoPipeline(videoPipelineName, this.videoRenderer)
         this.stats.setAudioPipeline(audioPipelineName, this.audioPlayer)
-
-        return supportedVideoCodecs
     }
-    private async createVideoRenderer(): Promise<VideoCodecSupport | null> {
+
+    private async queryVideoCodecs(type: "videotrack" | "data"): Promise<VideoFormats> {
+        const codecHint = getVideoCodecHint(this.settings)
+
+        const videoSettings: VideoPipelineOptions = {
+            supportedVideoCodecs: codecHint,
+            canvasRenderer: this.settings.canvasRenderer,
+            forceVideoElementRenderer: this.settings.forceVideoElementRenderer,
+            canvasVsync: this.settings.canvasVsync
+        }
+
+        const info = await queryVideoPipelineInfo(type, videoSettings, this.logger)
+        if (!info) {
+            this.logger.debug("failed to query video pipelines for information! Disabling high codecs. This could lead to no video being visible!")
+            const baseCodecs = {
+                h264: true,
+                h264High8444: true,
+                h265: true,
+                h265Main10: true,
+                h265Rext8444: true,
+                h265Rext10444: true,
+                av1Main8: true,
+                av1Main10: true,
+                av1High8444: true,
+                av1High10444: true
+            }
+
+            videoSettings.supportedVideoCodecs = andVideoCodecs(codecHint, baseCodecs)
+        }
+
+        return info?.supportedVideoCodecs ?? emptyVideoCodecs()
+    }
+    private async createVideoRenderer(videoType: TransportVideoType, videoSetup: VideoRendererSetup): Promise<boolean> {
         if (this.videoRenderer) {
             this.debugLog("Found an old video renderer -> cleaning it up")
 
@@ -632,82 +445,56 @@ export class Stream implements Component {
         }
         if (!this.transport) {
             this.debugLog("Failed to setup video without transport")
-            return null
+            return false
         }
 
-        const codecHint = getVideoCodecHint(this.settings)
-        this.debugLog(`Codec Hint by the user: ${JSON.stringify(codecHint)}`)
-
-        if (!hasAnyCodec(codecHint)) {
-            this.debugLog("Couldn't find any supported video format. Change the codec option to H264 in the settings if you're unsure which codecs are supported.", { type: "fatalDescription" })
-            return null
-        }
-
-        const transportCodecSupport = await this.transport.setupHostVideo({
-            type: ["videotrack", "data"]
-        })
-        this.debugLog(`Transport supports these video codecs: ${JSON.stringify(transportCodecSupport)}`)
+        const supportedVideoCodecs = emptyVideoCodecs()
+        supportedVideoCodecs[videoSetup.codec] = true
 
         const videoSettings: VideoPipelineOptions = {
-            supportedVideoCodecs: andVideoCodecs(codecHint, transportCodecSupport),
+            supportedVideoCodecs,
             canvasRenderer: this.settings.canvasRenderer,
             forceVideoElementRenderer: this.settings.forceVideoElementRenderer,
             canvasVsync: this.settings.canvasVsync
         }
 
         let pipelineCodecSupport
-        const video = this.transport.getChannel(TransportChannelId.HOST_VIDEO)
-        if (video.type == "videotrack") {
+        if (videoType == "videotrack") {
             const { videoRenderer, supportedCodecs, error } = await buildVideoPipeline("videotrack", videoSettings, this.logger)
 
             if (error) {
-                return null
+                return false
             }
             pipelineCodecSupport = supportedCodecs
 
             videoRenderer.mount(this.divElement)
 
-            video.addTrackListener((track) => {
-                this.markVideoReady()
-                videoRenderer.setTrack(track)
-            })
+            await videoRenderer.setup(videoSetup)
+            await this.transport.setVideoPipeline("videotrack", videoRenderer)
 
             this.videoRenderer = videoRenderer
-        } else if (video.type == "data") {
+        } else if (videoType == "data") {
             const { videoRenderer, supportedCodecs, error } = await buildVideoPipeline("data", videoSettings, this.logger)
 
             if (error) {
-                return null
+                return false
             }
             pipelineCodecSupport = supportedCodecs
 
             videoRenderer.mount(this.divElement)
 
-            video.addReceiveListener((data) => {
-                this.markVideoReady()
-                videoRenderer.submitPacket(data)
-
-                // data pipeline support requesting idrs over video channel
-                if (videoRenderer.pollRequestIdr()) {
-                    const buffer = new ByteBuffer(1)
-
-                    buffer.putU8(0)
-
-                    buffer.flip()
-
-                    video.send(buffer.getRemainingBuffer().buffer)
-                }
-            })
+            await videoRenderer.setup(videoSetup)
+            await this.transport.setVideoPipeline("data", videoRenderer)
 
             this.videoRenderer = videoRenderer
         } else {
-            this.debugLog(`Failed to create video pipeline with transport channel of type ${video.type} (${this.transport.implementationName})`)
-            return null
+            this.debugLog(`Failed to create video pipeline with transport channel of type ${videoType} (${this.transport.implementationName})`)
+            return false
         }
 
-        return pipelineCodecSupport
+        return true
     }
-    private async createAudioPlayer(): Promise<boolean> {
+    private async createAudioPlayer(audioType: TransportAudioType, audioSetup: AudioPlayerSetup): Promise<boolean> {
         if (this.audioPlayer) {
             this.debugLog("Found an old audio player -> cleaning it up")
 
@@ -720,74 +507,38 @@ export class Stream implements Component {
             return false
         }
 
-        this.transport.setupHostAudio({
-            type: ["audiotrack", "data"]
-        })
-
-        const audio = this.transport?.getChannel(TransportChannelId.HOST_AUDIO)
-        if (audio.type == "audiotrack") {
-            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", this.settings, this.logger)
+        if (audioType == "audiotrack") {
+            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", {}, this.logger)
 
             if (error) {
                 return false
             }
 
             audioPlayer.mount(this.divElement)
+            await audioPlayer.setup(audioSetup)
 
-            audio.addTrackListener((track) => audioPlayer.setTrack(track))
+            await this.transport.setAudioPipeline("audiotrack", audioPlayer)
 
             this.audioPlayer = audioPlayer
-        } else if (audio.type == "data") {
-            const { audioPlayer, error } = await buildAudioPipeline("data", this.settings, this.logger)
+        } else if (audioType == "data") {
+            const { audioPlayer, error } = await buildAudioPipeline("data", {}, this.logger)
 
             if (error) {
                 return false
             }
 
             audioPlayer.mount(this.divElement)
+            await audioPlayer.setup(audioSetup)
 
-            audio.addReceiveListener((data) => {
-                audioPlayer.submitPacket(data)
-            })
+            await this.transport.setAudioPipeline("data", audioPlayer)
 
             this.audioPlayer = audioPlayer
         } else {
-            this.debugLog(`Cannot find audio pipeline for transport type "${audio.type}"`)
+            this.debugLog(`Cannot find audio pipeline for transport type "${audioType}"`)
             return false
         }
 
         return true
-    }
-    private async startStream(videoCodecSupport: VideoCodecSupport): Promise<void> {
-        const settings: StreamSettings = {
-            bitrate_kbps: this.settings.bitrate,
-            fps: this.settings.fps,
-            width: this.streamerSize[0],
-            height: this.streamerSize[1],
-            play_audio_local: this.settings.playAudioLocal,
-            supported_codecs: createSupportedVideoFormatsBits(videoCodecSupport),
-            hdr: this.settings.hdr ?? false,
-        }
-
-        const message: StreamClientMessage = {
-            StartStream: {
-                settings
-            }
-        }
-        this.debugLog(`Starting stream with info: ${JSON.stringify(message)}`)
-        this.debugLog(`Stream video codec info: ${JSON.stringify(videoCodecSupport)}`)
-
-        // Log HDR requirements if HDR is requested
-        if (this.settings.hdr) {
-            const hasHdrCodec = videoCodecSupport.H265_MAIN10 || videoCodecSupport.AV1_MAIN10
-            if (!hasHdrCodec) {
-                this.debugLog(`Warning: HDR requested but no 10-bit codec available. HDR requires H265_MAIN10 or AV1_MAIN10 support.`)
-            } else {
-                this.debugLog(`HDR codec available: H265_MAIN10=${videoCodecSupport.H265_MAIN10}, AV1_MAIN10=${videoCodecSupport.AV1_MAIN10}`)
-            }
-        }
-
-        this.sendWsMessage(message)
     }
 
     mount(parent: HTMLElement): void {
@@ -804,51 +555,33 @@ export class Stream implements Component {
         return this.audioPlayer
     }
 
-    // -- Raw Web Socket stuff
-    private wsSendBuffer: Array<string> = []
-
-    private onWsOpen() {
-        this.debugLog(`Web Socket Open`)
-
-        for (const raw of this.wsSendBuffer.splice(0)) {
-            this.ws.send(raw)
-        }
-    }
-    private onWsClose() {
-        this.debugLog(`Web Socket Closed`)
-    }
-    private onError(event: Event) {
-        this.debugLog(`Web Socket or WebRtcPeer Error`)
-
-        console.error(`Web Socket or WebRtcPeer Error`, event)
-    }
-
-    private sendWsMessage(message: StreamClientMessage) {
-        const raw = JSON.stringify(message)
-        if (this.ws.readyState == WebSocket.OPEN) {
-            this.ws.send(raw)
-        } else {
-            this.wsSendBuffer.push(raw)
-        }
-    }
-    private onRawWsMessage(event: MessageEvent) {
-        const message = event.data
-        if (typeof message == "string") {
-            const json = JSON.parse(message)
-
-            this.onMessage(json)
-        }
-    }
-
-    stop(): Promise<boolean> {
-        if (!this.sendGeneralMessage("Stop")) {
-            return Promise.resolve(false)
-        }
+    async stop(): Promise<boolean> {
+        await this.transport?.close()
 
         // Wait for the message to get sent
-        return new Promise((resolve, _reject) => {
+        await new Promise((resolve, _reject) => {
             setTimeout(() => resolve(true), 100)
         })
+
+        return true
+    }
+
+    private boundReceivePacket = this.onReceivePacket.bind(this)
+    private onReceivePacket(packet: ControlPacket) {
+        switch (packet.tag) {
+            case ControlPacket_Tags.HdrMode:
+                if (this.videoRenderer && this.videoRenderer.setHdrMode) {
+                    this.videoRenderer?.setHdrMode(packet.inner.enabled)
+                }
+                break
+            case ControlPacket_Tags.ControllerRumbleData:
+                // TODO
+                break
+            case ControlPacket_Tags.ControllerRumbleTriggers:
+                // TODO
+                break
+        }
+        // TODO
     }
 
     // -- Class Api
@@ -869,8 +602,4 @@ export class Stream implements Component {
     getStreamerSize(): [number, number] {
         return this.streamerSize
     }
-}
-
-function createPrettyList(list: Array<string>): string {
-    return `[${list.join(", ")}]`
 }

@@ -1,589 +1,555 @@
-import { StreamSignalingMessage, TransportChannelId } from "../../api_bindings.js";
+import { Api, fetchApi, WebRTCAnswer } from "../../api.js";
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, EstimatedRttInfo, InputBatcher, PacketDirection, UdpTransmit, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
+import { globalObject, uniffiMillisUntil, uniffiNow } from "../../util.js";
+import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
+import { DataPipe } from "../pipeline/pipes.js";
 import { StatValue } from "../stats.js";
-import { CAPABILITIES_CODECS, emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
-import { DataTransportChannel, Transport, TransportAudioSetup, TransportChannel, TransportChannelIdKey, TransportChannelIdValue, TransportVideoSetup, AudioTrackTransportChannel, VideoTrackTransportChannel, TrackTransportChannel, TransportShutdown } from "./index.js";
+import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
+import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index.js";
 
 export class WebRTCTransport implements Transport {
-    implementationName: string = "webrtc"
 
-    private logger: Logger | null
+    readonly implementationName: string = "webrtc"
 
-    private peer: RTCPeerConnection | null = null
+    readonly controlStream = new WebRtcControlStream()
+    onconnect: ((connectData: TransportConnectData) => void) | null = null
+    onclose: ((shutdown: TransportShutdown) => void) | null = null
 
-    constructor(logger?: Logger) {
-        this.logger = logger ?? null
-    }
+    private logger?: Logger
 
-    async initPeer(configuration?: RTCConfiguration) {
-        this.logger?.debug(`Creating Client Peer`)
+    private api: Api
 
-        if (this.peer) {
-            this.logger?.debug(`Cannot create Peer because a Peer already exists`)
-            return
-        }
+    private peer: RTCPeerConnection
+    private location: string | null = null
 
-        // Configure web rtc
-        // TODO: use this for signaling instead and extend the protocol so that the client also requests a control channel with name: "control", protocol:"moonlight-control-v1": https://www.ietf.org/archive/id/draft-ietf-wish-whep-02.html
+    constructor(api: Api, configuration: RTCConfiguration, logger?: Logger) {
+        this.logger = logger
+
+        this.api = api
+
+        // Create peer
         this.peer = new RTCPeerConnection(configuration)
-        this.peer.addEventListener("error", this.onError.bind(this))
 
+        this.logger?.debug(`Using ice servers ${JSON.stringify(configuration.iceServers?.flatMap(server => server.urls))}`)
+
+        // Set Event Listeners
+        this.peer.addEventListener("connectionstatechange", this.onStateChange.bind(this))
+        this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
+        this.peer.addEventListener("track", this.onTrack.bind(this))
+
+        // Ice Gathering
         this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
 
-        this.peer.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this))
-        this.peer.addEventListener("signalingstatechange", this.onSignalingStateChange.bind(this))
-        this.peer.addEventListener("iceconnectionstatechange", this.onIceConnectionStateChange.bind(this))
-        this.peer.addEventListener("icegatheringstatechange", this.onIceGatheringStateChange.bind(this))
+        // Add Media
+        this.peer.addTransceiver("video", { direction: "recvonly" })
+        this.peer.addTransceiver("audio", { direction: "recvonly" })
 
-        this.peer.addEventListener("track", this.onTrack.bind(this))
-        this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
-
-        this.initChannels()
-
-        // Maybe we already received data
-        if (this.remoteDescription) {
-            await this.handleRemoteDescription(this.remoteDescription)
-        }
-        await this.tryDequeueIceCandidates()
+        // Dummy data channel required so that the answerer knows we accept data channels
+        this.peer.createDataChannel("dummy")
     }
 
-    private onError(event: Event) {
-        this.logger?.debug(`Web Socket or WebRtcPeer Error`)
+    private sdpOfferOptions: WebRtcSessionOffer | null = null
+    private sdpAnswer: WebRtcSessionAnswer | null = null
 
-        console.error(`Web Socket or WebRtcPeer Error`, event)
-    }
+    async createOffer(options: TransportOptions): Promise<string> {
+        this.logger?.debug("Creating webrtc offer")
 
-    onsendmessage: ((message: StreamSignalingMessage) => void) | null = null
-    private sendMessage(message: StreamSignalingMessage) {
-        if (this.onsendmessage) {
-            this.onsendmessage(message)
-        } else {
-            this.logger?.debug("Failed to call onicecandidate because no handler is set")
+        let offer = await this.peer.createOffer()
+        if (offer.type != "offer") {
+            throw `WHEP offer is of type ${offer.type}`
         }
-    }
-    async onReceiveMessage(message: StreamSignalingMessage) {
-        if ("Description" in message) {
-            const description = message.Description;
-            await this.handleRemoteDescription({
-                type: description.ty as RTCSdpType,
-                sdp: description.sdp
-            })
-        } else if ("AddIceCandidate" in message) {
-            const candidate = message.AddIceCandidate
-            await this.addIceCandidate({
-                candidate: candidate.candidate,
-                sdpMid: candidate.sdp_mid,
-                sdpMLineIndex: candidate.sdp_mline_index,
-                usernameFragment: candidate.username_fragment
-            })
+
+        this.logger?.debug("Setting webrtc local description")
+        await this.peer.setLocalDescription(offer)
+
+        // Insert custom options
+        this.sdpOfferOptions = {
+            controlEnet: true,
+            ...options
         }
+        const sdp = webrtcSessionOfferApply(offer.sdp ?? "", this.sdpOfferOptions)
+
+        this.logger?.debug(`successfully generated webrtc sdp with options ${JSON.stringify(this.sdpOfferOptions)}`)
+        console.debug("Client Sdp", sdp)
+
+        this.logger?.debug(`starting ice candidate sender`)
+        this.sendIceCandidates()
+
+        return sdp
     }
+    async setAnswer(response: WebRTCAnswer): Promise<void> {
+        console.debug("server sdp", JSON.stringify(response))
 
-    private remoteDescription: RTCSessionDescriptionInit | null = null
-    private async handleRemoteDescription(sdp: RTCSessionDescriptionInit | null) {
-        this.logger?.debug(`Received remote description: ${sdp?.type}`)
-
-        const remoteDescription = sdp
-        this.remoteDescription = remoteDescription
-        if (!this.peer) {
-            return
-        }
-        this.remoteDescription = null
-
-        if (remoteDescription) {
-            await this.peer.setRemoteDescription(remoteDescription)
-
-            if (remoteDescription.type == "offer") {
-                await this.peer.setLocalDescription()
-                const localDescription = this.peer.localDescription
-                if (!localDescription) {
-                    this.logger?.debug("Peer didn't have a localDescription whilst receiving an offer and trying to answer")
-                    return
-                }
-
-                this.logger?.debug(`Responding to offer description: ${localDescription.type}`)
-                this.sendMessage({
-                    Description: {
-                        ty: localDescription.type,
-                        sdp: localDescription.sdp ?? ""
-                    }
-                })
+        this.logger?.debug(`received whep response with location "${response.location}"`)
+        // Print ice candidates
+        for (const line of response.answerSdp.split("\r\n")) {
+            if (line.startsWith("a=candidate")) {
+                this.logger?.debug(`received remove ice candidate ${line.substring(2)}`)
             }
         }
+
+        this.location = response.location
+
+        this.sdpAnswer = webrtcSessionAnswerParse(response.answerSdp)
+        this.logger?.debug(`Server responded with extensions ${JSON.stringify(this.sdpAnswer)}`)
+
+        await this.peer.setRemoteDescription({
+            type: "answer",
+            sdp: response.answerSdp,
+        })
     }
 
-    private onIceCandidate(event: RTCPeerConnectionIceEvent) {
-        if (event.candidate) {
-            const candidate = event.candidate.toJSON()
-            this.logger?.debug(`Sending ice candidate: ${candidate.candidate}`)
-
-            this.sendMessage({
-                AddIceCandidate: {
-                    candidate: candidate.candidate ?? "",
-                    sdp_mid: candidate.sdpMid ?? null,
-                    sdp_mline_index: candidate.sdpMLineIndex ?? null,
-                    username_fragment: candidate.usernameFragment ?? null
-                }
-            })
-        } else {
-            this.logger?.debug("No new ice candidates")
-        }
-    }
-
-    private iceCandidates: Array<RTCIceCandidateInit> = []
-    private async addIceCandidate(candidate: RTCIceCandidateInit) {
-        this.logger?.debug(`Received ice candidate: ${candidate.candidate}`)
-
-        if (!this.peer) {
-            this.logger?.debug("Buffering ice candidate")
-
-            this.iceCandidates.push(candidate)
-            return
-        }
-        await this.tryDequeueIceCandidates()
-
-        await this.peer.addIceCandidate(candidate)
-    }
-    private async tryDequeueIceCandidates() {
-        if (!this.peer) {
-            this.logger?.debug("called tryDequeueIceCandidates without a peer")
-            return
+    private connectData: TransportConnectData | null = null
+    private async generateConnectData(): Promise<TransportConnectData> {
+        if (this.connectData) {
+            return this.connectData
         }
 
-        for (const candidate of this.iceCandidates) {
-            await this.peer.addIceCandidate(candidate)
+        if (!this.videoStream || !this.audioStream) {
+            throw `WebRTC WHEP response didn't contain a video and audio stream! Video: ${this.videoStream != null}, Audio: ${this.audioStream != null}`
         }
-        this.iceCandidates.length = 0
+
+        const audioSettings = this.audioStream.getSettings()
+
+        this.connectData = {
+            capabilities: {
+                touch: false
+            },
+            videoType: "videotrack",
+            videoSetup: {
+                // Assume the requested parameters are correct
+                width: this.sdpOfferOptions?.width ?? -1,
+                height: this.sdpOfferOptions?.height ?? -1,
+                fps: this.sdpOfferOptions?.fps ?? -1,
+                // TODO: gather codec using stats
+                codec: "h264",
+            },
+            audioType: "audiotrack",
+            audioSetup: {
+                channels: audioSettings.channelCount ?? 2,
+                sampleRate: audioSettings.sampleRate ?? 48000,
+                // TODO
+                streams: 0,
+                coupledStreams: 0,
+                samplesPerFrame: 0,
+                mapping: []
+            },
+            appName: this.sdpAnswer?.appName ?? "Unknown"
+        }
+        return this.connectData
     }
 
     private wasConnected = false
-    private onConnectionStateChange() {
-        if (!this.peer) {
-            this.logger?.debug("OnConnectionStateChange without a peer")
-            return
-        }
-
-        let type: null | "fatal" | "recover" = null
-
+    private onStateChange() {
         if (this.peer.connectionState == "connected") {
-            type = "recover"
-
-            if (this.onconnect) {
-                this.onconnect()
-            }
             this.wasConnected = true
-        } else if ((this.peer.connectionState == "failed" || this.peer.connectionState == "closed") && this.peer.iceGatheringState == "complete") {
-            type = "fatal"
-        }
 
-        if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
-            if (this.onclose) {
-                if (this.wasConnected) {
-                    this.onclose("failed")
-                } else {
-                    this.onclose("failednoconnect")
+            this.generateConnectData().then(connectData => {
+                if (this.onconnect) {
+                    this.onconnect(connectData)
                 }
-            }
-        }
+            })
+        } else if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
+            const shutdown = this.wasConnected ? "failed" : "failednoconnect"
 
-        this.logger?.debug(`Changing Peer State to ${this.peer.connectionState}`, {
-            type: type ?? undefined
-        })
-    }
-    private onSignalingStateChange() {
-        if (!this.peer) {
-            this.logger?.debug("OnSignalingStateChange without a peer")
-            return
-        }
-        this.logger?.debug(`Changing Peer Signaling State to ${this.peer.signalingState}`)
-    }
-    private onIceConnectionStateChange() {
-        if (!this.peer) {
-            this.logger?.debug("OnIceConnectionStateChange without a peer")
-            return
-        }
-        this.logger?.debug(`Changing Peer Ice State to ${this.peer.iceConnectionState}`)
-    }
-    private onIceGatheringStateChange() {
-        if (!this.peer) {
-            this.logger?.debug("OnIceGatheringStateChange without a peer")
-            return
-        }
-        this.logger?.debug(`Changing Peer Ice Gathering State to ${this.peer.iceGatheringState}`)
-
-        if (this.peer.iceConnectionState == "new" && this.peer.iceGatheringState == "complete") {
-            // we failed without connection
             if (this.onclose) {
-                this.onclose("failednoconnect")
+                this.onclose(shutdown)
             }
         }
     }
 
-    private channels: Array<TransportChannel | null> = []
-    private initChannels() {
-        if (!this.peer) {
-            this.logger?.debug("Failed to initialize channel without peer")
+    // -- Trickle Ice
+    private iceCandidateSendTimer: number | null = null
+    private pendingIceCandidates: Array<string> = []
+    private onIceCandidate(event: RTCPeerConnectionIceEvent) {
+        if (!event.candidate) {
+            // Ice Gathering finished
+            this.logger?.debug("ice gathering finished")
             return
         }
-        if (this.channels.length > 0) {
-            this.logger?.debug("Already initialized channels")
-            return
-        }
 
-        for (const channelRaw in TransportChannelId) {
-            const channel = channelRaw as TransportChannelIdKey
-
-            if (channel == "HOST_VIDEO") {
-                const channel: VideoTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"videotrack">(this.logger, "videotrack", "video", this.videoTrackHolder)
-                this.channels[TransportChannelId.HOST_VIDEO] = channel
-                continue
-            }
-            if (channel == "HOST_AUDIO") {
-                const channel: AudioTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"audiotrack">(this.logger, "audiotrack", "audio", this.audioTrackHolder)
-                this.channels[TransportChannelId.HOST_AUDIO] = channel
-                continue
-            }
-
-            // All Data Channels are created by the server
-            const id = TransportChannelId[channel]
-            this.channels[id] = new WebRTCDataTransportChannel(channel, null)
+        const candidate = event.candidate.toJSON().candidate
+        if (candidate) {
+            this.pendingIceCandidates.push(candidate)
         }
     }
 
-    private videoTrackHolder: TrackHolder = { ontrack: null, track: null }
-    private videoReceiver: RTCRtpReceiver | null = null
+    private boundSendIceCandidates = this.sendIceCandidates.bind(this)
+    private async sendIceCandidates() {
+        this.iceCandidateSendTimer = null
+        if (this.iceCandidateSendTimer != null) {
+            globalObject().clearTimeout(this.iceCandidateSendTimer)
+        }
 
-    private audioTrackHolder: TrackHolder = { ontrack: null, track: null }
+        for (const candidate of this.pendingIceCandidates) {
+            this.logger?.debug(`sending ice candidate: ${candidate}`)
+        }
+
+        if (this.location) {
+            const trickleIceSdpFrag = this.pendingIceCandidates.map(x => `a=${x}`).join("\r\n")
+
+            await fetchApi(this.api, this.location, "PATCH", {
+                noUrlModify: true,
+                trickleIceSdpFrag,
+                response: "ignore",
+            })
+
+            this.pendingIceCandidates = []
+        }
+
+        if (this.peer.iceGatheringState != "complete") {
+            this.iceCandidateSendTimer = globalObject().setTimeout(this.boundSendIceCandidates, 2000)
+        }
+    }
+
+    // -- Control Stream / Media
+    private onDataChannel(event: RTCDataChannelEvent) {
+        const channel = event.channel
+
+        this.logger?.debug(`received data channel with label: ${channel.label}, protocol: ${channel.protocol}`)
+
+        if (channel.label == "moonlight.control") {
+            const config = generateControlPacketConfig()
+
+            let protocol: "simple" | "enet" = "simple"
+            if (channel.protocol == "enet") {
+                protocol = "enet"
+            }
+
+            this.controlStream.setChannel(channel, protocol, config)
+        }
+    }
 
     private onTrack(event: RTCTrackEvent) {
+        event.receiver.jitterBufferTarget = 0
+        if ("playoutDelayHint" in event.receiver) {
+            event.receiver.playoutDelayHint = 0
+        }
         const track = event.track
 
-        const receiver = event.receiver
-        if (track.kind == "video") {
-            this.videoReceiver = receiver
-        }
-
-        receiver.jitterBufferTarget = 0
-        if ("playoutDelayHint" in receiver) {
-            receiver.playoutDelayHint = 0
-        }
-
-        this.logger?.debug(`Adding receiver: ${track.kind}, ${track.id}, ${track.label}`)
+        this.logger?.debug(`received track with label: ${track.label}, kind: ${track.kind}`)
 
         if (track.kind == "video") {
-            if ("contentHint" in track) {
-                track.contentHint = "motion"
-            }
+            track.contentHint = "motion"
 
-            this.videoTrackHolder.track = track
-            if (!this.videoTrackHolder.ontrack) {
-                throw "No video track listener registered!"
-            }
-            this.videoTrackHolder.ontrack()
+            this.videoStream = track
         } else if (track.kind == "audio") {
-            this.audioTrackHolder.track = track
-            if (!this.audioTrackHolder.ontrack) {
-                throw "No audio track listener registered!"
-            }
-            this.audioTrackHolder.ontrack()
+            this.audioStream = track
         }
     }
 
-    // Handle data channels created by the remote peer (server)
-    private onDataChannel(event: RTCDataChannelEvent) {
-        const remoteChannel = event.channel
-        const label = remoteChannel.label
+    // Video
+    private videoStream: MediaStreamTrack | null = null
 
-        this.logger?.debug(`Received remote data channel: ${label}`)
+    setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>;
+    setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>;
+    async setVideoPipeline(type: TransportVideoType, pipeline: unknown): Promise<void> {
+        if (!this.videoStream || !this.connectData) {
+            throw "the stream must be connected!"
+        }
 
-        // Map the channel label to the corresponding TransportChannelId
-        const channelKey = label.toUpperCase() as TransportChannelIdKey
-        if (channelKey in TransportChannelId) {
-            const id = TransportChannelId[channelKey]
-            const existingChannel = this.channels[id]
+        if (type == "videotrack") {
+            const trackPipeline = pipeline as (TrackVideoRenderer & VideoRenderer)
 
-            // If we already have a channel for this ID, replace its underlying RTCDataChannel
-            // with the remote one so we can receive messages from the server
-            if (existingChannel && existingChannel.type === "data") {
-                this.logger?.debug(`Replacing underlying channel for ${label} with remote channel`);
-                (existingChannel as WebRTCDataTransportChannel).replaceChannel(remoteChannel)
-            } else {
-                this.logger?.debug(`Creating new channel for ${label}`)
-                this.channels[id] = new WebRTCDataTransportChannel(label, remoteChannel)
-            }
-        } else {
-            this.logger?.debug(`Unknown remote data channel: ${label}`)
+            trackPipeline.setTrack(this.videoStream)
+        } else if (type == "data") {
+            throw "unimplemented"
         }
     }
 
-    async setupHostVideo(_setup: TransportVideoSetup): Promise<VideoCodecSupport> {
-        // TODO: check transport type
+    // Audio
+    private audioStream: MediaStreamTrack | null = null
 
-        let capabilities
-        if ("getCapabilities" in RTCRtpReceiver && (capabilities = RTCRtpReceiver.getCapabilities("video"))) {
-            const codecs = emptyVideoCodecs()
+    setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
+    setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
+    async setAudioPipeline(type: TransportAudioType, pipeline: AudioPlayer): Promise<void> {
+        if (!this.audioStream || !this.connectData) {
+            throw "the stream must be connected!"
+        }
 
-            for (const codec in codecs) {
-                const supportRequirements = CAPABILITIES_CODECS[codec]
+        if (type == "audiotrack") {
+            const trackPipeline = pipeline as (TrackAudioPlayer & AudioPlayer)
 
-                if (!supportRequirements) {
-                    continue
-                }
-
-                let supported = false
-                capabilityCodecLoop: for (const codecCapability of capabilities.codecs) {
-                    if (codecCapability.mimeType != supportRequirements.mimeType) {
-                        continue
-                    }
-
-                    for (const fmtpLine of supportRequirements.fmtpLine) {
-                        if (!codecCapability.sdpFmtpLine?.includes(fmtpLine)) {
-                            continue capabilityCodecLoop
-                        }
-                    }
-
-                    supported = true
-                    break
-                }
-
-                codecs[codec] = supported
-            }
-
-            return codecs
-        } else {
-            return maybeVideoCodecs()
+            trackPipeline.setTrack(this.audioStream)
+        } else if (type == "data") {
+            throw "unimplemented"
         }
     }
 
-    async setupHostAudio(_setup: TransportAudioSetup): Promise<void> {
-        // TODO: check transport type
-    }
-
-    getChannel(id: TransportChannelIdValue): TransportChannel {
-        const channel = this.channels[id]
-        if (!channel) {
-            this.logger?.debug("Failed to setup video without peer")
-            throw `Failed to get channel because it is not yet initialized, Id: ${id}`
-        }
-
-        return channel
-    }
-
-    onconnect: (() => void) | null = null
-
-    onclose: ((shutdown: TransportShutdown) => void) | null = null
     async close(): Promise<void> {
-        this.logger?.debug("Closing WebRTC Peer")
-
-        this.peer?.close()
+        // TODO
+        this.peer.close()
     }
 
+    private lastTotalDecodeTime = 0
+    private lastFramesDecoded = 0
     async getStats(): Promise<Record<string, StatValue>> {
-        const statsData: Record<string, StatValue> = {}
+        const out: Record<string, StatValue> = {}
 
-        if (!this.videoReceiver) {
-            return {}
-        }
-        const stats = await this.videoReceiver.getStats()
-
-        console.debug("----------------- raw video stats -----------------")
-        for (const [key, value] of stats.entries()) {
-            console.debug("raw video stats", key, value)
-
-            if ("decoderImplementation" in value && value.decoderImplementation != null) {
-                statsData.decoderImplementation = value.decoderImplementation
-            }
-            if ("frameWidth" in value && value.frameWidth != null) {
-                statsData.videoWidth = value.frameWidth
-            }
-            if ("frameHeight" in value && value.frameHeight != null) {
-                statsData.videoHeight = value.frameHeight
-            }
-            if ("framesPerSecond" in value && value.framesPerSecond != null) {
-                statsData.webrtcFps = value.framesPerSecond
-            }
-
-            if ("jitterBufferDelay" in value && value.jitterBufferDelay != null) {
-                statsData.webrtcJitterBufferDelayMs = value.jitterBufferDelay
-            }
-            if ("jitterBufferTargetDelay" in value && value.jitterBufferTargetDelay != null) {
-                statsData.webrtcJitterBufferTargetDelayMs = value.jitterBufferTargetDelay
-            }
-            if ("jitterBufferMinimumDelay" in value && value.jitterBufferMinimumDelay != null) {
-                statsData.webrtcJitterBufferMinimumDelayMs = value.jitterBufferMinimumDelay
-            }
-            if ("jitter" in value && value.jitter != null) {
-                statsData.webrtcJitterMs = value.jitter
-            }
-            if ("totalDecodeTime" in value && value.totalDecodeTime != null) {
-                statsData.webrtcTotalDecodeTimeMs = value.totalDecodeTime
-            }
-            if ("totalAssemblyTime" in value && value.totalAssemblyTime != null) {
-                statsData.webrtcTotalAssemblyTimeMs = value.totalAssemblyTime
-            }
-            if ("totalProcessingDelay" in value && value.totalProcessingDelay != null) {
-                statsData.webrtcTotalProcessingDelayMs = value.totalProcessingDelay
-            }
-            if ("packetsReceived" in value && value.packetsReceived != null) {
-                statsData.webrtcPacketsReceived = value.packetsReceived
-            }
-            if ("packetsLost" in value && value.packetsLost != null) {
-                statsData.webrtcPacketsLost = value.packetsLost
-            }
-            if ("framesDropped" in value && value.framesDropped != null) {
-                statsData.webrtcFramesDropped = value.framesDropped
-            }
-            if ("keyFramesDecoded" in value && value.keyFramesDecoded != null) {
-                statsData.webrtcKeyFramesDecoded = value.keyFramesDecoded
-            }
-            if ("nackCount" in value && value.nackCount != null) {
-                statsData.webrtcNackCount = value.nackCount
-            }
+        // Control Stream
+        const estimatedRtt = this.controlStream.estimatedRtt()
+        if (estimatedRtt) {
+            out.estimatedClientToRelayRttMs = estimatedRtt.rtt
+            out.estimatedClientToRelayRttVarianceMs = estimatedRtt.rttVariance
         }
 
-        return statsData
+        const stats = await this.peer.getStats()
+
+        for (const [_key, value] of stats) {
+            console.debug(value)
+
+            // Video Stream
+            if ("type" in value && "kind" in value
+                && value.type == "inbound-rtp" && value.kind == "video"
+            ) {
+                out.framesDecoded = value?.framesDecoded
+                out.framesDropped = value?.framesDropped
+                out.keyFramesDecoded = value?.keyFramesDecoded
+
+                out.packetsLost = value?.packetsLost
+                out.packetsReceived = value?.packetsReceived
+
+                out.nackCount = value?.nackCount
+                out.pliCount = value?.pliCount
+                out.firCount = value?.firCount
+
+                if ("totalDecodeTime" in value && "framesDecoded" in value) {
+                    out.decodeTimePerFrameMs = (value.totalDecodeTime - this.lastTotalDecodeTime) / (value.framesDecoded - this.lastFramesDecoded) * 1000.0
+
+                    this.lastFramesDecoded = value.framesDecoded
+                    this.lastTotalDecodeTime = value.totalDecodeTime
+                }
+
+                out.currentFps = value?.framesPerSecond
+            }
+            if ("type" in value && "mimeType" in value && typeof value.mimeType == "string"
+                && value.type == "codec" && value.mimeType.startsWith("video/")
+            ) {
+                out.codec = value.mimeType.substring(6)
+                out.codecSdpFmtpLine = value?.sdpFmtpLine
+            }
+
+            // Audio Stream
+        }
+
+        return out
     }
 }
 
-type TrackHolder = {
-    ontrack: (() => void) | null
-    track: MediaStreamTrack | null
-}
+const ENET_IP = "192.168.178.2:47999"
 
-// This receives track data
-class WebRTCInboundTrackTransportChannel<T extends string> implements TrackTransportChannel {
-    type: T
+class WebRtcControlStream implements IControlStream {
 
-    canReceive: boolean = true
-    canSend: boolean = false
+    private logger?: Logger
 
-    private logger: Logger | null
+    private config: ControlPacketConfig | null = null
 
-    private label: string
-    private trackHolder: TrackHolder
+    private channel: RTCDataChannel | null = null
+    private streamType: "simple" | "enet" = "simple"
 
-    constructor(logger: Logger | null, type: T, label: string, trackHolder: TrackHolder) {
+    private batcher: InputBatcher = new InputBatcher()
+
+    // Enet control stream
+    private controlStream: ControlStream | null = null
+    private controlStreamPollTimeout: number | null = null
+    private enetConnected = false
+
+    private packetBuffer: Array<ControlPacket> = []
+
+    constructor(logger?: Logger) {
         this.logger = logger
-
-        this.type = type
-        this.label = label
-        this.trackHolder = trackHolder
-
-        this.trackHolder.ontrack = this.onTrack.bind(this)
-    }
-    setTrack(_track: MediaStreamTrack | null): void {
-        throw "WebRTCInboundTrackTransportChannel cannot addTrack"
     }
 
-    private onTrack() {
-        const track = this.trackHolder.track
-        if (!track) {
-            this.logger?.debug("WebRTC TrackHolder.track is null!")
-            return
-        }
-
-        for (const listener of this.trackListeners) {
-            listener(track)
-        }
-    }
-
-
-    private trackListeners: Array<(track: MediaStreamTrack) => void> = []
-    addTrackListener(listener: (track: MediaStreamTrack) => void): void {
-        if (this.trackHolder.track) {
-            listener(this.trackHolder.track)
-        }
-        this.trackListeners.push(listener)
-    }
-    removeTrackListener(listener: (track: MediaStreamTrack) => void): void {
-        const index = this.trackListeners.indexOf(listener)
-        if (index != -1) {
-            this.trackListeners.splice(index, 1)
-        }
-    }
-}
-
-class WebRTCDataTransportChannel implements DataTransportChannel {
-    type: "data" = "data"
-
-    canReceive: boolean = true
-    canSend: boolean = true
-
-    private logger: Logger | null = null
-
-    private label: string
-    private channel: RTCDataChannel | null
-    private boundTryDequeueSendQueue: () => void
-    private boundOnMessage: (event: MessageEvent) => void
-
-    constructor(label: string, channel: RTCDataChannel | null, logger?: Logger) {
-        this.label = label
+    setChannel(channel: null): void
+    setChannel(channel: RTCDataChannel, streamType: "simple" | "enet", config: ControlPacketConfig): void
+    setChannel(channel: RTCDataChannel | null, streamType?: "simple" | "enet", config?: ControlPacketConfig): void {
         this.channel = channel
-        this.boundOnMessage = this.onMessage.bind(this)
-        this.boundTryDequeueSendQueue = this.tryDequeueSendQueue.bind(this)
 
-        this.logger = logger ?? null
+        // Clean up old control stream if present
+        if (this.controlStream) {
+            this.controlStream.uniffiDestroy()
+            this.controlStream = null
+        }
+        if (this.controlStreamPollTimeout != null) {
+            globalObject().clearTimeout(this.controlStreamPollTimeout)
+        }
+        this.enetConnected = false
 
-        this.channel?.addEventListener("message", this.boundOnMessage)
-    }
+        if (this.channel && streamType && config) {
+            this.config = config
+            this.streamType = streamType
 
-    // Replace the underlying channel with a new one (e.g., from remote peer)
-    // This is used when we receive a data channel from the server that should
-    // replace our locally created one for receiving messages
-    replaceChannel(newChannel: RTCDataChannel): void {
-        // Remove listener from old channel
-        this.channel?.removeEventListener("open", this.boundTryDequeueSendQueue)
-        this.channel?.removeEventListener("message", this.boundOnMessage)
-        // Add listener to new channel
-        this.channel = newChannel
-        this.channel.addEventListener("open", this.boundTryDequeueSendQueue)
-        this.channel.addEventListener("message", this.boundOnMessage)
-    }
+            this.channel.binaryType = "arraybuffer"
 
-    private sendQueue: Array<ArrayBuffer> = []
-    send(message: ArrayBuffer): void {
-        console.debug(this.label, message)
+            this.channel.addEventListener("open", this.boundChannelStateChange)
+            this.channel.addEventListener("message", this.boundMessage)
 
-        if (!this.channel || this.channel.readyState != "open") {
-            console.debug(`Tried sending packet to ${this.label} with readyState ${this.channel?.readyState}. Buffering it for the future.`)
-            // Make sure to copy the message
-            this.sendQueue.push(message.slice(0))
+            if (this.streamType == "enet") {
+                this.controlStream = new ControlStream(uniffiNow(), {
+                    serverVersion: this.config.serverVersion,
+                    addr: ENET_IP,
+                })
+                this.onDataChannelStateChange()
+            }
+
+            this.trySendBufferedPackets()
         } else {
-            this.channel.send(message)
+            this.streamType = "simple"
+            this.channel?.removeEventListener("open", this.boundChannelStateChange)
+            this.channel?.removeEventListener("message", this.boundMessage)
         }
     }
-    private tryDequeueSendQueue() {
+
+    onreceive: ((packet: ControlPacket) => void) | null = null
+
+    private boundMessage = this.onMessage.bind(this)
+    private onMessage(event: MessageEvent) {
+        if (!this.config) {
+            throw "packet config not configured, but a packet was received"
+        }
+
+        if (this.streamType == "simple") {
+            const packet = controlPacketDeserialize(this.config, PacketDirection.ClientBound, event.data)
+
+            if (packet && this.onreceive) {
+                this.onreceive(packet)
+            }
+        } else if (this.streamType == "enet") {
+            if (!this.controlStream) {
+                throw "dropping packet because enet control stream is not initialized"
+            }
+
+            this.controlStream.handleReceive(
+                uniffiNow(),
+                ENET_IP,
+                event.data
+            )
+
+            this.controlStreamPollOutput(false)
+        } else {
+            this.logger?.debug("failed to deserialize packet")
+            console.debug("failed to deserialize packet", event.data)
+        }
+    }
+
+    private boundChannelStateChange = this.onDataChannelStateChange.bind(this)
+    private onDataChannelStateChange() {
+        if (this.channel?.readyState == "open") {
+            this.trySendBufferedPackets()
+
+            if (this.streamType == "enet" && this.controlStreamPollTimeout == null) {
+                // Start loop
+                this.controlStreamPollOutput()
+            }
+        }
+    }
+    private trySendBufferedPackets() {
         if (!this.channel || this.channel.readyState != "open") {
             return
         }
 
-        for (const message of this.sendQueue.splice(0)) {
-            this.channel.send(message)
-        }
-    }
-
-    private onMessage(event: MessageEvent) {
-        const data = event.data
-        if (!(data instanceof ArrayBuffer)) {
-            console.warn(`received text data on webrtc channel ${this.label}`)
+        if (this.streamType == "enet" && !this.enetConnected) {
             return
         }
 
-        for (const listener of this.receiveListeners) {
-            listener(event.data)
+        // Send buffered packets
+        for (const packet of this.packetBuffer.splice(0)) {
+            this.sendRaw(packet)
         }
     }
-    private receiveListeners: Array<(data: ArrayBuffer) => void> = []
-    addReceiveListener(listener: (data: ArrayBuffer) => void): void {
-        this.receiveListeners.push(listener)
+
+    send(input: ClientInputEvent): void {
+        for (const packet of this.batcher.batchInput(input)) {
+            this.sendRaw(packet)
+        }
+
+        this.sendBatchedInputs()
     }
-    removeReceiveListener(listener: (data: ArrayBuffer) => void): void {
-        const index = this.receiveListeners.indexOf(listener)
-        if (index != -1) {
-            this.receiveListeners.splice(index, 1)
+
+    sendRaw(packet: ControlPacket): void {
+        console.debug(packet, "sending control packet")
+
+        if (
+            !this.channel || this.channel.readyState != "open" ||
+            (this.streamType == "enet" && (!this.controlStream || !this.enetConnected))
+        ) {
+            this.packetBuffer.push(packet)
+            return
+        }
+        if (!this.config) {
+            throw "packet config not configured, but a packet was sent"
+        }
+
+        this.trySendBufferedPackets()
+
+        if (this.streamType == "simple") {
+            const data = controlPacketSerialize(this.config, packet)
+            console.debug(data, "sending control data")
+            if (data) {
+                this.channel.send(data)
+            }
+        } else if (this.streamType == "enet") {
+            this.controlStream?.sendRaw(packet)
+            this.controlStreamPollOutput()
+        } else {
+            this.logger?.debug(`failed to send control packet ${JSON.stringify(packet)}`)
         }
     }
-    estimatedBufferedBytes(): number | null {
-        return this.channel?.bufferedAmount ?? null
+
+    estimatedRtt(): EstimatedRttInfo | null {
+        return this.controlStream?.estimatedRtt() ?? null
+    }
+
+    private sendBatchedInputs() {
+        for (const packet of this.batcher.removeBatchedInputs()) {
+            this.sendRaw(packet)
+        }
+    }
+
+    private boundPollOutput = this.controlStreamPollOutput.bind(this)
+    private controlStreamPollOutput(handleInput = true) {
+        if (this.controlStreamPollTimeout != null) {
+            globalObject().clearTimeout(this.controlStreamPollTimeout)
+        }
+        this.controlStreamPollTimeout = null
+
+        if (!this.controlStream) {
+            return
+        }
+        if (!this.channel) {
+            return
+        }
+
+        if (handleInput) {
+            this.controlStream.handleTimeout(uniffiNow())
+        }
+
+        let send: UdpTransmit | undefined
+        while (send = this.controlStream.pollPacket()) {
+            console.debug(send.contents, "enet send")
+            this.channel.send(send.contents)
+        }
+
+        let event: ControlStreamEvent | undefined
+        while (event = this.controlStream.pollEvent()) {
+            if (event.tag === ControlStreamEvent_Tags.Connect) {
+                this.enetConnected = true
+
+                this.trySendBufferedPackets()
+            } else if (event.tag === ControlStreamEvent_Tags.Packet) {
+                if (this.onreceive) {
+                    this.onreceive(event.inner[0]);
+                }
+            } else if (event.tag === ControlStreamEvent_Tags.Disconnect) {
+                // TODO: reconstruct control stream?
+                this.enetConnected = false
+            }
+        }
+
+        const timeout = this.controlStream.pollTimeout()
+        if (timeout != undefined) {
+            this.controlStreamPollTimeout = globalObject().setTimeout(this.boundPollOutput, uniffiMillisUntil(timeout))
+        }
     }
 }

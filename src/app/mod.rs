@@ -5,25 +5,31 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use actix_web::{ResponseError, http::StatusCode, web::Bytes};
-use common::config::Config;
+use crate::{app::host::AppId, config::Config};
+use actix_web::{HttpResponse, ResponseError, body::BoxBody, http::StatusCode, web::Bytes};
 use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
-use moonlight_common::{high::MoonlightClientError, http::client::tokio_hyper::TokioHyperClient};
-use openssl::error::ErrorStack;
+use moonlight_common::{
+    crypto::rustcrypto::{RustCryptoBackend, RustCryptoError},
+    high::{MoonlightClientError, StreamConfigError},
+    http::{client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
+    stream::tokio::MoonlightStreamError,
+    webrtc::WebRTCParseError,
+};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
 use crate::app::{
     auth::{SessionToken, UserAuth},
-    host::{AppId, HostId},
+    host::HostId,
     password::StoragePassword,
     role::{Role, RoleId},
     storage::{
         Either, Storage, StorageHostModify, StorageRoleAdd, StorageRoleDefaultSettings,
         StorageRolePermissions, StorageUserAdd, create_storage,
     },
+    stream::{Stream, StreamId},
     user::{Admin, AuthenticatedUser, RoleType, User, UserId},
 };
 
@@ -32,6 +38,7 @@ pub mod host;
 pub mod password;
 pub mod role;
 pub mod storage;
+pub mod stream;
 pub mod user;
 
 #[derive(Debug, Error)]
@@ -54,6 +61,10 @@ pub enum AppError {
     HostPaired,
     #[error("the host must be paired for this action")]
     HostNotPaired,
+    #[error("the client doesn't support the required codecs")]
+    WebRtcClientCodecNotSupported,
+    #[error("the stream was already closed")]
+    StreamClosed,
     // -- Unauthorized
     #[error("the credentials don't exists")]
     CredentialsWrong,
@@ -79,44 +90,77 @@ pub enum AppError {
     UserNameEmpty,
     #[error("the authorization header is not a bearer")]
     BadRequest,
+    #[error("the host doesn't support the given config: {0}")]
+    StreamConfig(#[from] StreamConfigError),
+    #[error("failed to parse the given sdp: {0}")]
+    WebRTCParse(#[from] WebRTCParseError),
     // --
-    #[error("openssl error occured: {0}")]
-    OpenSSL(#[from] ErrorStack),
+    #[error("rustcrypto error occured: {0}")]
+    RustCrypto(#[from] RustCryptoError),
     #[error("hex error occured: {0}")]
     Hex(#[from] FromHexError),
     #[error("io error: {0}")]
     Io(#[from] io::Error),
     #[error("moonlight error: {0}")]
     Moonlight(#[from] MoonlightClientError),
+    #[error("moonlight error: {0}")]
+    MoonlightStream(#[from] MoonlightStreamError),
+    #[error("webrtc: {0}")]
+    WebRTC(#[from] webrtc::Error),
 }
 
 impl ResponseError for AppError {
     fn status_code(&self) -> StatusCode {
+        unreachable!()
+    }
+
+    fn error_response(&self) -> HttpResponse<BoxBody> {
         match self {
-            Self::AppDestroyed => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::FirstUserAlreadyExists => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::FirstLoginCreateAdminNotSet => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::HostNotFound => StatusCode::NOT_FOUND,
-            Self::HostNotPaired => StatusCode::FORBIDDEN,
-            Self::HostPaired => StatusCode::NOT_MODIFIED,
-            Self::UserNotFound => StatusCode::NOT_FOUND,
-            Self::RoleNotFound => StatusCode::NOT_FOUND,
-            Self::UserAlreadyExists => StatusCode::CONFLICT,
-            Self::CredentialsWrong => StatusCode::UNAUTHORIZED,
-            Self::SessionTokenNotFound => StatusCode::UNAUTHORIZED,
-            Self::Unauthorized => StatusCode::UNAUTHORIZED,
-            Self::Forbidden => StatusCode::FORBIDDEN,
-            Self::OpenSSL(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::HeaderAuthDisabled => StatusCode::UNAUTHORIZED,
-            Self::Hex(_) => StatusCode::BAD_REQUEST,
-            Self::AuthorizationNotBearer => StatusCode::BAD_REQUEST,
-            Self::HeaderAuthMalformed => StatusCode::BAD_REQUEST,
-            Self::BearerMalformed => StatusCode::BAD_REQUEST,
-            Self::PasswordEmpty => StatusCode::BAD_REQUEST,
-            Self::UserNameEmpty => StatusCode::BAD_REQUEST,
-            Self::BadRequest => StatusCode::BAD_REQUEST,
-            Self::Moonlight(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::AppDestroyed => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::FirstUserAlreadyExists => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::FirstLoginCreateAdminNotSet => {
+                HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+            Self::HostNotFound => {
+                HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("host not found"))
+            }
+            Self::HostNotPaired => HttpResponse::new(StatusCode::FORBIDDEN),
+            Self::HostPaired => HttpResponse::new(StatusCode::NOT_MODIFIED)
+                .set_body(BoxBody::new("host not paired")),
+            Self::WebRtcClientCodecNotSupported => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::UserNotFound => {
+                HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("user not found"))
+            }
+            Self::RoleNotFound => {
+                HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("role not found"))
+            }
+            Self::StreamClosed => {
+                HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("stream not found"))
+            }
+            Self::UserAlreadyExists => HttpResponse::new(StatusCode::CONFLICT),
+            Self::CredentialsWrong => HttpResponse::new(StatusCode::UNAUTHORIZED),
+            Self::SessionTokenNotFound => HttpResponse::new(StatusCode::UNAUTHORIZED),
+            Self::Unauthorized => HttpResponse::new(StatusCode::UNAUTHORIZED),
+            Self::Forbidden => HttpResponse::new(StatusCode::FORBIDDEN),
+            Self::RustCrypto(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::HeaderAuthDisabled => HttpResponse::new(StatusCode::UNAUTHORIZED),
+            Self::Hex(_) => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::AuthorizationNotBearer => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::HeaderAuthMalformed => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::BearerMalformed => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::PasswordEmpty => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::UserNameEmpty => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::BadRequest => HttpResponse::new(StatusCode::BAD_REQUEST),
+            Self::StreamConfig(error) => {
+                HttpResponse::new(StatusCode::BAD_REQUEST).set_body(BoxBody::new(error.to_string()))
+            }
+            Self::WebRTCParse(error) => {
+                HttpResponse::new(StatusCode::BAD_REQUEST).set_body(BoxBody::new(error.to_string()))
+            }
+            Self::Moonlight(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::MoonlightStream(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::WebRTC(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
+            Self::Io(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
         }
     }
 }
@@ -136,9 +180,10 @@ struct AppInner {
     config: Config,
     storage: Arc<dyn Storage + Send + Sync>,
     app_image_cache: RwLock<HashMap<(UserId, HostId, AppId), Bytes>>,
+    streams: RwLock<HashMap<StreamId, Stream>>,
 }
 
-pub type MoonlightClient = TokioHyperClient;
+pub type RequestClient = TokioHyperClient;
 
 pub struct App {
     inner: Arc<AppInner>,
@@ -150,11 +195,11 @@ impl App {
             storage: create_storage(config.data_storage.clone()).await?,
             config,
             app_image_cache: Default::default(),
+            streams: Default::default(),
         };
+        let inner = Arc::new(app);
 
-        Ok(Self {
-            inner: Arc::new(app),
-        })
+        Ok(Self { inner })
     }
 
     fn new_ref(&self) -> AppRef {
@@ -166,6 +211,33 @@ impl App {
     pub fn config(&self) -> &Config {
         &self.inner.config
     }
+
+    // -- Streams
+
+    async fn insert_stream(&self, f: impl FnOnce(StreamId) -> Stream) -> Result<Stream, AppError> {
+        let mut streams = self.inner.streams.write().await;
+
+        let mut id = StreamId(0);
+        while streams.contains_key(&id) {
+            let mut random = [0; _];
+            RustCryptoBackend.random_bytes(&mut random)?;
+            id = StreamId(u32::from_be_bytes(random));
+        }
+
+        let stream = f(id);
+        streams.insert(id, stream.clone());
+
+        Ok(stream)
+    }
+    pub async fn stream_by_id(&self, id: StreamId) -> Result<Stream, AppError> {
+        let streams = self.inner.streams.read().await;
+
+        let stream = streams.get(&id).ok_or(AppError::StreamClosed)?;
+
+        Ok(stream.clone())
+    }
+
+    // -- Users
 
     /// Handles all logic related to adding the first user:
     /// - Is this even currently allowed?
@@ -380,6 +452,8 @@ impl App {
     pub async fn delete_session(&self, session: SessionToken) -> Result<(), AppError> {
         self.inner.storage.remove_session_token(session).await
     }
+
+    // -- Roles
 
     async fn find_role(
         &self,

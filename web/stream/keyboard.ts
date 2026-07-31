@@ -1,19 +1,34 @@
-import { StreamKeyModifiers, StreamKeys } from "../api_bindings.js"
+import { StreamKeys } from "../api_bindings.js"
+import { KeyModifiers } from "../uniffi/moonlight_common_bindings.js";
 
-export function convertToModifiers(event: KeyboardEvent): number {
-    let modifiers = 0;
+export function emptyKeyModifiers(): KeyModifiers {
+    return {
+        shift: false,
+        ctrl: false,
+        alt: false,
+        meta: false,
+    }
+}
+
+export function convertToModifiers(event: KeyboardEvent): KeyModifiers {
+    const modifiers: KeyModifiers = {
+        shift: false,
+        ctrl: false,
+        alt: false,
+        meta: false,
+    }
 
     if (event.shiftKey) {
-        modifiers |= StreamKeyModifiers.MASK_SHIFT;
+        modifiers.shift = true
     }
     if (event.ctrlKey) {
-        modifiers |= StreamKeyModifiers.MASK_CTRL;
+        modifiers.ctrl = true
     }
     if (event.altKey) {
-        modifiers |= StreamKeyModifiers.MASK_ALT;
+        modifiers.alt = true
     }
     if (event.metaKey) {
-        modifiers |= StreamKeyModifiers.MASK_META;
+        modifiers.meta = true
     }
 
     return modifiers

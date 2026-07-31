@@ -1,124 +1,73 @@
-cargo-features = ["profile-rustflags"]
-
-[workspace]
-resolver = "3"
-members = ["common", "streamer", "./"]
-default-members = ["streamer", "./"]
-
-[profile.release]
-# strip release information
-rustflags = ["-Zremap-cwd-prefix=.", "-Zlocation-detail=none"]
-
-[workspace.package]
-version = "2.10.0"
+[package]
+name = "web-server"
+version = "2.6.0"
+edition = "2024"
 license = "GPL-3.0-or-later"
 
-[workspace.dependencies]
-moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-rust.git", rev = "df9f1e3003fb4834dbb17a4bd4d3cf25d2fea3d9", features = [
-    "tokio",
-    "tokio-hyper",
-    "openssl",
-    "stream-c",
-    "serde",
-], default-features = false }
-common = { path = "./common" }
-
-# Log
-log = "0.4.28"
-tracing = "0.1.44"
-tracing-subscriber = "0.3.22"
-tracing-appender = "0.2.4"
-tracing-actix-web = "0.7.21"
-venator = "1.1.0"
-
+[dependencies]
 # Cli
-clap = { version = "4.5.53" }
+clap = { version = "4.5.53", features = ["derive", "env"] }
 ts-rs = "11.0.1"
-async-trait = "0.1.89"
 
 # Async
-tokio = { version = "1.47.1" }
+tokio = { version = "1.47.1", features = ["net", "fs", "process"] }
 futures = "0.3.31"
-bytes = "1.11.1"
+futures-concurrency = "7.7.1"
+bytes = "1.12.0"
+async-trait = "0.1.89"
 
-# -- Http / Https
-# other
-# TODO: make moonlight common rust use the latest version
-uuid = { version = "0.8.2" }
-hex = { version = "0.4.3" }
+# Http Server
+actix-web = { version = "4.11.0", features = ["rustls-0_23"] }
+rustls = { version = "0.23.40", default-features = false, features = [
+    "std",
+    "ring",
+] }
+actix-files = "0.6.6"
+# TODO: upgrade actix-ws
+actix-ws = "0.3.0"
+
+# Moonlight
+# Make sure to keep the ubrn.config.yaml repo the same as this
+moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-rust.git", rev = "32c6b1eeae2e7904172cee4cfe0c2b532f7ed627", features = [
+    "tokio",
+    "tokio-hyper",
+    "rustcrypto",
+    "stream-proto",
+    "serde",
+], default-features = false }
 
 # WebRTC
 webrtc = { version = "0.17.1", git = "https://github.com/MrCreativ3001/webrtc-rs.git", rev = "c9675e222245e95c056e2dcc0195fb076ffa9b89" }
 
-# Actix
-actix-web = { version = "4.11.0" }
-actix-files = "0.6.6"
-actix-ws = "0.3.0"
-
-# OpenSSL / Crypto
-openssl = "0.10.67"
-pem = "3.0.5"
+# Log
+log = { version = "0.4.28", features = ["serde"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+tracing-appender = "0.2.4"
+tracing-actix-web = "0.7.21"
+venator = "1.1.0"
 
 # Serialization
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
+pem = { version = "3.0.5", features = ["serde"] }
 
 # Error
 anyhow = "1.0.99"
 thiserror = "2.0.16"
 
-# Numbers
-num = "0.4"
-num-derive = "0.4"
-num-traits = "0.2"
-
-[workspace.lints.clippy]
-too_many_arguments = "allow"
-unwrap_used = "warn"
-todo = "warn"
-
-[package]
-name = "web-server"
-version.workspace = true
-edition = "2024"
-license = { workspace = true }
-default-run = "web-server"
-
-[dependencies]
-moonlight-common = { workspace = true }
-common = { workspace = true }
-
-tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
-futures-concurrency = "7.7.1"
-
-clap = { workspace = true, features = ["derive", "env"] }
-
-actix-web = { workspace = true, features = ["openssl"] }
-openssl = { workspace = true }
-actix-files = { workspace = true }
-actix-ws = { workspace = true }
-
-log = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tracing-appender = { workspace = true }
-tracing-actix-web = { workspace = true }
-venator.workspace = true
-
-anyhow = { workspace = true }
-
-serde = { workspace = true }
-serde_json = { workspace = true }
-pem = { workspace = true }
-futures = { workspace = true }
-uuid.workspace = true
-thiserror.workspace = true
-async-trait.workspace = true
-hex.workspace = true
+# Security / Password
 sha2 = "0.10.9"
+pbkdf2 = { version = "0.13.0", features = ["sha2"] }
+
+# Other
+uuid = { version = "1.24.0" }
+hex = { version = "0.4.3" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
-[lints]
-workspace = true
+[lints.clippy]
+too_many_arguments = "allow"
+unwrap_used = "warn"
+todo = "warn"

@@ -9,11 +9,6 @@
     <title>Stream</title>
     <link rel="icon" href="resources/moonlight.svg" sizes="any" type="image/svg+xml">
 
-    <link rel="stylesheet" href="styles/standard.css" id="style">
-    <script type="module" src="styles/index.js"></script>
-
-    <script type="module" src="stream.js" defer></script>
-
     <script>
         try {
             const raw = localStorage.getItem("mlSettings");
@@ -39,8 +34,9 @@
     <!-- Sidebar -->
     <div class="sidebar-overlay prevent-start-transition" id="sidebar-root">
         <div class="sidebar-background prevent-start-transition">
-            <button id="sidebar-button" class="sidebar-button"><img src="resources/arrow_left.svg"
-                    class="sidebar-button-image prevent-start-transition" /></button>
+            <button id="sidebar-button" class="sidebar-button">
+                <div class="sidebar-button-image prevent-start-transition"></div>
+            </button>
             <div id="sidebar-parent" class="sidebar-content">
             </div>
         </div>

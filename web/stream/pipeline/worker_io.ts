@@ -54,7 +54,7 @@ class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer
     setup(_setup: VideoRendererSetup): void { }
     cleanup(): void { }
     submitFrame(_frame: VideoFrame): void { }
-    submitPacket(_buffer: ArrayBuffer): void { }
+    submitPacket(_buffer: Uint8Array): void { }
     setTrack(_track: MediaStreamTrack): void { }
     submitDecodeUnit(_unit: VideoDecodeUnit): void { }
 }
@@ -104,7 +104,7 @@ class WorkerSenderPipe implements DataPipe, FrameVideoRenderer, TrackVideoRender
     submitFrame(videoFrame: VideoFrame): void {
         this.getBase().onWorkerMessage({ videoFrame }, [videoFrame])
     }
-    submitPacket(data: ArrayBuffer): void {
+    submitPacket(data: Uint8Array): void {
         // we don't know if we own this data, so we cannot transfer
         this.getBase().onWorkerMessage({ data })
     }

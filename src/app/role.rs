@@ -1,5 +1,5 @@
-use common::api_bindings::{DetailedRole, StreamPermissions, UndetailedRole};
-use common::api_bindings_ext::TsAny;
+use crate::api::bindings::{DetailedRole, StreamPermissions, UndetailedRole};
+use crate::api::bindings_ext::TsAny;
 
 use crate::app::storage::StorageRoleModify;
 use crate::app::user::Admin;

@@ -2,7 +2,11 @@
   "name": "moonlight-web",
   "version": "1.0.0",
   "description": "",
-  "main": "web/index.ts",
+  "type": "module",
+  "engines": {
+    "node": ">=26.4.0 < 27.0.0",
+    "npm": ">=11.17.0 < 12.0.0"
+  },
   "watch": {
     "build-light": {
       "patterns": [
@@ -14,18 +18,32 @@
       "runOnChangeOnly": false
     }
   },
+  "repository": {
+    "url": "This is required for uniffi-bindgen-react-native"
+  },
   "scripts": {
-    "dev": "npm run generate-bindings && npm-watch build-light",
-    "build": "npm run generate-bindings && npm run build-light",
-    "build-light": "tsc && npm run copy-static",
-    "generate-bindings": "cargo test export_bindings --package common",
-    "copy-static": "cpx \"web/**/*.{html,json,css,svg,png,js,wasm}\" dist/"
+    "dev": "npm run prebuild && webpack --watch",
+    "build": "npm run prebuild && webpack",
+    "prebuild": "npm run generate-bindings && npm run build-moonlight-common",
+    "generate-bindings": "cargo test export_bindings",
+    "build-moonlight-common": "npm run ubrn:checkout && npm run ubrn:build",
+    "ubrn:checkout": "ubrn checkout",
+    "ubrn:build": "ubrn build web"
   },
   "license": "GPL-3.0-or-later",
   "private": "true",
+  "dependencies": {
+    "@ubjs/core": "0.31.0-3"
+  },
   "devDependencies": {
-    "cpx": "1.2.1",
-    "npm-watch": "0.13.0",
-    "typescript": "5.9.3"
+    "copy-webpack-plugin": "14.0.0",
+    "css-loader": "7.1.4",
+    "html-webpack-plugin": "5.6.7",
+    "style-loader": "4.0.0",
+    "ts-loader": "9.6.0",
+    "typescript": "5.9.3",
+    "uniffi-bindgen-react-native": "0.31.0-3",
+    "webpack": "5.107.2",
+    "webpack-cli": "7.0.3"
   }
 }

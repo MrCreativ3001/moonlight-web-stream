@@ -2,22 +2,28 @@ import "./polyfill/index.js"
 import { Api, apiGetRole, getApi } from "./api.js";
 import { Component } from "./component/index.js";
 import { showNotification } from "./component/notification.js";
-import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { getLocalStreamSettings, Settings, TransportType} from "./component/settings_menu.js";
+import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
-import { DetailedRole, LogMessageType, StreamCapabilities, StreamKeys, StreamPermissions } from "./api_bindings.js";
+import { emptyKeyModifiers } from "./stream/keyboard.js";
+import { LogLevel, setLogger as uniffiSetLogger, Logger as UniffiLogger, uniffiInitAsync } from "./uniffi/entry.js";
+import "./styles/index.ts"
+import { DetailedRole, StreamKeys, StreamPermissions } from "./api_bindings.js";
 import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
 import { streamStatsToText } from "./stream/stats.js";
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage} from "./i18n.js";
+import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n.js";
 import { requestKeyboardLock } from "./iframe.js";
+import { InfoEvent, Stream, StreamCapabilities } from "./stream/index.js";
+import { LogMessageType } from "./stream/log.js";
 
 let I = getTranslations(getCurrentLanguage())
 
 async function startApp() {
+    const uniffiInit = uniffiInitAsync()
+
     const api = await getApi()
 
     const queryParams = new URLSearchParams(location.search)
@@ -57,6 +63,33 @@ async function startApp() {
     if (modalBackground) {
         stopPropagationOn(modalBackground)
     }
+
+    // Wait for uniffi to finish it's initialization
+    await uniffiInit
+    // Set Uniffy Logger
+    class CustomUniffiLogger implements UniffiLogger {
+        log(level: LogLevel, message: string): void {
+            switch (level) {
+                case LogLevel.Trace:
+                    console.trace(message)
+                    break;
+                case LogLevel.Debug:
+                    console.debug(message)
+                    break;
+                case LogLevel.Warn:
+                    console.warn(message)
+                    break;
+                case LogLevel.Info:
+                    console.info(message)
+                    break;
+                case LogLevel.Error:
+                    console.error(message)
+                    break;
+            }
+        }
+    }
+    // TODO: check for prod or dev env
+    uniffiSetLogger(new CustomUniffiLogger(), LogLevel.Debug)
 
     // Start and Mount App
     const app = new ViewerApp(api, hostId, appId, bootstrapRole.role, parseSettingsFromQuery(queryParams))
@@ -134,6 +167,7 @@ class ViewerApp implements Component {
 
     private inputConfig: StreamInputConfig = defaultStreamInputConfig()
     private previousMouseMode: MouseMode
+
     private autoEnterFullscreenOnStart: boolean = false
     private pendingAutoFullscreenPrompt: boolean = false
     private fullscreenPromptShown: boolean = false
@@ -141,10 +175,10 @@ class ViewerApp implements Component {
     private pendingAutoFullscreenTouchGesture: boolean = false
     private pendingAutoFullscreenMouseGesture: boolean = false
     private manualFullscreenExitRequested: boolean = false
+
     private toggleFullscreenWithKeybind: boolean = false
+
     private hasShownFullscreenEscapeWarning = false
-    private keyboardViewportBaselineHeight: number | null = null
-    private streamVideoTopOffsetPx: number = 0
 
     constructor(api: Api, hostId: number, appId: number, bootstrapRole: DetailedRole, options?: Partial<Settings>) {
         this.api = api
@@ -201,7 +235,7 @@ class ViewerApp implements Component {
         this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
 
         this.stream = new Stream(this.api, hostId, appId, settings, [browserWidth, browserHeight], bootstrapRole.permissions)
-        this.startStream(hostId, appId, bootstrapRole.permissions, settings, [browserWidth, browserHeight])
+        this.startStream(settings)
 
         // Configure input
         this.addListeners(document)
@@ -245,7 +279,7 @@ class ViewerApp implements Component {
         element.addEventListener("touchmove", this.onTouchMove.bind(this), { passive: false })
     }
 
-    private async startStream(hostId: number, appId: number, permissions: StreamPermissions, settings: Settings, browserSize: [number, number]) {
+    private async startStream(settings: Settings) {
         setSidebarStyle({
             edge: settings.sidebarEdge,
         })
@@ -257,14 +291,7 @@ class ViewerApp implements Component {
         const connectionInfo = new ConnectionInfoModal()
         const connectionInfoListener = connectionInfo.onInfo.bind(connectionInfo)
         this.stream.addInfoListener(connectionInfoListener)
-        void showModal(connectionInfo).then(async () => {
-            this.stream.removeInfoListener(connectionInfoListener)
-            if (this.autoEnterFullscreenOnStart && this.pendingAutoFullscreenPrompt && !this.fullscreenPromptShown && !this.isFullscreen()) {
-                this.fullscreenPromptShown = true
-                this.pendingAutoFullscreenPrompt = false
-                this.armFullscreenOnNextInteraction()
-            }
-        })
+        showModal(connectionInfo)
 
         // Start animation frame loop
         this.onTouchUpdate()
@@ -283,11 +310,13 @@ class ViewerApp implements Component {
         const data = event.detail
 
         if (data.type == "app") {
-            const app = data.app
+            const appName = data.appName
 
-            document.title = `Stream: ${app.title}`
+            document.title = `Stream: ${appName}`
         } else if (data.type == "connectionComplete") {
             this.sidebar.onCapabilitiesChange(data.capabilities)
+
+            this.armFullscreenOnNextInteraction()
         }
     }
 
@@ -304,6 +333,8 @@ class ViewerApp implements Component {
         this.stream.getVideoRenderer()?.onUserInteraction()
         this.stream.getAudioPlayer()?.onUserInteraction()
     }
+
+    // -- Auto Fullscreen
     private armFullscreenOnNextInteraction() {
         if (this.autoEnterFullscreenOnStart) {
             this.fullscreenOnNextInteractionArmed = true
@@ -338,6 +369,7 @@ class ViewerApp implements Component {
         this.pendingAutoFullscreenTouchGesture = false
         return this.consumeAutoFullscreenInteraction()
     }
+
     private onScreenKeyboardSetVisible(event: ScreenKeyboardSetVisibleEvent) {
         console.info(event.detail)
         const screenKeyboard = this.sidebar.getScreenKeyboard()
@@ -554,9 +586,6 @@ class ViewerApp implements Component {
     }
 
     // Fullscreen
-    private async promptAutoFullscreen() {
-        await showModal(new AutoFullscreenModal(this.requestFullscreen.bind(this)))
-    }
     async requestFullscreen(showEscapeWarning: boolean = true) {
         const body = document.body
         if (body) {
@@ -713,6 +742,7 @@ class ViewerApp implements Component {
             setSidebar(this.sidebar)
         }
     }
+
     private renderLocalTouchCursor() {
         const localCursorState = this.stream.getInput().getLocalCursorState()
         if (!localCursorState?.visible) {
@@ -730,6 +760,10 @@ class ViewerApp implements Component {
         this.localTouchCursorDiv.style.left = `${rect.left + localCursorState.x * rect.width}px`
         this.localTouchCursorDiv.style.top = `${rect.top + localCursorState.y * rect.height}px`
     }
+
+    // -- Keyboard Mode
+    private keyboardViewportBaselineHeight: number | null = null
+    private streamVideoTopOffsetPx: number = 0
 
     onScreenKeyboardModeWillChange(event: KeyboardModeWillChangeEvent) {
         if (event.detail.enabled) {
@@ -911,9 +945,8 @@ class ConnectionInfoModal implements Modal<void> {
             const text = I.stream.connectionComplete
             this.text.innerText = text
             this.debugLog(text)
-        } else if (data.type == "videoReady") {
 
-            this.eventTarget.dispatchEvent(new Event("ml-connected"))
+            showModal(null)
         } else if (data.type == "addDebugLine") {
             const message = data.line.trim()
             if (message) {
@@ -937,10 +970,6 @@ class ConnectionInfoModal implements Modal<void> {
             } else if (data.additional?.type == "informError") {
                 showNotification(data.line)
             }
-        } else if (data.type == "serverMessage") {
-            const text = I.stream.serverMessage(data.message)
-            this.text.innerText = text
-            this.debugLog(text)
         }
     }
 
@@ -959,44 +988,6 @@ class ConnectionInfoModal implements Modal<void> {
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.root)
-    }
-}
-
-class AutoFullscreenModal implements Component, Modal<void> {
-    private message = document.createElement("p")
-    private root = document.createElement("div")
-    private okButton = document.createElement("button")
-    private cancelButton = document.createElement("button")
-    private onConfirm: () => Promise<void>
-
-    constructor(onConfirm: () => Promise<void>) {
-        this.onConfirm = onConfirm
-        this.message.innerText = I.stream.autoFullscreenPrompt
-        this.okButton.innerText = I.modal.ok
-        this.cancelButton.innerText = I.modal.cancel
-    }
-
-    mount(parent: HTMLElement): void {
-        this.root.appendChild(this.message)
-        this.root.appendChild(this.okButton)
-        this.root.appendChild(this.cancelButton)
-        parent.appendChild(this.root)
-    }
-    unmount(parent: HTMLElement): void {
-        parent.removeChild(this.root)
-    }
-
-    onFinish(abort: AbortSignal): Promise<void> {
-        return new Promise((resolve) => {
-            this.okButton.addEventListener("click", async () => {
-                await this.onConfirm()
-                resolve()
-            }, { once: true, signal: abort })
-
-            this.cancelButton.addEventListener("click", () => {
-                resolve()
-            }, { once: true, signal: abort })
-        })
     }
 }
 
@@ -1040,8 +1031,8 @@ class ViewerSidebar implements Component, Sidebar {
                 return
             }
 
-            this.app.getStream()?.getInput().sendKey(true, key, 0)
-            this.app.getStream()?.getInput().sendKey(false, key, 0)
+            this.app.getStream()?.getInput().sendKey(true, key, emptyKeyModifiers())
+            this.app.getStream()?.getInput().sendKey(false, key, emptyKeyModifiers())
         })
         this.buttonDiv.appendChild(this.sendKeycodeButton)
 

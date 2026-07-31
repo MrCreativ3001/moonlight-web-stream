@@ -1,13 +1,12 @@
-import { StreamCapabilities, StreamControllerCapabilities, StreamMouseButton, TransportChannelId } from "../api_bindings.js"
+import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButton, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings.js"
 import { showNotification } from "../component/notification.js"
 import { ByteBuffer, I16_MAX, U16_MAX, U8_MAX } from "./buffer.js"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad.js"
-import { convertToKey, convertToModifiers } from "./keyboard.js"
+import { StreamCapabilities } from "./index.js"
+import { convertToKey, convertToModifiers, emptyKeyModifiers } from "./keyboard.js"
 import { convertToButton } from "./mouse.js"
-import { DataTransportChannel, Transport, TransportChannelIdKey, TransportChannelIdValue } from "./transport/index.js"
+import { IControlStream } from "./transport/index.js"
 
-// Smooth scrolling multiplier
-const TOUCH_HIGH_RES_SCROLL_MULTIPLIER = 10
 // Normal scrolling multiplier
 const TOUCH_SCROLL_MULTIPLIER = 1
 // Distance until a touch cannot be a click anymore
@@ -27,27 +26,12 @@ const DOUBLE_TAP_SECOND_TAP_MAX_TIME_MS = 200
 
 const CONTROLLER_RUMBLE_INTERVAL_MS = 60
 
-function trySendChannel(channel: DataTransportChannel | null, buffer: ByteBuffer) {
-    if (!channel) {
-        console.info(`dropping packet on channel ${channel} because the channel is not present.`)
-        return
-    }
-
-    buffer.flip()
-    const readBuffer = buffer.getRemainingBuffer()
-    if (readBuffer.length == 0) {
-        throw "illegal buffer size"
-    }
-    channel.send(readBuffer.buffer)
-}
-
 export type MouseScrollMode = "highres" | "normal"
 export type MouseMode = "relative" | "follow" | "localCursor" | "pointAndDrag"
 export type TouchMode = "touch" | "mouseRelative" | "localCursor" | "pointAndDrag"
 
 export type StreamInputConfig = {
     mouseMode: MouseMode
-    mouseScrollMode: MouseScrollMode
     touchMode: TouchMode
     localCursorSensitivity: number
     controllerConfig: ControllerConfig
@@ -56,7 +40,6 @@ export type StreamInputConfig = {
 export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         mouseMode: "follow",
-        mouseScrollMode: "highres",
         touchMode: "mouseRelative",
         localCursorSensitivity: 1,
         controllerConfig: {
@@ -75,24 +58,16 @@ export class StreamInput {
 
     private eventTarget = new EventTarget()
 
-    private buffer: ByteBuffer = new ByteBuffer(1024)
-
     private connected = false
     private config: StreamInputConfig
     private capabilities: StreamCapabilities = { touch: true }
-    // Size of the streamer device
-    private streamerSize: [number, number] = [0, 0]
 
-    private keyboard: DataTransportChannel | null = null
-    private mouseReliable: DataTransportChannel | null = null
-    private mouseAbsolute: DataTransportChannel | null = null
-    private mouseRelative: DataTransportChannel | null = null
-    private touch: DataTransportChannel | null = null
-    private controllers: DataTransportChannel | null = null
-    private controllerInputs: Array<DataTransportChannel | null> = []
+    private controlStream: IControlStream | null = null
 
-    private touchSupported: boolean | null = null
     private localCursorPosition: [number, number] | null = null
+    buffer: any
+
+    private streamSize: [number, number] = [0, 0]
 
     constructor(config?: StreamInputConfig) {
         this.config = defaultStreamInputConfig()
@@ -101,41 +76,11 @@ export class StreamInput {
         }
     }
 
-    private getDataChannel(transport: Transport, id: TransportChannelIdValue): DataTransportChannel {
-        const channel = transport.getChannel(id)
-        if (channel.type == "data") {
-            return channel
-        }
-        throw `Failed to get channel ${id} as data transport channel`
-    }
-    setTransport(transport: Transport) {
-        this.keyboard = this.getDataChannel(transport, TransportChannelId.KEYBOARD)
+    setControlStream(controlStream: IControlStream) {
+        // Clear state
+        this.raiseAllKeys()
 
-        this.mouseReliable = this.getDataChannel(transport, TransportChannelId.MOUSE_RELIABLE)
-        this.mouseAbsolute = this.getDataChannel(transport, TransportChannelId.MOUSE_ABSOLUTE)
-        this.mouseRelative = this.getDataChannel(transport, TransportChannelId.MOUSE_RELATIVE)
-
-        if (this.touch) {
-            this.touch.removeReceiveListener(this.onTouchData.bind(this))
-        }
-        this.touch = this.getDataChannel(transport, TransportChannelId.TOUCH)
-        this.touch.addReceiveListener(this.onTouchData.bind(this))
-
-        if (this.controllers) {
-            this.controllers.removeReceiveListener(this.onTouchData.bind(this))
-        }
-        this.controllers = this.getDataChannel(transport, TransportChannelId.CONTROLLERS)
-        this.controllers.addReceiveListener(this.onControllerData.bind(this))
-
-        this.controllerInputs.length = 0
-        for (let i = 0; i < 16; i++) {
-            const channelId = TransportChannelId[`CONTROLLER${i}` as TransportChannelIdKey]
-
-            this.controllerInputs[i] = this.getDataChannel(transport, channelId)
-        }
-
-        // Register all controllers, because the missing channel could've dropped controller connect events
-        this.registerBufferedControllers()
+        this.controlStream = controlStream
     }
 
     setConfig(config: StreamInputConfig) {
@@ -159,11 +104,12 @@ export class StreamInput {
     }
 
     // -- On Stream Start
-    onStreamStart(capabilities: StreamCapabilities, streamerSize: [number, number]) {
+    onStreamStart(capabilities: StreamCapabilities, desktopSize: [number, number]) {
         this.connected = true
 
+        this.streamSize = desktopSize
+
         this.capabilities = capabilities
-        this.streamerSize = streamerSize
         this.registerBufferedControllers()
     }
 
@@ -224,7 +170,7 @@ export class StreamInput {
                 isDown ? "DOWN" : "UP",
                 event.code,
                 convertToKey(event),
-                convertToModifiers(event).toString(16)
+                convertToModifiers(event)
             )
         }
         this.sendKey(isDown, key, modifiers)
@@ -232,32 +178,25 @@ export class StreamInput {
 
     raiseAllKeys() {
         for (const key of this.pressedKeys) {
-            this.sendKey(false, key, 0)
+            this.sendKey(false, key, emptyKeyModifiers())
         }
         this.pressedKeys.clear()
     }
 
     // Note: key = StreamKeys.VK_, modifiers = StreamKeyModifiers.
-    sendKey(isDown: boolean, key: number, modifiers: number) {
-        this.buffer.reset()
-
-        this.buffer.putU8(0)
-
-        this.buffer.putBool(isDown)
-        this.buffer.putU8(modifiers)
-        this.buffer.putU16(key)
-
-        trySendChannel(this.keyboard, this.buffer)
+    sendKey(isDown: boolean, key: number, modifiers: KeyModifiers) {
+        this.controlStream?.send(new ClientInputEvent.Keyboard({
+            action: isDown ? KeyAction.Down : KeyAction.Up,
+            flags: {
+                // TODO: what is this?
+                sunshineNonNormalized: false
+            },
+            keyCode: key,
+            modifiers,
+        }))
     }
     sendText(text: string) {
-        this.buffer.reset()
-
-        this.buffer.putU8(1)
-
-        this.buffer.putU8(text.length)
-        this.buffer.putUtf8Raw(text)
-
-        trySendChannel(this.keyboard, this.buffer)
+        // TODO
     }
 
     // -- Mouse
@@ -271,10 +210,10 @@ export class StreamInput {
             this.sendMouseButton(true, button)
         } else if (this.config.mouseMode == "localCursor") {
             this.initializeLocalCursor(rect, event.clientX, event.clientY)
-            this.sendLocalCursorPosition(true)
+            this.sendLocalCursorPosition()
             this.sendMouseButton(true, button)
         } else if (this.config.mouseMode == "pointAndDrag") {
-            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, true, button)
+            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, button)
         }
     }
     onMouseUp(event: MouseEvent) {
@@ -293,10 +232,10 @@ export class StreamInput {
         if (this.config.mouseMode == "relative") {
             this.sendMouseMoveClientCoordinates(event.movementX, event.movementY, rect)
         } else if (this.config.mouseMode == "follow") {
-            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect, false)
+            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect)
         } else if (this.config.mouseMode == "localCursor") {
             this.initializeLocalCursor(rect, event.clientX, event.clientY)
-            this.moveLocalCursorClientCoordinates(event.movementX, event.movementY, rect, false)
+            this.moveLocalCursorClientCoordinates(event.movementX, event.movementY, rect)
         } else if (this.config.mouseMode == "pointAndDrag") {
             if (event.buttons) {
                 // some button pressed
@@ -309,40 +248,30 @@ export class StreamInput {
     }
 
     sendMouseMove(movementX: number, movementY: number) {
-        this.buffer.reset()
-
-        this.buffer.putU8(0)
-        this.buffer.putI16(movementX)
-        this.buffer.putI16(movementY)
-
-        trySendChannel(this.mouseRelative, this.buffer)
+        this.controlStream?.send(new ClientInputEvent.MouseMoveRelative({
+            deltaX: movementX,
+            deltaY: movementY,
+        }))
     }
     sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
-        const scaledMovementX = movementX / rect.width * this.streamerSize[0];
-        const scaledMovementY = movementY / rect.height * this.streamerSize[1];
+        const scaledMovementX = movementX / rect.width * this.streamSize[0];
+        const scaledMovementY = movementY / rect.height * this.streamSize[1];
 
         this.sendMouseMove(scaledMovementX, scaledMovementY)
     }
-    sendMousePosition(x: number, y: number, referenceWidth: number, referenceHeight: number, reliable: boolean) {
-        this.buffer.reset()
-
-        this.buffer.putU8(1)
-        this.buffer.putI16(x)
-        this.buffer.putI16(y)
-        this.buffer.putI16(referenceWidth)
-        this.buffer.putI16(referenceHeight)
-
-        if (reliable) {
-            trySendChannel(this.mouseReliable, this.buffer)
-        } else {
-            trySendChannel(this.mouseAbsolute, this.buffer)
-        }
+    sendMousePosition(x: number, y: number, referenceWidth: number, referenceHeight: number) {
+        this.controlStream?.send(new ClientInputEvent.MouseMoveAbsolute({
+            x,
+            y,
+            referenceWidth,
+            referenceHeight,
+        }))
     }
-    sendMousePositionClientCoordinates(clientX: number, clientY: number, rect: DOMRect, reliable: boolean, mouseButton?: number) {
+    sendMousePositionClientCoordinates(clientX: number, clientY: number, rect: DOMRect, mouseButton?: number) {
         const position = this.calcNormalizedPosition(clientX, clientY, rect)
         if (position) {
             const [x, y] = position
-            this.sendMousePosition(x * 4096.0, y * 4096.0, 4096.0, 4096.0, reliable)
+            this.sendMousePosition(x * 4096.0, y * 4096.0, 4096.0, 4096.0)
 
             if (mouseButton != undefined) {
                 this.sendMouseButton(true, mouseButton)
@@ -358,16 +287,16 @@ export class StreamInput {
             const position = this.calcNormalizedPosition(clientX, clientY, rect)
             if (position) {
                 this.localCursorPosition = [
-                    position[0] * this.streamerSize[0],
-                    position[1] * this.streamerSize[1],
+                    position[0] * this.streamSize[0],
+                    position[1] * this.streamSize[1],
                 ]
                 return
             }
         }
 
         this.localCursorPosition = [
-            this.streamerSize[0] / 2,
-            this.streamerSize[1] / 2,
+            this.streamSize[0] / 2,
+            this.streamSize[1] / 2,
         ]
     }
     private clampLocalCursorPosition() {
@@ -375,10 +304,10 @@ export class StreamInput {
             return
         }
 
-        this.localCursorPosition[0] = Math.min(Math.max(this.localCursorPosition[0], 0), this.streamerSize[0])
-        this.localCursorPosition[1] = Math.min(Math.max(this.localCursorPosition[1], 0), this.streamerSize[1])
+        this.localCursorPosition[0] = Math.min(Math.max(this.localCursorPosition[0], 0), this.streamSize[0])
+        this.localCursorPosition[1] = Math.min(Math.max(this.localCursorPosition[1], 0), this.streamSize[1])
     }
-    private sendLocalCursorPosition(reliable: boolean) {
+    private sendLocalCursorPosition() {
         if (!this.localCursorPosition) {
             return
         }
@@ -386,13 +315,12 @@ export class StreamInput {
         this.sendMousePosition(
             this.localCursorPosition[0],
             this.localCursorPosition[1],
-            this.streamerSize[0],
-            this.streamerSize[1],
-            reliable
+            this.streamSize[0],
+            this.streamSize[1],
         )
     }
-    private moveLocalCursorClientCoordinates(movementX: number, movementY: number, rect: DOMRect, reliable: boolean) {
-        if (this.streamerSize[0] <= 0 || this.streamerSize[1] <= 0 || rect.width <= 0 || rect.height <= 0) {
+    private moveLocalCursorClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
+        if (this.streamSize[0] <= 0 || this.streamSize[1] <= 0 || rect.width <= 0 || rect.height <= 0) {
             return
         }
 
@@ -401,38 +329,24 @@ export class StreamInput {
             return
         }
 
-        this.localCursorPosition[0] += movementX / rect.width * this.streamerSize[0] * this.config.localCursorSensitivity
-        this.localCursorPosition[1] += movementY / rect.height * this.streamerSize[1] * this.config.localCursorSensitivity
+        this.localCursorPosition[0] += movementX / rect.width * this.streamSize[0] * this.config.localCursorSensitivity
+        this.localCursorPosition[1] += movementY / rect.height * this.streamSize[1] * this.config.localCursorSensitivity
         this.clampLocalCursorPosition()
-        this.sendLocalCursorPosition(reliable)
+        this.sendLocalCursorPosition()
     }
-    // Note: button = StreamMouseButton.
-    sendMouseButton(isDown: boolean, button: number) {
-        this.buffer.reset()
-
-        this.buffer.putU8(2)
-        this.buffer.putBool(isDown)
-        this.buffer.putU8(button)
-
-        trySendChannel(this.mouseReliable, this.buffer)
-    }
-    sendMouseWheelHighRes(deltaX: number, deltaY: number) {
-        this.buffer.reset()
-
-        this.buffer.putU8(3)
-        this.buffer.putI16(deltaX)
-        this.buffer.putI16(deltaY)
-
-        trySendChannel(this.mouseRelative, this.buffer)
+    sendMouseButton(isDown: boolean, button: MouseButton) {
+        this.controlStream?.send(new ClientInputEvent.MouseButton({
+            action: isDown ? MouseButtonAction.Press : MouseButtonAction.Release,
+            button
+        }))
     }
     sendMouseWheel(deltaX: number, deltaY: number) {
-        this.buffer.reset()
-
-        this.buffer.putU8(4)
-        this.buffer.putI8(deltaX)
-        this.buffer.putI8(deltaY)
-
-        trySendChannel(this.mouseRelative, this.buffer)
+        this.controlStream?.send(new ClientInputEvent.MouseScrollHorizontal({
+            scrollX: deltaX
+        }))
+        this.controlStream?.send(new ClientInputEvent.MouseScrollVertical({
+            scrollY: deltaY
+        }))
     }
 
     private scrollRemainderX = 0
@@ -456,11 +370,7 @@ export class StreamInput {
         this.scrollRemainderX -= integerX
         this.scrollRemainderY -= integerY
 
-        if (this.config.mouseScrollMode == "highres") {
-            this.sendMouseWheelHighRes(integerX, integerY)
-        } else if (this.config.mouseScrollMode == "normal") {
-            this.sendMouseWheel(integerX, integerY)
-        }
+        this.sendMouseWheel(integerX, integerY)
     }
 
     // -- Touch
@@ -470,8 +380,7 @@ export class StreamInput {
         originY: number
         x: number
         y: number
-        // number is StreamMouseButton
-        mouseClicked: null | number,
+        mouseClicked: null | MouseButton,
         // point and drag: if we've moved the mouse to the touch
         // mouse relative: we've moved the mouse enough that it shouldn't be a click anymore
         mouseMoved: boolean
@@ -493,24 +402,20 @@ export class StreamInput {
     // action. This prevents the remaining finger from becoming a click/right-click.
     private touchGestureSuppressClick: boolean = false
 
-    private onTouchData(data: ArrayBuffer) {
-        const buffer = new ByteBuffer(new Uint8Array(data))
-        this.touchSupported = buffer.getBool()
-    }
     getLocalCursorState(): LocalCursorState {
         if (
             (this.config.touchMode != "localCursor" && this.config.mouseMode != "localCursor") ||
             !this.localCursorPosition ||
-            this.streamerSize[0] <= 0 ||
-            this.streamerSize[1] <= 0
+            this.streamSize[0] <= 0 ||
+            this.streamSize[1] <= 0
         ) {
             return { visible: false, x: 0, y: 0 }
         }
 
         return {
             visible: true,
-            x: this.localCursorPosition[0] / this.streamerSize[0],
-            y: this.localCursorPosition[1] / this.streamerSize[1],
+            x: this.localCursorPosition[0] / this.streamSize[0],
+            y: this.localCursorPosition[1] / this.streamSize[1],
         }
     }
 
@@ -594,8 +499,8 @@ export class StreamInput {
             // Detect dragging in mouse relative
             if ((this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor") && primaryTouch && this.nextTouchDoubleTap) {
                 if (primaryTouch.mouseClicked == null) {
-                    this.sendMouseButton(true, StreamMouseButton.LEFT)
-                    primaryTouch.mouseClicked = StreamMouseButton.LEFT
+                    this.sendMouseButton(true, MouseButton.Left)
+                    primaryTouch.mouseClicked = MouseButton.Left
                 }
 
                 this.touchMouseAction = "drag"
@@ -623,7 +528,7 @@ export class StreamInput {
         const time = this.calcTouchTime(touch)
         if (this.config.touchMode == "pointAndDrag") {
             if (this.touchMouseAction == "default" && !touch.mouseMoved && time >= TOUCH_AS_CLICK_MIN_TIME_MS) {
-                this.sendMousePositionClientCoordinates(touch.originX, touch.originY, rect, true)
+                this.sendMousePositionClientCoordinates(touch.originX, touch.originY, rect)
 
                 touch.mouseMoved = true
             }
@@ -685,7 +590,7 @@ export class StreamInput {
                                 middleY /= 2
 
                                 primaryTouch.mouseMoved = true
-                                this.sendMousePositionClientCoordinates(middleX, middleY, rect, true)
+                                this.sendMousePositionClientCoordinates(middleX, middleY, rect)
                             }
                         }
                     }
@@ -703,7 +608,7 @@ export class StreamInput {
                             this.touchGestureSuppressClick = true
                         }
                     } else if (this.config.touchMode == "localCursor") {
-                        this.moveLocalCursorClientCoordinates(movementX, movementY, rect, false)
+                        this.moveLocalCursorClientCoordinates(movementX, movementY, rect)
 
                         if (touchOriginDistance > TOUCH_AS_CLICK_MAX_DISTANCE) {
                             oldTouch.mouseMoved = true
@@ -714,13 +619,13 @@ export class StreamInput {
                     // If we are over the touch as click distance go to the origin and drag
                     else if (this.config.touchMode == "pointAndDrag" && touchOriginDistance > TOUCH_AS_CLICK_MAX_DISTANCE) {
                         if (!oldTouch.mouseMoved) {
-                            this.sendMousePositionClientCoordinates(oldTouch.originX, oldTouch.originY, rect, true)
+                            this.sendMousePositionClientCoordinates(oldTouch.originX, oldTouch.originY, rect)
                             oldTouch.mouseMoved = true
                         }
 
                         if (oldTouch.mouseClicked == null) {
-                            this.sendMouseButton(true, StreamMouseButton.LEFT)
-                            oldTouch.mouseClicked = StreamMouseButton.LEFT
+                            this.sendMouseButton(true, MouseButton.Left)
+                            oldTouch.mouseClicked = MouseButton.Left
                         }
 
                         this.touchMouseAction = "drag"
@@ -730,11 +635,11 @@ export class StreamInput {
                         this.touchMouseAction = "drag"
                         this.touchGestureSuppressClick = true
                         oldTouch.mouseMoved = true
-                        oldTouch.mouseClicked = StreamMouseButton.LEFT
-                        this.sendMouseButton(true, StreamMouseButton.LEFT)
+                        oldTouch.mouseClicked = MouseButton.Left
+                        this.sendMouseButton(true, MouseButton.Left)
 
                         if (this.config.touchMode == "localCursor") {
-                            this.moveLocalCursorClientCoordinates(movementX, movementY, rect, false)
+                            this.moveLocalCursorClientCoordinates(movementX, movementY, rect)
                         } else {
                             this.sendMouseMoveClientCoordinates(movementX, movementY, rect)
                         }
@@ -742,23 +647,13 @@ export class StreamInput {
                 } else if (this.touchMouseAction == "drag") {
                     // Do the dragging
                     if (this.config.touchMode == "localCursor") {
-                        this.moveLocalCursorClientCoordinates(movementX, movementY, rect, false)
+                        this.moveLocalCursorClientCoordinates(movementX, movementY, rect)
                     } else {
                         this.sendMouseMoveClientCoordinates(movementX, movementY, rect)
                     }
                 } else if (this.touchMouseAction == "scroll") {
                     // inverting horizontal scroll
-                    if (this.config.mouseScrollMode == "highres") {
-                        this.sendAccumulatedScroll(
-                            -movementX * TOUCH_HIGH_RES_SCROLL_MULTIPLIER,
-                            movementY * TOUCH_HIGH_RES_SCROLL_MULTIPLIER
-                        )
-                    } else if (this.config.mouseScrollMode == "normal") {
-                        this.sendAccumulatedScroll(
-                            -movementX * TOUCH_SCROLL_MULTIPLIER,
-                            movementY * TOUCH_SCROLL_MULTIPLIER
-                        )
-                    }
+                    this.sendAccumulatedScroll(-movementX * TOUCH_SCROLL_MULTIPLIER, movementY * TOUCH_SCROLL_MULTIPLIER)
                 } else if (this.touchMouseAction == "screenKeyboard") {
                     // calculate if we should open the screen keyboard
                     const distanceY = touch.clientY - oldTouch.originY
@@ -807,8 +702,8 @@ export class StreamInput {
             for (const touch of event.changedTouches) {
                 if (endingTwoTouchTap) {
                     if (!handledTwoTouchTap && endingTwoTouchTapShouldRightClick) {
-                        this.sendMouseButton(true, StreamMouseButton.RIGHT)
-                        this.sendMouseButton(false, StreamMouseButton.RIGHT)
+                        this.sendMouseButton(true, MouseButton.Right)
+                        this.sendMouseButton(false, MouseButton.Right)
                     }
                     handledTwoTouchTap = true
 
@@ -833,8 +728,8 @@ export class StreamInput {
                             this.nextTouchDoubleTap = false
                             continue
                         }
-                        this.sendMouseButton(true, StreamMouseButton.RIGHT)
-                        this.sendMouseButton(false, StreamMouseButton.RIGHT)
+                        this.sendMouseButton(true, MouseButton.Right)
+                        this.sendMouseButton(false, MouseButton.Right)
                         this.nextTouchDoubleTap = false
                         continue
                     }
@@ -855,7 +750,7 @@ export class StreamInput {
 
                     // point and drag: Before making a click we should move the mouse to the position
                     if (this.config.touchMode == "pointAndDrag" && !oldTouch.mouseMoved) {
-                        this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, true)
+                        this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect)
                     }
 
                     const doClick = (maybeDoubleTap: boolean) => {
@@ -869,9 +764,9 @@ export class StreamInput {
                             // Should we right or left click?
                             let mouseButton
                             if (touchTime > TOUCH_AS_CLICK_MAX_TIME_MS) {
-                                mouseButton = StreamMouseButton.RIGHT
+                                mouseButton = MouseButton.Right
                             } else {
-                                mouseButton = StreamMouseButton.LEFT
+                                mouseButton = MouseButton.Left
                             }
 
                             this.sendMouseButton(true, mouseButton)
@@ -952,32 +847,23 @@ export class StreamInput {
         }
         return [x, y]
     }
-    private sendTouch(type: number, touch: Touch, rect: DOMRect) {
-        this.buffer.reset()
-
-        this.buffer.putU8(type)
-
-        this.buffer.putU32(touch.identifier)
-
+    private sendTouch(eventType: TouchEventType, touch: Touch, rect: DOMRect) {
         const position = this.calcNormalizedPosition(touch.clientX, touch.clientY, rect)
         if (!position) {
             return
         }
         const [x, y] = position
-        this.buffer.putF32(x)
-        this.buffer.putF32(y)
 
-        this.buffer.putF32(touch.force)
-
-        this.buffer.putF32(touch.radiusX)
-        this.buffer.putF32(touch.radiusY)
-        this.buffer.putU16(touch.rotationAngle)
-
-        trySendChannel(this.touch, this.buffer)
-    }
-
-    isTouchSupported(): boolean | null {
-        return this.touchSupported
+        this.controlStream?.send(new ClientInputEvent.Touch({
+            eventType,
+            rotation: touch.rotationAngle,
+            pointerId: touch.identifier,
+            x,
+            y,
+            pressureOrDistance: touch.force,
+            contactAreaMajor: touch.radiusX,
+            contactAreaMinor: touch.radiusY,
+        }))
     }
 
     getCurrentPredictedTouchAction(): PredictedTouchAction {
@@ -1010,11 +896,12 @@ export class StreamInput {
         return actuators
     }
 
+    // TODO: look at the controller code again
     private gamepads: Array<{ gamepadIndex: number, oldState: GamepadState } | null> = []
     private gamepadRumbleInterval: number | null = null
 
     onGamepadConnect(gamepad: Gamepad) {
-        if (!this.connected || !this.controllers) {
+        if (!this.connected) {
             this.bufferedControllers.push(gamepad.index)
             return
         }
@@ -1044,7 +931,16 @@ export class StreamInput {
         // Reset rumble
         this.gamepadRumbleCurrent[0] = { lowFrequencyMotor: 0, highFrequencyMotor: 0, leftTrigger: 0, rightTrigger: 0 }
 
-        let capabilities = 0
+        let capabilities: ControllerCapabilities = {
+            analogTriggers: false,
+            rumble: false,
+            triggerRumble: false,
+            touchpad: false,
+            accel: false,
+            gyro: false,
+            batteryState: false,
+            rgbLed: false
+        }
 
         // Rumble capabilities
         for (const actuator of this.collectActuators(gamepad)) {
@@ -1053,18 +949,19 @@ export class StreamInput {
 
                 for (const effect of supportedEffects) {
                     if (effect == "dual-rumble") {
-                        capabilities = StreamControllerCapabilities.CAPABILITY_RUMBLE
+                        capabilities.rumble = true
                     } else if (effect == "trigger-rumble") {
-                        capabilities = StreamControllerCapabilities.CAPABILITY_TRIGGER_RUMBLE
+                        capabilities.triggerRumble = true
                     }
                 }
             } else if ("type" in actuator && (actuator.type == "vibration" || actuator.type == "dual-rumble")) {
-                capabilities = StreamControllerCapabilities.CAPABILITY_RUMBLE
+                capabilities.rumble = true
             } else if ("playEffect" in actuator && typeof actuator.playEffect == "function") {
                 // we're just hoping at this point
-                capabilities = StreamControllerCapabilities.CAPABILITY_RUMBLE | StreamControllerCapabilities.CAPABILITY_TRIGGER_RUMBLE
+                capabilities.rumble = true
+                capabilities.triggerRumble = true
             } else if ("pulse" in actuator && typeof actuator.pulse == "function") {
-                capabilities = StreamControllerCapabilities.CAPABILITY_RUMBLE
+                capabilities.rumble = true
             }
         }
 
@@ -1244,43 +1141,33 @@ export class StreamInput {
     }
 
     // -- Controller Sending
-    sendControllerAdd(id: number, supportedButtons: number, capabilities: number) {
-        this.buffer.reset()
-
-        this.buffer.putU8(0)
-        this.buffer.putU8(id)
-        this.buffer.putU32(supportedButtons)
-        this.buffer.putU16(capabilities)
-
-        if (!this.controllers) {
-            showNotification("controller channel is not yet present, controller connect event is dropped")
-        }
-        trySendChannel(this.controllers, this.buffer)
+    sendControllerAdd(id: number, supportedButtons: ControllerButtons, capabilities: ControllerCapabilities) {
+        // TODO: add all controller when a new control stream is set
+        this.controlStream?.send(new ClientInputEvent.ControllerConnect({
+            controllerNumber: id,
+            ty: ControllerType.Unknown,
+            capabilities,
+            supportedButtons,
+        }))
     }
     sendControllerRemove(id: number) {
-        this.buffer.reset()
-
-        this.buffer.putU8(1)
-        this.buffer.putU8(id)
-
-        trySendChannel(this.controllers, this.buffer)
+        this.controlStream?.send(new ClientInputEvent.ControllerDisconnect({
+            controllerNumber: id,
+        }))
     }
     // Values
     // - Trigger: range 0..1
     // - Stick: range -1..1
     sendController(id: number, state: GamepadState) {
-        this.buffer.reset()
-
-        this.buffer.putU8(0)
-        this.buffer.putU32(state.buttonFlags)
-        this.buffer.putU8(Math.max(0.0, Math.min(1.0, state.leftTrigger)) * U8_MAX)
-        this.buffer.putU8(Math.max(0.0, Math.min(1.0, state.rightTrigger)) * U8_MAX)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, state.leftStickX)) * I16_MAX)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -state.leftStickY)) * I16_MAX)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, state.rightStickX)) * I16_MAX)
-        this.buffer.putI16(Math.max(-1.0, Math.min(1.0, -state.rightStickY)) * I16_MAX)
-
-        trySendChannel(this.controllerInputs[id], this.buffer)
+        this.controlStream?.send(new ClientInputEvent.ControllerState({
+            controllerNumber: id,
+            pressedButtons: state.buttonFlags,
+            leftTrigger: Math.max(0.0, Math.min(1.0, state.leftTrigger)),
+            rightTrigger: Math.max(0.0, Math.min(1.0, state.rightTrigger)),
+            leftStickX: Math.max(-1.0, Math.min(1.0, state.leftStickX)),
+            leftStickY: Math.max(-1.0, Math.min(1.0, -state.leftStickY)),
+            rightStickX: Math.max(-1.0, Math.min(1.0, state.rightStickX)),
+            rightStickY: Math.max(-1.0, Math.min(1.0, -state.rightStickY)),
+        }))
     }
-
 }

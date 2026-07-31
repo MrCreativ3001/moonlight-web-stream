@@ -8,12 +8,11 @@ use std::{
 
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
-use crate::api_bindings::RtcIceServer;
+use crate::api::bindings::RtcIceServer;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub data_storage: StorageConfig,
@@ -23,29 +22,8 @@ pub struct Config {
     pub web_server: WebServerConfig,
     #[serde(default)]
     pub moonlight: MoonlightConfig,
-    #[serde(default = "default_streamer_path")]
-    pub streamer_path: String,
     #[serde(default)]
     pub log: LogConfig,
-    // TODO: remove this on next major, it was replaced by roles
-    #[deprecated]
-    #[serde(default)]
-    pub default_settings: Option<Value>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            data_storage: Default::default(),
-            streamer_path: default_streamer_path(),
-            web_server: Default::default(),
-            moonlight: Default::default(),
-            webrtc: Default::default(),
-            log: Default::default(),
-            #[allow(deprecated)]
-            default_settings: Default::default(),
-        }
-    }
 }
 
 // -- Log
@@ -217,15 +195,8 @@ fn default_ice_servers() -> Vec<RtcIceServer> {
         urls: vec![
             // Google
             "stun:stun.l.google.com:19302".to_string(),
-            "stun:stun.l.google.com:5349".to_string(),
             "stun:stun1.l.google.com:3478".to_string(),
-            "stun:stun1.l.google.com:5349".to_string(),
-            "stun:stun2.l.google.com:19302".to_string(),
-            "stun:stun2.l.google.com:5349".to_string(),
-            "stun:stun3.l.google.com:3478".to_string(),
-            "stun:stun3.l.google.com:5349".to_string(),
-            "stun:stun4.l.google.com:19302".to_string(),
-            "stun:stun4.l.google.com:5349".to_string(),
+            "stun:stun.l.google.com:5349".to_string(),
         ],
         ..Default::default()
     }]
@@ -337,8 +308,4 @@ fn default_moonlight_http_port() -> u16 {
 
 fn default_pair_device_name() -> String {
     "roth".to_string()
-}
-
-fn default_streamer_path() -> String {
-    "./streamer".to_string()
 }

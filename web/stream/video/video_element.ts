@@ -1,38 +1,39 @@
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject } from "../../util.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
-import { emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
+import { emptyVideoCodecs, } from "../video.js";
 import { getStreamRectCorrected, TrackVideoRenderer, UrlVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index.js";
 
-const VIDEO_DECODER_CODECS: Record<keyof VideoCodecSupport, string> = {
-    "H264": "avc1.42E01E",
-    "H264_HIGH8_444": "avc1.640032",
-    "H265": "hvc1.1.6.L93.B0",
-    "H265_MAIN10": "hvc1.2.4.L120.90",
-    "H265_REXT8_444": "hvc1.6.6.L93.90",
-    "H265_REXT10_444": "hvc1.6.10.L120.90",
-    "AV1_MAIN8": "av01.0.04M.08",
-    "AV1_MAIN10": "av01.0.04M.10",
-    "AV1_HIGH8_444": "av01.0.08M.08",
-    "AV1_HIGH10_444": "av01.0.08M.10"
+const VIDEO_DECODER_CODECS: Record<keyof VideoFormats, string> = {
+    "h264": "avc1.42E01E",
+    "h264High8444": "avc1.640032",
+    "h265": "hvc1.1.6.L93.B0",
+    "h265Main10": "hvc1.2.4.L120.90",
+    "h265Rext8444": "hvc1.6.6.L93.90",
+    "h265Rext10444": "hvc1.6.10.L120.90",
+    "av1Main8": "av01.0.04M.08",
+    "av1Main10": "av01.0.04M.10",
+    "av1High8444": "av01.0.08M.08",
+    "av1High10444": "av01.0.08M.10"
 }
 
-function detectCodecs(): VideoCodecSupport {
+function detectCodecs(): VideoFormats {
     if (!("canPlayType" in HTMLVideoElement.prototype)) {
-        return maybeVideoCodecs()
+        return emptyVideoCodecs()
     }
 
     const codecs = emptyVideoCodecs()
 
     const testElement = document.createElement("video")
 
-    for (const codec in codecs) {
+    for (const codec2 in codecs) {
+        const codec = codec2 as keyof VideoFormats
+
         const supported = testElement.canPlayType(`video/mp4; codecs=${VIDEO_DECODER_CODECS[codec]}`)
 
-        if (supported == "probably") {
+        if (supported == "probably" || supported == "maybe") {
             codecs[codec] = true
-        } else if (supported == "maybe") {
-            codecs[codec] = "maybe"
         } else {
             // unsupported
             codecs[codec] = false

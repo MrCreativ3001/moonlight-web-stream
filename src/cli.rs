@@ -3,14 +3,14 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-use clap::{Args, Parser, Subcommand};
-use common::{
-    api_bindings::RtcIceServer,
+use crate::{
+    api::bindings::RtcIceServer,
     config::{
         Config, ConfigSsl, ForwardedHeaders, PortRange, WebRtcNat1To1IceCandidateType,
         WebRtcNat1To1Mapping, WebRtcNetworkType,
     },
 };
+use clap::{Args, Parser, Subcommand};
 use log::LevelFilter;
 
 impl Cli {
@@ -105,8 +105,6 @@ pub struct CliConfig {
     /// Overwrites `log.log_file_path`.
     #[arg(long, env = "LOG_FILE")]
     pub log_file: Option<String>,
-    #[arg(long, env = "STREAMER_PATH")]
-    pub streamer_path: Option<String>,
     /// Disables the STUN ice server which are bundled by default.
     /// This only disables the generation of them in the first config.
     /// After the config.json has been generated the ice servers in the config will be used regardless if this is set.
@@ -174,9 +172,6 @@ impl CliConfig {
         }
         if let Some(log_file) = self.log_file {
             config.log.file_path = Some(log_file);
-        }
-        if let Some(streamer_path) = self.streamer_path {
-            config.streamer_path = streamer_path;
         }
         if self.disable_default_webrtc_ice_servers {
             config

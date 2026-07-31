@@ -18,7 +18,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
 
         // We only know 100% if the codec is supported when we try to play the stream and get the
         // Sps which contains information about the actual h264 codec being used
-        videoCodecs.H264 = "maybe"
+        videoCodecs.h264 = true
 
         // no link
         return {
@@ -49,7 +49,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
 
     private sourceBuffer: SourceBuffer | null = null
 
-    private debugBuffer: Uint8Array | null = null
+    private debugBuffer: Uint8Array<ArrayBuffer> | null = null
 
     constructor(base: UrlVideoRenderer, logger?: Logger) {
         this.logger = logger ?? null
@@ -118,7 +118,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
         this.tryAppendDecodeUnit()
     }
 
-    private buffers: Array<Uint8Array> = []
+    private buffers: Array<Uint8Array<ArrayBuffer>> = []
     private needIdr = true
 
     private droppedFrames = 0

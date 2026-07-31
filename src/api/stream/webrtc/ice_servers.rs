@@ -1,22 +1,35 @@
-use common::{api_bindings::RtcIceServer, config::WebRtcConfig};
+use crate::{api::bindings::RtcIceServer, config::WebRtcConfig};
 use log::error;
 use tokio::process::Command;
 use tracing::debug;
 
-pub async fn load_dynamic_ice_servers(config: &WebRtcConfig) -> Vec<RtcIceServer> {
+use crate::app::{App, AppError};
+
+pub async fn generate_ice_servers(app: &App) -> Result<Vec<RtcIceServer>, AppError> {
+    // Load ice servers
+    let mut ice_servers = app.config().webrtc.ice_servers.clone();
+
+    // Load dynamic ice servers and append them to the current ice servers
+    let dynamic_ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
+    ice_servers.extend_from_slice(&dynamic_ice_servers);
+
+    Ok(ice_servers)
+}
+
+async fn load_dynamic_ice_servers(config: &WebRtcConfig) -> Vec<RtcIceServer> {
     let Some(script_command) = config.ice_server_script.as_ref() else {
         debug!("No WebRTC ice server script found");
         return vec![];
     };
 
-    debug!(script = script_command, "Running WebRTC ice server script");
+    debug!(script = script_command, "running WebRTC ice server script");
 
     let mut script = Command::new(script_command);
 
     let output = match script.output().await {
         Ok(value) => value,
         Err(err) => {
-            error!("Failed to run WebRTC ice server script: {err}");
+            error!("failed to run WebRTC ice server script: {err}");
             return vec![];
         }
     };
@@ -36,7 +49,7 @@ pub async fn load_dynamic_ice_servers(config: &WebRtcConfig) -> Vec<RtcIceServer
     let json: Vec<RtcIceServer> = match serde_json::from_slice(&output.stdout) {
         Ok(value) => value,
         Err(err) => {
-            error!("Failed to deserialize WebRTC ice server script output: {err}");
+            error!("failed to deserialize WebRTC ice server script output: {err}");
             return vec![];
         }
     };

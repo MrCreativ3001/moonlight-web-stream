@@ -1,9 +1,9 @@
 import { Component } from "../../component/index.js"
-import { StreamSupportedVideoCodecs } from "../../api_bindings.js"
 import { Pipe } from "../pipeline/index.js"
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js"
 
 export type VideoRendererSetup = {
-    codec: keyof typeof StreamSupportedVideoCodecs,
+    codec: keyof VideoFormats,
     width: number
     height: number
     fps: number
@@ -107,7 +107,7 @@ export interface Yuv420FrameVideoRenderer extends Pipe {
 }
 
 export type RgbaVideoFrame = {
-    buffer: Uint8ClampedArray
+    buffer: Uint8ClampedArray<ArrayBuffer>
     width: number
     height: number
     timestampMicroseconds: number
@@ -156,7 +156,7 @@ export type VideoDecodeUnit = {
         - keyframe: Must contain sps,pps,idr(one or multiple)
         - delta: Must contain the whole frame(one or multiple CodecSliceNonIdr's)
     */
-    data: ArrayBuffer
+    data: Uint8Array
 }
 
 export interface DataVideoRenderer extends Pipe {

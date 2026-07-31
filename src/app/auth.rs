@@ -1,7 +1,7 @@
 use std::fmt;
 
 use hex::FromHexError;
-use openssl::rand::rand_bytes;
+use moonlight_common::{crypto::rustcrypto::RustCryptoBackend, http::pair::PairingCryptoBackend};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, Visitor},
@@ -24,7 +24,7 @@ impl SessionToken {
     pub fn new() -> Result<Self, AppError> {
         let mut bytes = [0; SESSION_TOKEN_SIZE];
 
-        rand_bytes(&mut bytes)?;
+        RustCryptoBackend.random_bytes(&mut bytes)?;
 
         Ok(Self(bytes))
     }

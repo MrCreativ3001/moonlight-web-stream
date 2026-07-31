@@ -5,7 +5,6 @@ import { AudioDecoderPipe } from "../audio/audio_decoder_pipe.js";
 import { DepacketizeAudioPipe } from "../audio/depacketize_pipe.js";
 import { AudioMediaStreamTrackGeneratorPipe } from "../audio/media_stream_track_generator_pipe.js";
 import { Logger } from "../log.js";
-import { VideoCodecSupport } from "../video.js";
 import { OpenH264DecoderPipe } from "../video/openh264_decoder_pipe.js";
 import { CanvasFrameDrawPipe, CanvasRgbaFrameDrawPipe, CanvasYuv420FrameDrawPipe } from "../video/canvas_frame.js";
 import { DepacketizeVideoPipe } from "../video/depackitize_pipe.js";
@@ -18,6 +17,7 @@ import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerOffscreenCanvasSendPip
 import { StatValue } from "../stats.js";
 import { Yuv420ToRgbaFramePipe } from "../video/video_frame.js";
 import { MediaSourceDecoder } from "../video/media_source_decoder.js";
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js";
 
 export interface Pipe {
     readonly implementationName: string
@@ -29,7 +29,7 @@ export interface Pipe {
 
 export type PipeInfo = {
     environmentSupported: boolean
-    supportedVideoCodecs?: VideoCodecSupport
+    supportedVideoCodecs?: VideoFormats
 }
 
 export interface PipeInfoStatic {

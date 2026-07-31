@@ -1,14 +1,21 @@
 {
   "compilerOptions": {
-    "rootDir": "web",
     "outDir": "./dist",
     "target": "ES6",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "strict": true,
-    "esModuleInterop": true
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES6",
+      "ESNext.Disposable"
+    ],
+    "strict": true
   },
   "include": [
     "web/**/*"
   ],
+  "exclude": [
+    "node_modules"
+  ]
 }

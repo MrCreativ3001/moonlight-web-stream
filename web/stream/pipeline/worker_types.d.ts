@@ -14,7 +14,7 @@ export type WorkerMessage =
     { videoFrame: VideoFrame } |
     // MediaStreamTrack is a transferable object when using the transfer parameter
     { track: MediaStreamTrack } |
-    { data: ArrayBuffer } |
+    { data: Uint8Array } |
     { videoData: VideoDecodeUnit } |
     // Canvas stuff
     { canvas: OffscreenCanvas }

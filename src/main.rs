@@ -1,5 +1,8 @@
-use common::config::Config;
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+use crate::config::Config;
+use rustls::{
+    ServerConfig,
+    pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+};
 use std::{
     fs::OpenOptions,
     io::{self, ErrorKind, IsTerminal},
@@ -7,7 +10,7 @@ use std::{
     str::FromStr,
 };
 use tokio::fs::{self};
-use tracing::{Level, Span, level_filters::LevelFilter, span, warn};
+use tracing::{Level, Span, level_filters::LevelFilter, span};
 use tracing_actix_web::{RootSpanBuilder, TracingLogger};
 use tracing_appender::non_blocking;
 use tracing_subscriber::{
@@ -41,6 +44,7 @@ mod app;
 mod web;
 
 mod cli;
+mod config;
 mod human_json;
 
 #[actix_web::main]
@@ -92,13 +96,12 @@ async fn main() {
 
     let guard = init_log(&config);
 
-    #[allow(deprecated)]
-    if config.default_settings.is_some() {
-        warn!(
-            "You're currently using the \"default_settings\" config option. Please remove this option. Default Settings have been moved into roles. You can edit them in the Admin UI"
-        );
-    }
+    // Initialize crypto provider
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to set ring crypto provider as default");
 
+    // Start the server
     if let Err(err) = start(config).await {
         error!("{err:?}");
     }
@@ -126,9 +129,19 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
                 .expect("failed to add actix-web tracing directive"),
         )
         .add_directive(
+            "h2=off"
+                .parse()
+                .expect("failed to add h2 tracing directive"),
+        )
+        .add_directive(
             "mio::poll=off"
                 .parse()
                 .expect("failed to add mio tracing directive"),
+        )
+        .add_directive(
+            "webrtc_sctp=off"
+                .parse()
+                .expect("failed to add rtc tracing directive"),
         );
 
     #[cfg(windows)]
@@ -273,16 +286,24 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
     if let Some(certificate) = app.config().web_server.certificate.as_ref() {
         info!("[Server]: Running Https Server with ssl tls");
 
-        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())
-            .expect("failed to create ssl tls acceptor");
-        builder
-            .set_private_key_file(&certificate.private_key_pem, SslFiletype::PEM)
-            .expect("failed to set private key");
-        builder
-            .set_certificate_chain_file(&certificate.certificate_pem)
-            .expect("failed to set certificate");
+        let certificate_chain = {
+            let results =
+                CertificateDer::pem_file_iter(&certificate.certificate_pem)?.collect::<Vec<_>>();
+            let mut chain = Vec::with_capacity(results.len());
 
-        server.bind_openssl(bind_address, builder)?.run().await?;
+            for result in results {
+                chain.push(result?);
+            }
+
+            chain
+        };
+        let private_key = PrivateKeyDer::from_pem_file(&certificate.private_key_pem)?;
+
+        let config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certificate_chain, private_key)?;
+
+        server.bind_rustls_0_23(bind_address, config)?.run().await?;
     } else {
         server.bind(bind_address)?.run().await?;
     }

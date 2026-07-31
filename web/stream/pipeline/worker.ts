@@ -1,5 +1,4 @@
-import { LogMessageType } from "../../api_bindings.js"
-import { Logger } from "../log.js"
+import { Logger, LogMessageType } from "../log.js"
 import { andVideoCodecs } from "../video.js"
 import { buildPipeline, getPipe, Pipe, PipeInfo, pipeName } from "./index.js"
 import { WorkerOffscreenCanvasSendPipe } from "./worker_io.js"

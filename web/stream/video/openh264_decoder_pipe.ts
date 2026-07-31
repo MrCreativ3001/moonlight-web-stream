@@ -9,12 +9,13 @@ import { DataVideoRenderer, Yuv420FrameVideoRenderer, VideoDecodeUnit } from "./
 export class OpenH264DecoderPipe implements DataVideoRenderer {
     static async getInfo(): Promise<PipeInfo> {
         const videoCodecs = emptyVideoCodecs()
-        videoCodecs.H264 = true
+        videoCodecs.h264 = true
 
+        // TODO: fix the dynamic importing
         let environmentSupported = false
         try {
             await import("../../libopenh264/decoder.js")
-            environmentSupported = true
+            // environmentSupported = true
         } catch (e) { }
 
         // no link

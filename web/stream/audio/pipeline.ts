@@ -59,7 +59,7 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
         logger.debug(`}`)
     }
 
-    logger?.debug(`Building audio pipeline with output "${type}"`)
+    logger?.debug(`Building audio pipeline with input "${type}" and settings ${JSON.stringify(settings)}`)
 
     let pipelines = PIPELINES
 

@@ -1,10 +1,10 @@
+use crate::api::bindings::{
+    DeleteUserRequest, DetailedUser, GetUserQuery, GetUsersResponse, PatchUserRequest,
+    PostUserRequest,
+};
 use actix_web::{
     HttpResponse, delete, get, patch, post,
     web::{Data, Json, Query},
-};
-use common::api_bindings::{
-    DeleteUserRequest, DetailedUser, GetUserQuery, GetUsersResponse, PatchUserRequest,
-    PostUserRequest,
 };
 use futures::future::join_all;
 use tracing::warn;

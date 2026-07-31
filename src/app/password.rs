@@ -1,4 +1,5 @@
-use openssl::{hash::MessageDigest, pkcs5, rand::rand_bytes};
+use moonlight_common::{crypto::rustcrypto::RustCryptoBackend, http::pair::PairingCryptoBackend};
+use pbkdf2::sha2::Sha256;
 
 use crate::app::AppError;
 
@@ -22,13 +23,7 @@ impl StoragePassword {
             return Err(AppError::PasswordEmpty);
         }
 
-        pkcs5::pbkdf2_hmac(
-            password.as_bytes(),
-            salt,
-            iterations as usize,
-            MessageDigest::sha256(),
-            out,
-        )?;
+        pbkdf2::pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, iterations, out);
 
         Ok(())
     }
@@ -36,7 +31,7 @@ impl StoragePassword {
     pub fn new(password: &str) -> Result<Self, AppError> {
         let mut salt = [0u8; 16];
 
-        rand_bytes(&mut salt)?;
+        RustCryptoBackend.random_bytes(&mut salt)?;
 
         let mut hash = [0u8; 32];
 
@@ -58,5 +53,29 @@ impl StoragePassword {
 
     pub fn needs_rehash(&self) -> bool {
         self.iterations < HASH_ITERATIONS
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod test {
+    use crate::app::password::StoragePassword;
+
+    #[test]
+    fn test_iterations_600_000() {
+        let password = "test";
+        let storage = StoragePassword {
+            salt: hex::decode("847040fce304a9bef9e7727f50f40d06")
+                .unwrap()
+                .try_into()
+                .unwrap(),
+            hash: hex::decode("a0d31b674cb2f97eaa3ac1366553db59e1a7b8c9d47cf210194a15fdd268c597")
+                .unwrap()
+                .try_into()
+                .unwrap(),
+            iterations: 600_000,
+        };
+
+        assert!(storage.verify(password).unwrap());
     }
 }

@@ -5,6 +5,9 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 
 ![An image displaying: PC with sunshine and moonlight web installed, a browser making requests to it](/readme/structure.png)
 
+> **Note**
+> Documentation for the current latest release is available on the [`v2.10.0`](https://github.com/MrCreativ3001/moonlight-web-stream/tree/v2.10.0) branch. The `master` branch contains the latest development version and may not match the published documentation.
+
 ## Overview
 
 - [Limitations](#limitations)

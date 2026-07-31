@@ -26,7 +26,6 @@ RUN tar -xvzf /tmp/app.tar.gz --strip-components=1 -C ${MOONLIGHT_WEB_PATH}/ && 
 VOLUME ${MOONLIGHT_WEB_PATH}/server
 
 # Expose the port (adjust if you changed it)
-ENV WEBRTC_PORT_RANGE=40000:40100
 EXPOSE 8080 40000-40100/udp
 
 # Create an entrypoint

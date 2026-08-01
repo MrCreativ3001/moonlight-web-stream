@@ -576,8 +576,14 @@ class WebRtcControlStream implements IControlStream {
                     this.onreceive(event.inner[0]);
                 }
             } else if (event.tag === ControlStreamEvent_Tags.Disconnect) {
-                // TODO: reconstruct control stream?
+                this.logger?.debug("control stream got disconnected for an unknown reason, constructing with new client control stream")
                 this.enetConnected = false
+
+                if (this.config) {
+                    this.setChannel(this.channel, "enet", this.config)
+                } else {
+                    this.logger?.debug("failed to reconstruct new client control stream because of missing packet config")
+                }
             }
         }
 

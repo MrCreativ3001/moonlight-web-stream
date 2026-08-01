@@ -278,8 +278,17 @@ export class WebRTCTransport implements Transport {
     }
 
     async close(): Promise<void> {
-        // TODO
+        // Close the peer
         this.peer.close()
+
+        // Delete our current session on the server
+        if (this.location) {
+            await fetchApi(this.api, this.location, "DELETE", {
+                keepalive: true,
+                noUrlModify: true,
+                response: "ignore",
+            })
+        }
     }
 
     private lastTotalDecodeTime = 0

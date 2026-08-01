@@ -1,7 +1,7 @@
 import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api.js"
 import { Component } from "../component/index.js"
 import { Settings, TransportType } from "../component/settings_menu.js"
-import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings.js"
+import { ClientInputEvent, ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings.js"
 import { wait } from "../util.js"
 import { AudioPlayer, AudioPlayerSetup } from "./audio/index.js"
 import { buildAudioPipeline } from "./audio/pipeline.js"
@@ -556,12 +556,8 @@ export class Stream implements Component {
     }
 
     async stop(): Promise<boolean> {
+        // Stop transport
         await this.transport?.close()
-
-        // Wait for the message to get sent
-        await new Promise((resolve, _reject) => {
-            setTimeout(() => resolve(true), 100)
-        })
 
         return true
     }

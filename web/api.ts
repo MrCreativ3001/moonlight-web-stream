@@ -89,6 +89,7 @@ export type ApiFetchInit = {
     noUrlModify?: boolean,
     query?: any,
     noTimeout?: boolean,
+    keepalive?: boolean,
 } & (
         { json?: any, }
         | { sdp?: string }
@@ -119,8 +120,7 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
         url = `${api.host_url}${endpoint}${queryString}`
     }
 
-    const headers: any = {
-    };
+    const headers: any = {};
 
     if (api.bearer) {
         headers["Authorization"] = `Bearer ${api.bearer}`;
@@ -145,6 +145,10 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
         headers,
         body,
         credentials: "include"
+    }
+
+    if (init?.keepalive) {
+        request.keepalive = true
     }
 
     return [url, request]

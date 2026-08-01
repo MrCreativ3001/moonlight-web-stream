@@ -250,6 +250,12 @@ class ViewerApp implements Component {
             }
         })
 
+        // When the page gets destroyed
+        window.addEventListener("beforeunload", async () => {
+            // Stop the current stream
+            await this.stream.stop()
+        })
+
         document.addEventListener("pointerlockchange", this.onPointerLockChange.bind(this))
         document.addEventListener("fullscreenchange", this.onFullscreenChange.bind(this))
 

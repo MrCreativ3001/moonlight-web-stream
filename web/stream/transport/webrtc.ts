@@ -1,6 +1,6 @@
 import { Api, fetchApi, WebRTCAnswer } from "../../api.js";
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, EstimatedRttInfo, InputBatcher, PacketDirection, UdpTransmit, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
-import { globalObject, uniffiMillisUntil, uniffiNow } from "../../util.js";
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, EstimatedRttInfo, InputBatcher, PacketDirection, UdpTransmit, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
+import { globalObject, uniffiMillisUntil, uniffiNow, wait } from "../../util.js";
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
@@ -109,6 +109,7 @@ export class WebRTCTransport implements Transport {
         if (!this.videoStream || !this.audioStream) {
             throw `WebRTC WHEP response didn't contain a video and audio stream! Video: ${this.videoStream != null}, Audio: ${this.audioStream != null}`
         }
+        const codec = await this.findOutCodec()
 
         const audioSettings = this.audioStream.getSettings()
 
@@ -122,8 +123,7 @@ export class WebRTCTransport implements Transport {
                 width: this.sdpOfferOptions?.width ?? -1,
                 height: this.sdpOfferOptions?.height ?? -1,
                 fps: this.sdpOfferOptions?.fps ?? -1,
-                // TODO: gather codec using stats
-                codec: "h264",
+                codec,
             },
             audioType: "audiotrack",
             audioSetup: {
@@ -288,6 +288,29 @@ export class WebRTCTransport implements Transport {
                 noUrlModify: true,
                 response: "ignore",
             })
+        }
+    }
+
+    private async findOutCodec(): Promise<keyof VideoFormats> {
+        let tries = 0
+
+        while (true) {
+            const stats = await this.peer.getStats()
+            for (const [_key, value] of stats) {
+                // Video Stream
+                if ("type" in value && "kind" in value
+                    && value.type == "inbound-rtp" && value.kind == "video"
+                ) {
+
+                }
+            }
+            tries += 1
+            if (tries > 10) {
+                this.logger?.debug(`failed to determine codec using stats after ${tries} tries, assuming h264`)
+                return "h264"
+            }
+
+            await wait(100)
         }
     }
 

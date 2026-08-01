@@ -46,6 +46,10 @@ You can install it [manually](#install-manually) or with [docker](docker/README.
 
 4. Go to `localhost:8080` and view the web interface. You can also the change [bind address](#bind-address).
 
+> **NOTE**
+> A `config.json` file is **not generated automatically on first startup**.
+> If you plan to follow the configuration guides below, you will need to create a config.json with `./web-server config generate`
+
 ## Setup
 
 1. Add a new user by typing in your name and password. The first user to login will be created and will be the admin.
@@ -55,10 +59,6 @@ You can install it [manually](#install-manually) or with [docker](docker/README.
 2. Pair your pc by clicking on the host (<img src="web/resources/desktop_windows-48px.svg" alt="icon" style="height:1em; vertical-align:middle;">). Then enter the code in sunshine
 
 3. Launch an app
-
-> **NOTE**
-> A `config.json` file is **not generated automatically on first startup**.
-> If you plan to follow the configuration guides below, you will need to create a config.json with `./web-server config generate`
 
 ### Streaming over the Internet
 

@@ -521,6 +521,7 @@ Other changes:
 Changes:
 - replaced openssl by rustls
   - This makes older v1 and v2 server certificates incompatible
+  - When using a self signed certificate, regenerate it using the updated [generate_certificate.py](./generate_certificate.py)
 - replaced moonlight-common-c by moonlight-common-rust
   - This could make older Nvidia GameStream and Sunshine Servers unsupported
 - moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`

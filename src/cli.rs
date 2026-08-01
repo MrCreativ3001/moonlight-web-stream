@@ -63,8 +63,18 @@ pub struct Cli {
 pub enum Command {
     /// Runs the server (default if no command specified)
     Run,
-    /// Prints the config into stdout in json format
-    PrintConfig,
+    /// Config related commands
+    #[command(subcommand)]
+    Config(ConfigCommand),
+}
+
+#[derive(Subcommand)]
+pub enum ConfigCommand {
+    /// Creates the current config at the specified `config_path` or "./server/config.json" if no path is specified.
+    Generate,
+    /// Prints the currently used config into stdout in json format.
+    /// This includes all modifications from cli arguments and environment variables.
+    Print,
 }
 
 #[derive(Args)]

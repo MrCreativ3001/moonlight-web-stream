@@ -1,11 +1,11 @@
-use crate::config::Config;
+use crate::{cli::ConfigCommand, config::Config};
 use rustls::{
     ServerConfig,
     pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
 };
 use std::{
     fs::OpenOptions,
-    io::{self, ErrorKind, IsTerminal},
+    io::{self, IsTerminal},
     path::PathBuf,
     str::FromStr,
 };
@@ -61,32 +61,33 @@ async fn main() {
             cli.options.apply(&mut config);
             config
         }
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-            let mut new_config = Config::default();
-            cli.options.apply(&mut new_config);
+        Err(err) if matches!(err.kind(), io::ErrorKind::NotFound) => Config::default(),
+        Err(err) => {
+            panic!("failed to read config: {err}");
+        }
+    };
 
+    match cli.command {
+        Some(Command::Config(ConfigCommand::Print)) => {
+            let json =
+                serde_json::to_string_pretty(&config).expect("failed to serialize config to json");
+            println!("{json}");
+            return;
+        }
+        Some(Command::Config(ConfigCommand::Generate)) => {
             let value_str =
-                serde_json::to_string_pretty(&new_config).expect("failed to serialize file");
+                serde_json::to_string_pretty(&config).expect("failed to serialize file");
 
             if let Some(parent) = config_path.parent() {
                 fs::create_dir_all(parent)
                     .await
                     .expect("failed to create directories to file");
             }
-            fs::write(config_path, value_str)
+            fs::write(&config_path, value_str)
                 .await
                 .expect("failed to write default file");
 
-            new_config
-        }
-        Err(err) => panic!("failed to read file: {err}"),
-    };
-
-    match cli.command {
-        Some(Command::PrintConfig) => {
-            let json =
-                serde_json::to_string_pretty(&config).expect("failed to serialize config to json");
-            println!("{json}");
+            println!("Successfully generate config at {config_path:?}");
             return;
         }
         None | Some(Command::Run) => {

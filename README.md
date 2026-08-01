@@ -56,6 +56,10 @@ You can install it [manually](#install-manually) or with [docker](docker/README.
 
 3. Launch an app
 
+> **NOTE**
+> A `config.json` file is **not generated automatically on first startup**.
+> If you plan to follow the configuration guides below, you will need to create a config.json with `./web-server config generate`
+
 ### Streaming over the Internet
 
 1. Forward the web server port on your router (default is `8080`; HTTP is `80`, HTTPS is `443`).  
@@ -110,7 +114,7 @@ Some (business) firewalls might be very strict and only allow tcp on port 443 fo
 
 #### Port forward
 
-1. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config)
+1. Set the [WebRTC Port Range](#webrtc-port-range) to a fixed range
 ```json
 {
     "webrtc": {
@@ -155,7 +159,7 @@ python ./generate_certificate.py
 
 2. Copy the files `server/key.pem` and `server/cert.pem` into your `server` directory.
 
-3. Modify the [config](#config) to enable https using the certificates
+3. Configure the [private key](#https-certificates) and [certificate](#https-certificates) https using the certificates
 ```json
 {
     "web_server": {
@@ -263,10 +267,17 @@ Most options have command line arguments or environment variables associated wit
 ./web-server help
 ```
 
+Generate the config with:
+```sh
+./web-server config generate
+```
+
 For a full list of values look into the [Rust Config module](src/config.rs).
 
 ### Bind Address 
 The address and port the website will run on
+
+Environment Variable: `BIND_ADDRESS=0.0.0.0:8080`
 
 ```json
 {
@@ -291,6 +302,10 @@ Go into the Admin Panel and look for the user id of the user you want to make th
 ### Https Certificates
 If enabled the web server will use https with the provided certificate data
 
+Environment Variables:
+- `SSL_PRIVATE_KEY=./server/key.pem`
+- `SSL_CERTIFICATE=./server/cert.pem`
+
 ```json
 {
     "web_server":{
@@ -304,6 +319,8 @@ If enabled the web server will use https with the provided certificate data
 
 ### WebRTC Port Range
 This will set the port range on the web server used to communicate when using WebRTC
+
+Environment Variable: `WEBRTC_PORT_RANGE=40000:40010`
 
 ```json
 {
@@ -469,6 +486,8 @@ This will set the network types allowed by webrtc.
 This is useful when rerouting the web page using services like [Apache 2](#proxying-via-apache-2).
 Will always append the prefix to all requests made by the website.
 
+Environment Variable: `PATH_PREFIX=/moonlight`
+
 ```json
 {
     "web_server": {
@@ -526,6 +545,8 @@ Changes:
   - This could make older Nvidia GameStream and Sunshine Servers unsupported
 - moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`
   - Change the Web Socket Endpoint when using a Reserve Proxy: See [Proxying via Apache2](#proxying-via-apache-2)
+- `config.json` is not generated at first startup and can optionally be used for more granular control
+  - generate the currently used config with `./web-server config generate`
 - removed old unused `default_settings` value in the config
 
 ## Contributors

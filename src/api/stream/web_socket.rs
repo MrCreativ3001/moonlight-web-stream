@@ -27,7 +27,7 @@ use moonlight_common::{
             audio::AudioStreamEvent,
             control::{
                 ControlStreamEvent,
-                packet::{ControlPacket, PacketDirection},
+                packet::{ControlPacket, ControlPacketConfig, PacketDirection},
             },
             video::VideoStreamEvent,
         },
@@ -196,7 +196,7 @@ async fn handle_ws(
         )
         .await?;
 
-    let mut stream = MoonlightStream::connect(
+    let stream = MoonlightStream::connect(
         config,
         settings,
         Arc::new(RustCryptoBackend),
@@ -220,16 +220,29 @@ async fn handle_ws(
     });
     info!(response = ?response, "sending response to client");
 
-    // Define variables for main loop
-    let mut relay_stats_ticker = pin!(interval(Duration::from_secs(1)));
-
-    let mut ws_outgoing = FuturesUnordered::<Pin<Box<dyn Future<Output = bool>>>>::new();
-    let mut ws_stopped = false;
-
     // send response
+    let mut ws_outgoing = FuturesUnordered::<Pin<Box<dyn Future<Output = bool>>>>::new();
     send_ws_message(&mut ws_outgoing, &ws_sender, response);
 
     // main loop
+    if let Err(err) = ws_loop(ws_sender, ws_receiver, stream, control_config, ws_outgoing).await {
+        error!(error = %err, "web socket main loop errored, closing stream");
+    }
+
+    Ok(())
+}
+
+async fn ws_loop(
+    ws_sender: Session,
+    mut ws_receiver: MessageStream,
+    mut stream: MoonlightStream,
+    control_config: ControlPacketConfig,
+    mut ws_outgoing: FuturesUnordered<Pin<Box<dyn Future<Output = bool>>>>,
+) -> Result<(), AppError> {
+    let mut relay_stats_ticker = pin!(interval(Duration::from_secs(1)));
+
+    let mut ws_stopped = false;
+
     loop {
         if ws_outgoing.is_empty() && !stream.is_alive() {
             break;
@@ -242,14 +255,7 @@ async fn handle_ws(
         select! {
             // drive the moonlight stream forward
             result = stream.drive() => {
-                // TODO: remove unwrap
-                let event = match result {
-                    Err(err) => {
-                        error!(error = %err, "stream failed");
-                        break;
-                    }
-                    Ok(value) => value,
-                };
+                let event = result?;
 
                 match event {
                     MoonlightStreamEvent::Audio(AudioStreamEvent::OnFrame(frame)) => {
@@ -368,9 +374,6 @@ async fn handle_ws(
             }
         }
     }
-
-    // stop stream
-    info!("stream stopped");
 
     Ok(())
 }

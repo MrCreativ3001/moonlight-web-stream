@@ -274,6 +274,8 @@ pub async fn webrtc_post(
 
     setting_engine.set_include_loopback_candidate(app.config().webrtc.include_loopback_candidates);
 
+    setting_engine.set_ice_timeouts(None, Some(Duration::from_secs(10)), None);
+
     // Create video
     let mut video_channel = VideoChannel::new(&offer_sdp)?;
 

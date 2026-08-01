@@ -7,6 +7,7 @@ const trueDefaultSettings: Settings =
 {
     // possible values: "left", "right", "up", "down"
     "sidebarEdge": "left",
+    "hideSidebarButton": false,
     "bitrate": 10000,
     "fps": 60,
     "videoFrameQueueSize": 3,

@@ -455,6 +455,18 @@ input[type=number] {
     transition: all 0.3s linear;
 }
 
+/** "Hide sidebar button" stream setting: invisible until hovered or focused,
+    so it never overlays the game but stays reachable in the same spot. */
+.sidebar-button.sidebar-button-unobtrusive {
+    opacity: 0;
+    transition: opacity 0.2s linear;
+}
+.sidebar-button.sidebar-button-unobtrusive:hover,
+.sidebar-button.sidebar-button-unobtrusive:focus-visible,
+.sidebar-show .sidebar-button.sidebar-button-unobtrusive {
+    opacity: 1;
+}
+
 .sidebar-edge-left .sidebar-button-image {
     rotate: 180deg;
 }

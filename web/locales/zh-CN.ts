@@ -41,6 +41,7 @@ export const zhCN: Translations = {
     settings: {
         sidebar: "侧边栏",
         sidebarEdge: "侧边栏位置",
+        hideSidebarButton: "隐藏侧边栏按钮（悬停时显示）",
         left: "左",
         right: "右",
         up: "上",

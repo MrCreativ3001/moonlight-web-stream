@@ -41,6 +41,7 @@ export const ptBR: Translations = {
     settings: {
         sidebar: "Barra Lateral",
         sidebarEdge: "Posição da Barra Lateral",
+        hideSidebarButton: "Ocultar botão da barra lateral (aparece ao passar o mouse)",
         left: "Esquerda",
         right: "Direita",
         up: "Cima",

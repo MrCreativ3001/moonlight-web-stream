@@ -8,6 +8,7 @@ import { SidebarEdge } from "./sidebar/index.js";
 
 export type Settings = {
     sidebarEdge: SidebarEdge,
+    hideSidebarButton: boolean,
     bitrate: number
     videoFrameQueueSize: number
     videoSize: "720p" | "1080p" | "1440p" | "4k" | "native" | "custom"
@@ -147,6 +148,7 @@ export class StreamSettingsComponent implements Component {
 
     private sidebarHeader: HTMLHeadingElement = document.createElement("h3")
     private sidebarEdge: SelectComponent
+    private hideSidebarButton: InputComponent
 
     private streamHeader: HTMLHeadingElement = document.createElement("h3")
     private bitrate: InputComponent
@@ -220,6 +222,12 @@ export class StreamSettingsComponent implements Component {
         })
         this.sidebarEdge.addChangeListener(this.onSettingsChange.bind(this))
         this.sidebarEdge.mount(this.divElement)
+
+        this.hideSidebarButton = new InputComponent("hideSidebarButton", "checkbox", i.hideSidebarButton, {
+            checked: settings?.hideSidebarButton ?? defaultSettings_.hideSidebarButton
+        })
+        this.hideSidebarButton.addChangeListener(this.onSettingsChange.bind(this))
+        this.hideSidebarButton.mount(this.divElement)
 
         // Video
         this.streamHeader.innerText = i.video
@@ -554,6 +562,7 @@ export class StreamSettingsComponent implements Component {
         const settings = globalDefaultSettings()
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
+        settings.hideSidebarButton = this.hideSidebarButton.isChecked()
         settings.bitrate = parseInt(this.bitrate.getValue())
         settings.fps = parseInt(this.fps.getValue())
         settings.videoSize = this.videoSize.getValue() as any

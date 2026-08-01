@@ -290,6 +290,10 @@ class ViewerApp implements Component {
             edge: settings.sidebarEdge,
         })
 
+        // Optionally keep the sidebar toggle invisible until hovered/focused
+        document.getElementById("sidebar-button")
+            ?.classList.toggle("sidebar-button-unobtrusive", settings.hideSidebarButton)
+
         // Add app info listener
         this.stream.addInfoListener(this.onInfo.bind(this))
 

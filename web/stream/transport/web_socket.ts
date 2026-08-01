@@ -1,12 +1,12 @@
 import { Api } from "../../api.js";
 import { WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage } from "../../api_bindings.js";
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, InputBatcher, PacketDirection } from "../../uniffi/moonlight_common_bindings.js";
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, InputBatcher, PacketDirection, VideoFormat } from "../../uniffi/moonlight_common_bindings.js";
 import { globalObject } from "../../util.js";
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
 import { Logger } from "../log.js";
 import { DataPipe } from "../pipeline/pipes.js";
 import { StatValue } from "../stats.js";
-import { createSupportedVideoFormatsBits } from "../video.js";
+import { createSupportedVideoFormatsBits, getSelectedVideoCodec } from "../video.js";
 import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
 import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index.js";
 
@@ -76,7 +76,7 @@ export class WebSocketTransport implements Transport {
                 this.connectData = {
                     videoType: "data",
                     videoSetup: {
-                        codec: "h264",
+                        codec: getSelectedVideoCodec(response.video_codec) ?? "h264",
                         width: this.options?.width ?? 0,
                         height: this.options?.height ?? 0,
                         fps: this.options?.fps ?? 0
@@ -190,6 +190,11 @@ export class WebSocketTransport implements Transport {
     private relayStats: { rttMs: number, rttVarianceMs: number } | null = null
     async getStats(): Promise<Record<string, StatValue>> {
         const out: Record<string, StatValue> = {}
+
+        if (this.connectData) {
+            out.codec = this.connectData.videoSetup.codec
+            out.resolution = `Width: ${this.connectData.videoSetup.width}, Height: ${this.connectData.videoSetup.height}, Fps: ${this.connectData.videoSetup.fps}`
+        }
 
         if (this.relayStats) {
             out.hostToRelayRttMs = this.relayStats.rttMs

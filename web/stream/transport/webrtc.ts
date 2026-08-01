@@ -303,6 +303,8 @@ export class WebRTCTransport implements Transport {
             if ("type" in value && "kind" in value
                 && value.type == "inbound-rtp" && value.kind == "video"
             ) {
+                out.resolution = `Width: ${value?.frameWidth}, Height: ${value?.frameHeight}`
+
                 out.framesDecoded = value?.framesDecoded
                 out.framesDropped = value?.framesDropped
                 out.keyFramesDecoded = value?.keyFramesDecoded

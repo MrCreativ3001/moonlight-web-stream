@@ -1,8 +1,4 @@
-use std::{
-    pin::{Pin, pin},
-    sync::Arc,
-    time::Duration,
-};
+use std::{pin::pin, sync::Arc, time::Duration};
 
 use crate::api::{
     bindings::{
@@ -14,7 +10,6 @@ use crate::api::{
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
 use bytes::Bytes;
-use futures::{StreamExt, stream::FuturesUnordered};
 use moonlight_common::{
     AppId,
     crypto::rustcrypto::RustCryptoBackend,
@@ -37,14 +32,20 @@ use moonlight_common::{
 };
 use tokio::{
     select,
+    sync::mpsc::{UnboundedSender, unbounded_channel},
     time::{interval, sleep},
 };
-use tracing::{Instrument, debug_span, error, info, instrument, trace, warn};
+use tracing::{Instrument, debug, debug_span, error, info, instrument, trace, warn};
 
 use crate::{
     api::stream::create_control_packet_config,
     app::{AppError, host::HostId, user::AuthenticatedUser},
 };
+
+enum WsData {
+    Bytes(Bytes),
+    Text(String),
+}
 
 #[get("/host/stream/web_socket")]
 #[instrument(skip(user, req, body_stream), fields(user = %user.id()))]
@@ -83,7 +84,7 @@ pub async fn web_socket_stream(
 
 async fn handle_ws(
     mut user: AuthenticatedUser,
-    ws_sender: Session,
+    mut ws_sender: Session,
     mut ws_receiver: MessageStream,
 ) -> Result<(), AppError> {
     let control_config = create_control_packet_config();
@@ -220,12 +221,34 @@ async fn handle_ws(
     });
     info!(response = ?response, "sending response to client");
 
+    let (mut ws_channel_sender, mut ws_channel_receiver) = unbounded_channel();
+    spawn(
+        async move {
+            while let Some(data) = ws_channel_receiver.recv().await {
+                match data {
+                    WsData::Bytes(bytes) => {
+                        if ws_sender.binary(bytes).await.is_err() {
+                            break;
+                        }
+                    }
+                    WsData::Text(text) => {
+                        if ws_sender.text(text).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            debug!("stopped web socket sending task");
+        }
+        .instrument(debug_span!("ws_sender")),
+    );
+
     // send response
-    let mut ws_outgoing = FuturesUnordered::<Pin<Box<dyn Future<Output = bool>>>>::new();
-    send_ws_message(&mut ws_outgoing, &ws_sender, response);
+    send_ws_message(&mut ws_channel_sender, response);
 
     // main loop
-    if let Err(err) = ws_loop(ws_sender, ws_receiver, stream, control_config, ws_outgoing).await {
+    if let Err(err) = ws_loop(ws_channel_sender, ws_receiver, stream, control_config).await {
         error!(error = %err, "web socket main loop errored, closing stream");
     }
 
@@ -233,23 +256,18 @@ async fn handle_ws(
 }
 
 async fn ws_loop(
-    ws_sender: Session,
+    mut ws_sender: UnboundedSender<WsData>,
     mut ws_receiver: MessageStream,
     mut stream: MoonlightStream,
     control_config: ControlPacketConfig,
-    mut ws_outgoing: FuturesUnordered<Pin<Box<dyn Future<Output = bool>>>>,
 ) -> Result<(), AppError> {
     let mut relay_stats_ticker = pin!(interval(Duration::from_secs(1)));
 
     let mut ws_stopped = false;
 
     loop {
-        if ws_outgoing.is_empty() && !stream.is_alive() {
+        if !stream.is_alive() {
             break;
-        }
-
-        if ws_stopped {
-            let _ = stream.disconnect();
         }
 
         select! {
@@ -264,7 +282,7 @@ async fn ws_loop(
 
                         buffer[0] = WebSocketChannel::AUDIO;
 
-                        send_ws_binary(&mut ws_outgoing, &ws_sender, buffer.into());
+                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
                     }
                     MoonlightStreamEvent::Video(VideoStreamEvent::SignalIdr) => {
                         if let Err(err)=  stream.send_raw(ControlPacket::RequestIdr) {
@@ -287,7 +305,7 @@ async fn ws_loop(
                             &(frame.metadata().timestamp.as_micros() as u32).to_be_bytes(),
                         );
 
-                        send_ws_binary(&mut ws_outgoing, &ws_sender, buffer.into());
+                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
                     }
                     MoonlightStreamEvent::Control(ControlStreamEvent::Packet(packet)) => {
                         let mut buffer = vec![0; ControlPacket::MAX_SIZE + 1];
@@ -300,7 +318,7 @@ async fn ws_loop(
                             .unwrap();
 
                         buffer.truncate(1 + packet_len);
-                        send_ws_binary(&mut ws_outgoing, &ws_sender, buffer.into());
+                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
                     }
                     _ => {}
                 }
@@ -315,21 +333,19 @@ async fn ws_loop(
                     }
                 };
 
-                send_ws_message(&mut ws_outgoing, &ws_sender, WebSocketClientboundMessage::Stats(StreamStatsClientboundMessage::RelayRtt {
-                            rtt_ms: rtt.rtt.as_millis() as u32,
-                            rtt_variance_ms: rtt.rtt_variance.as_millis() as u32,
-                        }));
-            }
-            // Poll outgoing messages
-            Some(success) = ws_outgoing.next(), if !ws_outgoing.is_empty() => {
-                if !success {
-                   ws_stopped = true;
-                }
+                send_ws_message(
+                    &mut ws_sender,
+                    WebSocketClientboundMessage::Stats(StreamStatsClientboundMessage::RelayRtt {
+                        rtt_ms: rtt.rtt.as_millis() as u32,
+                        rtt_variance_ms: rtt.rtt_variance.as_millis() as u32,
+                    })
+                );
             }
             // Handle incoming ws requests
             result = ws_receiver.recv(), if !ws_stopped => {
                 let Some(Ok(message)) = result else {
                     ws_stopped = true;
+                    let _ = stream.disconnect();
                     continue;
                 };
 
@@ -366,7 +382,7 @@ async fn ws_loop(
                         if let WebSocketServerboundMessage::Stats(StreamStatsServerboundMessage::Ping(id)) =
                             message
                         {
-                            send_ws_message(&mut ws_outgoing, &ws_sender, WebSocketClientboundMessage::Stats(StreamStatsClientboundMessage::Pong(id)));
+                            send_ws_message(&mut ws_sender, WebSocketClientboundMessage::Stats(StreamStatsClientboundMessage::Pong(id)));
                         }
                     }
                     _ => {}
@@ -378,45 +394,24 @@ async fn ws_loop(
     Ok(())
 }
 
-fn send_ws_binary(
-    futures: &mut FuturesUnordered<Pin<Box<dyn Future<Output = bool>>>>,
-    ws_sender: &Session,
-    bytes: Bytes,
-) {
-    let mut ws_sender = ws_sender.clone();
-
-    futures.push(Box::pin(async move {
-        if ws_sender.binary(bytes).await.is_err() {
-            return false;
-        }
-
-        true
-    }));
-}
-
 fn send_ws_message(
-    futures: &mut FuturesUnordered<Pin<Box<dyn Future<Output = bool>>>>,
-    ws_sender: &Session,
+    sender: &mut UnboundedSender<WsData>,
     message: WebSocketClientboundMessage,
-) {
-    let mut ws_sender = ws_sender.clone();
+) -> bool {
+    trace!(message = ?message, "sending text message to client");
 
-    futures.push(Box::pin(async move {
-        trace!(message = ?message, "sending text message to client");
-
-        let text = match serde_json::to_string(&message) {
-            Ok(value) => value,
-            Err(err) => {
-                warn!(error = %err, "failed to send web socket message");
-                return false;
-            }
-        };
-
-        if let Err(err) = ws_sender.text(text).await {
+    let text = match serde_json::to_string(&message) {
+        Ok(value) => value,
+        Err(err) => {
             warn!(error = %err, "failed to send web socket message");
             return false;
         }
+    };
 
-        true
-    }));
+    if let Err(err) = sender.send(WsData::Text(text)) {
+        warn!(error = %err, "failed to send web socket message");
+        return false;
+    }
+
+    true
 }

@@ -96,27 +96,27 @@ export function createSupportedVideoFormatsBits(formats: VideoFormats): number {
     return mask
 }
 
-export function getSelectedVideoCodec(videoCodec: number): keyof typeof StreamSupportedVideoCodecs | null {
+export function getSelectedVideoCodec(videoCodec: number): keyof VideoFormats | null {
     if (videoCodec == StreamSupportedVideoCodecs.H264) {
-        return "H264"
+        return "h264"
     } else if (videoCodec == StreamSupportedVideoCodecs.H264_HIGH8_444) {
-        return "H264_HIGH8_444"
+        return "h264High8444"
     } else if (videoCodec == StreamSupportedVideoCodecs.H265) {
-        return "H265"
+        return "h265"
     } else if (videoCodec == StreamSupportedVideoCodecs.H265_MAIN10) {
-        return "H265_MAIN10"
+        return "h265Main10"
     } else if (videoCodec == StreamSupportedVideoCodecs.H265_REXT8_444) {
-        return "H265_REXT8_444"
+        return "h265Rext8444"
     } else if (videoCodec == StreamSupportedVideoCodecs.H265_REXT10_444) {
-        return "H265_REXT10_444"
+        return "h265Rext10444"
     } else if (videoCodec == StreamSupportedVideoCodecs.AV1_MAIN8) {
-        return "AV1_MAIN8"
+        return "av1Main8"
     } else if (videoCodec == StreamSupportedVideoCodecs.AV1_MAIN10) {
-        return "AV1_MAIN10"
+        return "av1Main10"
     } else if (videoCodec == StreamSupportedVideoCodecs.AV1_HIGH8_444) {
-        return "AV1_HIGH8_444"
+        return "av1High8444"
     } else if (videoCodec == StreamSupportedVideoCodecs.AV1_HIGH10_444) {
-        return "AV1_HIGH10_444"
+        return "av1High10444"
     } else {
         return null
     }

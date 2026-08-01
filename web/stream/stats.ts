@@ -5,15 +5,10 @@ import { Transport } from "./transport/index.js"
 
 export type StatValue = string | number
 
+// TODO: remove this struct
 export type StreamStatsData = {
-    videoCodec: string | null
-    videoWidth: number | null
-    videoHeight: number | null
-    videoFps: number | null
     videoPipeline: string | null
     audioPipeline: string | null
-    hdrEnabled: boolean | null
-    browserRtt: number | null
     transport: Record<string, StatValue>
     video: Record<string, StatValue>
     audio: Record<string, StatValue>
@@ -29,8 +24,6 @@ function num(value: number | null | undefined, suffix?: string): string | null {
 
 export function streamStatsToText(statsData: StreamStatsData): string {
     let text = `stats:
-video information: ${statsData.videoCodec}, ${statsData.videoWidth}x${statsData.videoHeight}, ${statsData.videoFps} fps
-HDR: ${statsData.hdrEnabled === true ? "Enabled" : statsData.hdrEnabled === false ? "Disabled" : "Unknown"}
 video pipeline: ${statsData.videoPipeline}
 audio pipeline: ${statsData.audioPipeline}
 `
@@ -81,14 +74,8 @@ export class StreamStats {
     private videoPipe: Pipe | null = null
     private audioPipe: Pipe | null = null
     private statsData: StreamStatsData = {
-        videoCodec: null,
-        videoWidth: null,
-        videoHeight: null,
-        videoFps: null,
         videoPipeline: null,
         audioPipeline: null,
-        hdrEnabled: null,
-        browserRtt: null,
         transport: {},
         video: {},
         audio: {}
@@ -163,12 +150,6 @@ export class StreamStats {
         this.statsData.audio = stats
     }
 
-    setVideoInfo(codec: string, width: number, height: number, fps: number) {
-        this.statsData.videoCodec = codec
-        this.statsData.videoWidth = width
-        this.statsData.videoHeight = height
-        this.statsData.videoFps = fps
-    }
     setVideoPipeline(name: string, pipe: Pipe | null) {
         this.statsData.videoPipeline = name
         this.videoPipe = pipe
@@ -176,9 +157,6 @@ export class StreamStats {
     setAudioPipeline(name: string, pipe: Pipe | null) {
         this.statsData.audioPipeline = name
         this.audioPipe = pipe
-    }
-    setHdrEnabled(enabled: boolean) {
-        this.statsData.hdrEnabled = enabled
     }
 
     getCurrentStats(): StreamStatsData {

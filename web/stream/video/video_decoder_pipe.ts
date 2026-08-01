@@ -5,6 +5,7 @@ import { Logger } from "../log.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
 import { emptyVideoCodecs, } from "../video.js";
+import { videoDecoderCodecInBand } from "./codec_level.js";
 import { CodecStreamTranslator, H264StreamVideoTranslator, H265StreamVideoTranslator, VIDEO_DECODER_CODECS_OUT_OF_BAND } from "./annex_b_translator.js";
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
 
@@ -154,7 +155,8 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         this.height = setup.height
         this.fps = setup.fps
 
-        const codec = VIDEO_DECODER_CODECS_IN_BAND[setup.codec]
+        const codec = videoDecoderCodecInBand(setup.codec, setup.width, setup.height, setup.fps)
+            ?? VIDEO_DECODER_CODECS_IN_BAND[setup.codec]
         await this.trySetConfig(codec)
 
         if (!this.config) {

@@ -381,8 +381,7 @@ will currespond to the ice server
 }
 ```
 
-On first startup you can disable all default ice servers with the cli argument `--disable-default-webrtc-ice-servers` or the environment variable `DISABLE_DEFAULT_WEBRTC_ICE_SERVERS`.
-After the `config.json` has been generated all ice server in it will be used, even if those are the defaults.
+You can disable all default ice servers with the cli argument `--disable-default-webrtc-ice-servers` or the environment variable `DISABLE_DEFAULT_WEBRTC_ICE_SERVERS`.
 
 ### WebRTC Ice Server Script
 The given script will be executed on every stream start to dynamically generate ice servers.

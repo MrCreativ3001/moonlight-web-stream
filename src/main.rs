@@ -53,19 +53,18 @@ async fn main() {
 
     // Load Config
     let config_path = PathBuf::from_str(&cli.config_path).expect("invalid config file path");
-    let config = match fs::read_to_string(&config_path).await {
+    let mut config = match fs::read_to_string(&config_path).await {
         Ok(mut value) => {
             value = preprocess_human_json(value);
 
-            let mut config = serde_json::from_str(&value).expect("invalid file");
-            cli.options.apply(&mut config);
-            config
+            serde_json::from_str(&value).expect("invalid file")
         }
         Err(err) if matches!(err.kind(), io::ErrorKind::NotFound) => Config::default(),
         Err(err) => {
             panic!("failed to read config: {err}");
         }
     };
+    cli.options.apply(&mut config);
 
     match cli.command {
         Some(Command::Config(ConfigCommand::Print)) => {

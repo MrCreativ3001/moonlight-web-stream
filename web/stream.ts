@@ -1,23 +1,23 @@
-import "./polyfill/index.js"
-import { Api, apiGetRole, getApi } from "./api.js";
-import { Component } from "./component/index.js";
-import { showNotification } from "./component/notification.js";
-import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
-import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
-import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
-import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu.js";
-import { SelectComponent } from "./component/input.js";
-import { emptyKeyModifiers } from "./stream/keyboard.js";
-import { LogLevel, setLogger as uniffiSetLogger, Logger as UniffiLogger, uniffiInitAsync } from "./uniffi/entry.js";
-import "./styles/index.ts"
-import { DetailedRole, StreamKeys, StreamPermissions } from "./api_bindings.js";
-import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
-import { FormModal } from "./component/modal/form.js";
-import { streamStatsToText } from "./stream/stats.js";
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n.js";
-import { requestKeyboardLock } from "./iframe.js";
-import { InfoEvent, Stream, StreamCapabilities } from "./stream/index.js";
-import { LogMessageType } from "./stream/log.js";
+import "./polyfill/index"
+import "./styles/index"
+import { Api, apiGetRole, getApi } from "./api"
+import { Component } from "./component/index"
+import { showNotification } from "./component/notification"
+import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index"
+import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index"
+import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input"
+import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu"
+import { SelectComponent } from "./component/input"
+import { emptyKeyModifiers } from "./stream/keyboard"
+import { LogLevel, setLogger as uniffiSetLogger, Logger as UniffiLogger, uniffiInitAsync } from "./uniffi/entry"
+import { DetailedRole, StreamKeys } from "./api_bindings"
+import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard"
+import { FormModal } from "./component/modal/form"
+import { streamStatsToText } from "./stream/stats"
+import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n"
+import { requestKeyboardLock } from "./iframe"
+import { InfoEvent, Stream, StreamCapabilities } from "./stream/index"
+import { LogMessageType } from "./stream/log"
 
 let I = getTranslations(getCurrentLanguage())
 

@@ -1,9 +1,9 @@
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, ServerType, VideoFormats } from "../../uniffi/moonlight_common_bindings.js"
-import { AudioPlayer, AudioPlayerSetup, TrackAudioPlayer } from "../audio/index.js"
-import { StreamCapabilities } from "../index.js"
-import { DataPipe } from "../pipeline/pipes.js"
-import { StatValue } from "../stats.js"
-import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index.js"
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, ServerType, VideoFormats } from "../../uniffi/moonlight_common_bindings"
+import { AudioPlayer, AudioPlayerSetup, TrackAudioPlayer } from "../audio/index"
+import { StreamCapabilities } from "../index"
+import { DataPipe } from "../pipeline/pipes"
+import { StatValue } from "../stats"
+import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index"
 
 export type TransportVideoType = "videotrack" // TrackTransportChannel
     | "data" // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298

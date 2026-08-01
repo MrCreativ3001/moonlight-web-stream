@@ -1,10 +1,11 @@
-import { ControllerConfig } from "../stream/gamepad.js";
-import { MouseMode, MouseScrollMode, TouchMode } from "../stream/input.js";
-import { PageStyle } from "../styles/index.js";
-import { getLanguageOptions, getTranslations, Language, normalizeLanguage } from "../i18n.js";
-import { Component, ComponentEvent } from "./index.js";
-import { InputComponent, SelectComponent } from "./input.js";
-import { SidebarEdge } from "./sidebar/index.js";
+import { ControllerConfig } from "../stream/gamepad"
+import { MouseMode, MouseScrollMode, TouchMode } from "../stream/input"
+import { PageStyle } from "../styles/index"
+import { getLanguageOptions, getTranslations, Language, normalizeLanguage } from "../i18n"
+import { Component, ComponentEvent } from "./index"
+import { InputComponent, SelectComponent } from "./input"
+import { SidebarEdge } from "./sidebar/index"
+import { StreamPermissions } from "../api_bindings";
 
 export type Settings = {
     sidebarEdge: SidebarEdge,
@@ -40,8 +41,7 @@ export type Settings = {
 export type StreamCodec = "h264" | "auto" | "h265" | "av1"
 export type TransportType = "auto" | "webrtc" | "websocket"
 
-import DEFAULT_SETTINGS from "../default_settings.js"
-import { StreamPermissions } from "../api_bindings.js";
+import DEFAULT_SETTINGS from "../default_settings"
 
 /// You should use the role default settings instead!
 export function globalDefaultSettings(): Settings {

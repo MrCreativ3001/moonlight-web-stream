@@ -1,11 +1,11 @@
-import { copyIntoYuv, yuvBufferSize } from "../../libopenh264/index.js"
-import { globalObject } from "../../util.js"
-import { Logger } from "../log.js"
-import { Pipe, PipeInfo } from "../pipeline/index.js"
-import { addPipePassthrough } from "../pipeline/pipes.js"
-import { allVideoCodecs } from "../video.js"
-import { CanvasVideoRendererOptions } from "./canvas.js"
-import { CanvasRenderer, FrameVideoRenderer, VideoRendererSetup, RgbaFrameVideoRenderer, RgbaVideoFrame, Yuv420FrameVideoRenderer, Yuv420VideoFrame } from "./index.js"
+import { copyIntoYuv, yuvBufferSize } from "../../libopenh264/index"
+import { globalObject } from "../../util"
+import { Logger } from "../log"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { allVideoCodecs } from "../video"
+import { CanvasVideoRendererOptions } from "./canvas"
+import { CanvasRenderer, FrameVideoRenderer, VideoRendererSetup, RgbaFrameVideoRenderer, RgbaVideoFrame, Yuv420FrameVideoRenderer, Yuv420VideoFrame } from "./index"
 
 abstract class BaseCanvasFrameDrawPipe implements Pipe {
 

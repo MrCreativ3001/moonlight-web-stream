@@ -1,4 +1,4 @@
-import type { Translations } from "./en.js"
+import type { Translations } from "./en"
 
 export const ptBR: Translations = {
     index: {

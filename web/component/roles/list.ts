@@ -1,8 +1,8 @@
-import { Role, RoleEventListener } from "./index.js"
-import { ComponentEvent } from "../index.js"
-import { Api, apiGetRoles } from "../../api.js"
-import { DetailedRole, UndetailedRole } from "../../api_bindings.js"
-import { FetchListComponent } from "../fetch_list.js"
+import { Role, RoleEventListener } from "./index"
+import { ComponentEvent } from "../index"
+import { Api, apiGetRoles } from "../../api"
+import { DetailedRole, UndetailedRole } from "../../api_bindings"
+import { FetchListComponent } from "../fetch_list"
 
 export class RoleList extends FetchListComponent<UndetailedRole, Role> {
     private api: Api

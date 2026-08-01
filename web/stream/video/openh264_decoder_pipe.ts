@@ -1,9 +1,9 @@
-import { OpenH264Decoder } from "../../libopenh264/index.js";
-import { Logger } from "../log.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { emptyVideoCodecs } from "../video.js";
-import { DataVideoRenderer, Yuv420FrameVideoRenderer, VideoDecodeUnit } from "./index.js";
+import { OpenH264Decoder } from "../../libopenh264/index"
+import { Logger } from "../log"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { emptyVideoCodecs } from "../video"
+import { DataVideoRenderer, Yuv420FrameVideoRenderer, VideoDecodeUnit } from "./index"
 
 /// A fallback for the normal VideoDecoder that only works in a secure context
 export class OpenH264DecoderPipe implements DataVideoRenderer {

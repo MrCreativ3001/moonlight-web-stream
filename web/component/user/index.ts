@@ -1,8 +1,8 @@
-import { Api, apiDeleteUser, apiGetUser } from "../../api.js";
-import { DetailedUser } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { setContextMenu } from "../context_menu.js";
-import { Component, ComponentEvent } from "../index.js";
+import { Api, apiDeleteUser, apiGetUser } from "../../api"
+import { DetailedUser } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { setContextMenu } from "../context_menu"
+import { Component, ComponentEvent } from "../index"
 
 export type UserEventListener = (event: ComponentEvent<User>) => void
 

@@ -1,5 +1,5 @@
-import { StreamKeys } from "../api_bindings.js"
-import { KeyModifiers } from "../uniffi/moonlight_common_bindings.js";
+import { StreamKeys } from "../api_bindings"
+import { KeyModifiers } from "../uniffi/moonlight_common_bindings";
 
 export function emptyKeyModifiers(): KeyModifiers {
     return {

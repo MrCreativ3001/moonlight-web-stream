@@ -1,4 +1,4 @@
-import { Component } from "./index.js"
+import { Component } from "./index"
 
 export type ListComponentInit = {
     listClasses?: string[],

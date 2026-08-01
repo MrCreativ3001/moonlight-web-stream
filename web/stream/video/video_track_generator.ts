@@ -1,8 +1,8 @@
-import { globalObject } from "../../util.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { allVideoCodecs } from "../video.js";
-import { FrameVideoRenderer, TrackVideoRenderer } from "./index.js";
+import { globalObject } from "../../util"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { allVideoCodecs } from "../video"
+import { FrameVideoRenderer, TrackVideoRenderer } from "./index"
 
 export class VideoTrackGeneratorPipe implements FrameVideoRenderer {
     static readonly baseType = "videotrack"

@@ -1,9 +1,9 @@
-import { PostRoleRequest, RoleType } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { InputComponent, SelectComponent } from "../input.js";
-import { FormModal } from "../modal/form.js";
-import { globalDefaultSettings, StreamSettingsComponent } from "../settings_menu.js";
-import { RolePermissionsMenu } from "./permissions.js";
+import { PostRoleRequest, RoleType } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { InputComponent, SelectComponent } from "../input"
+import { FormModal } from "../modal/form"
+import { globalDefaultSettings, StreamSettingsComponent } from "../settings_menu"
+import { RolePermissionsMenu } from "./permissions"
 
 export class AddRoleModal extends FormModal<PostRoleRequest> {
 

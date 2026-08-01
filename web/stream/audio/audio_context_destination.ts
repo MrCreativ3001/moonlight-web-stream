@@ -1,8 +1,8 @@
-import { globalObject } from "../../util.js";
-import { Logger } from "../log.js";
-import { PipeInfo } from "../pipeline/index.js";
-import { AudioContextBasePipe } from "./audio_context_base.js";
-import { AudioPlayer, AudioPlayerSetup } from "./index.js";
+import { globalObject } from "../../util"
+import { Logger } from "../log"
+import { PipeInfo } from "../pipeline/index"
+import { AudioContextBasePipe } from "./audio_context_base"
+import { AudioPlayer, AudioPlayerSetup } from "./index"
 
 export class ContextDestinationNodeAudioPlayer extends AudioContextBasePipe implements AudioPlayer {
 

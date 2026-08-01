@@ -1,7 +1,7 @@
-import { ComponentEvent } from "../index.js"
-import { getCurrentLanguage, getTranslations } from "../../i18n.js"
-import { InputComponent } from "../input.js"
-import { FormModal } from "./form.js"
+import { ComponentEvent } from "../index"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { InputComponent } from "../input"
+import { FormModal } from "./form"
 
 export type UserAuth = {
     name: string,

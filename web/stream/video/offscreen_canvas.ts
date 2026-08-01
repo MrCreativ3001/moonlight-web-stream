@@ -1,10 +1,10 @@
-import { globalObject } from "../../util.js";
-import { PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { WorkerReceiver } from "../pipeline/worker_pipe.js";
-import { WorkerMessage } from "../pipeline/worker_types.js";
-import { BaseCanvasVideoRenderer } from "./canvas.js";
-import { VideoRendererSetup } from "./index.js";
+import { globalObject } from "../../util"
+import { PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { WorkerReceiver } from "../pipeline/worker_pipe"
+import { WorkerMessage } from "../pipeline/worker_types"
+import { BaseCanvasVideoRenderer } from "./canvas"
+import { VideoRendererSetup } from "./index"
 
 export class OffscreenCanvasRenderer extends BaseCanvasVideoRenderer implements WorkerReceiver {
 

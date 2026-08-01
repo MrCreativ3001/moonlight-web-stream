@@ -1,7 +1,7 @@
-import { UndetailedRole } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { SelectComponent } from "../input.js";
-import { formatRoleName } from "../roles/index.js";
+import { UndetailedRole } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { SelectComponent } from "../input"
+import { formatRoleName } from "../roles/index"
 
 export function createSelectRoleInput(roles: Array<UndetailedRole>, preselectedId?: number): SelectComponent {
     const i = getTranslations(getCurrentLanguage()).admin

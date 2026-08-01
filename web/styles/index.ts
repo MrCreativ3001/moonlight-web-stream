@@ -1,4 +1,4 @@
-import { globalDefaultSettings, getLocalStreamSettings } from "../component/settings_menu.js"
+import { globalDefaultSettings, getLocalStreamSettings } from "../component/settings_menu"
 
 // old doesn't exist anymore and is always replaced with moonlight when loading the settings
 import standardUrl from "./standard.css";

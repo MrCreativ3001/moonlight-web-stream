@@ -1,9 +1,9 @@
-import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js";
-import { globalObject } from "../../util.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { emptyVideoCodecs, } from "../video.js";
-import { getStreamRectCorrected, TrackVideoRenderer, UrlVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index.js";
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
+import { globalObject } from "../../util"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { emptyVideoCodecs, } from "../video"
+import { getStreamRectCorrected, TrackVideoRenderer, UrlVideoRenderer, VideoRenderer, VideoRendererSetup } from "./index"
 
 const VIDEO_DECODER_CODECS: Record<keyof VideoFormats, string> = {
     "h264": "avc1.42E01E",

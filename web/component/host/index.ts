@@ -1,11 +1,11 @@
-import { DetailedHost, DetailedUser, UndetailedHost } from "../../api_bindings.js"
-import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp, apiGetUser, apiPatchHost } from "../../api.js"
-import { Component, ComponentEvent } from "../index.js"
-import { getCurrentLanguage, getTranslations } from "../../i18n.js"
-import { setContextMenu } from "../context_menu.js"
-import { showNotification } from "../notification.js"
-import { showMessage } from "../modal/index.js"
-import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE, HOST_OVERLAY_OFFLINE } from "../../resources/index.js"
+import { DetailedHost, DetailedUser, UndetailedHost } from "../../api_bindings"
+import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp, apiGetUser, apiPatchHost } from "../../api"
+import { Component, ComponentEvent } from "../index"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { setContextMenu } from "../context_menu"
+import { showNotification } from "../notification"
+import { showMessage } from "../modal/index"
+import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE, HOST_OVERLAY_OFFLINE } from "../../resources/index"
 
 export type HostEventListener = (event: ComponentEvent<Host>) => void
 

@@ -1,5 +1,4 @@
-import { Settings } from "./component/settings_menu.js"
-import CONFIG from "./config.js"
+import { Settings } from "./component/settings_menu"
 
 const trueDefaultSettings: Settings =
 

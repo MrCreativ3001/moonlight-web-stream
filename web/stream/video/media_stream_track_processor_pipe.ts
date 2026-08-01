@@ -1,8 +1,8 @@
-import { globalObject } from "../../util.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { allVideoCodecs } from "../video.js";
-import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererSetup } from "./index.js";
+import { globalObject } from "../../util"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { allVideoCodecs } from "../video"
+import { FrameVideoRenderer, TrackVideoRenderer, VideoRendererSetup } from "./index"
 
 function wait(time: number): Promise<void> {
     return new Promise((resolve, _reject) => {

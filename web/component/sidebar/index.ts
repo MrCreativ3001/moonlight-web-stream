@@ -1,5 +1,5 @@
-import { Component } from "../index.js"
-import { showNotification } from "../notification.js"
+import { Component } from "../index"
+import { showNotification } from "../notification"
 
 export interface Sidebar extends Component {
     extended(): void

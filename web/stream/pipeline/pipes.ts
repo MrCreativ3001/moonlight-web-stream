@@ -1,4 +1,4 @@
-import { Pipe } from "./index.js";
+import { Pipe } from "./index"
 
 export interface DataPipe extends Pipe {
     submitPacket(buffer: Uint8Array<ArrayBuffer>): void

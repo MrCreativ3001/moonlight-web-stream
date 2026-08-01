@@ -1,6 +1,6 @@
-import { LogMessageInfo } from "../log.js"
-import { VideoDecodeUnit, VideoRendererSetup } from "../video/index.js"
-import { PipeInfo, Pipeline } from "./index.js"
+import { LogMessageInfo } from "../log"
+import { VideoDecodeUnit, VideoRendererSetup } from "../video/index"
+import { PipeInfo, Pipeline } from "./index"
 
 export type ToWorkerMessage =
     { checkSupport: Pipeline } |

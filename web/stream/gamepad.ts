@@ -1,5 +1,5 @@
-import { ControllerButtons } from "../uniffi/moonlight_common_bindings.js"
-import { deepEqual } from "../util.js"
+import { ControllerButtons } from "../uniffi/moonlight_common_bindings"
+import { deepEqual } from "../util"
 
 export type ControllerConfig = {
     invertXY: boolean

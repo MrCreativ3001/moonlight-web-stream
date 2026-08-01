@@ -1,13 +1,12 @@
-import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js";
-import { globalObject } from "../../util.js";
-import { ByteBuffer } from "../buffer.js";
-import { Logger } from "../log.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { emptyVideoCodecs, } from "../video.js";
-import { videoDecoderCodecInBand } from "./codec_level.js";
-import { CodecStreamTranslator, H264StreamVideoTranslator, H265StreamVideoTranslator, VIDEO_DECODER_CODECS_OUT_OF_BAND } from "./annex_b_translator.js";
-import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js";
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
+import { globalObject } from "../../util"
+import { Logger } from "../log"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { emptyVideoCodecs, } from "../video"
+import { videoDecoderCodecInBand } from "./codec_level"
+import { CodecStreamTranslator, H264StreamVideoTranslator, H265StreamVideoTranslator, VIDEO_DECODER_CODECS_OUT_OF_BAND } from "./annex_b_translator"
+import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index"
 
 export const VIDEO_DECODER_CODECS_IN_BAND: Record<keyof VideoFormats, string> = {
     // avc1 = out of band config, avc3 = in band with sps, pps, idr

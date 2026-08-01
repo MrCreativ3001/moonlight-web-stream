@@ -1,7 +1,7 @@
-import { Component } from "../index.js"
-import { showNotification } from "../notification.js"
-import { getCurrentLanguage, getTranslations } from "../../i18n.js"
-import { FormModal } from "./form.js"
+import { Component } from "../index"
+import { showNotification } from "../notification"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { FormModal } from "./form"
 
 export interface Modal<Output> extends Component {
     onFinish(abort: AbortSignal): Promise<Output>

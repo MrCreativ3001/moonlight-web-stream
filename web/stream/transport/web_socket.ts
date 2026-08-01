@@ -1,14 +1,14 @@
-import { Api } from "../../api.js";
-import { WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage } from "../../api_bindings.js";
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, InputBatcher, PacketDirection, VideoFormat } from "../../uniffi/moonlight_common_bindings.js";
-import { globalObject } from "../../util.js";
-import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
-import { Logger } from "../log.js";
-import { DataPipe } from "../pipeline/pipes.js";
-import { StatValue } from "../stats.js";
-import { createSupportedVideoFormatsBits, getSelectedVideoCodec } from "../video.js";
-import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
-import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index.js";
+import { Api } from "../../api"
+import { WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage } from "../../api_bindings"
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, InputBatcher, PacketDirection } from "../../uniffi/moonlight_common_bindings"
+import { globalObject } from "../../util"
+import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
+import { Logger } from "../log"
+import { DataPipe } from "../pipeline/pipes"
+import { StatValue } from "../stats"
+import { createSupportedVideoFormatsBits, getSelectedVideoCodec } from "../video"
+import { TrackVideoRenderer, VideoRenderer } from "../video/index"
+import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index"
 
 export class WebSocketTransport implements Transport {
     readonly implementationName: string = "web_socket"

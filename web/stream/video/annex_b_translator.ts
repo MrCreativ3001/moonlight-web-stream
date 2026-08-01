@@ -1,8 +1,8 @@
-import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js";
-import { numToHex } from "../../util.js";
-import { ByteBuffer } from "../buffer.js";
-import { Logger } from "../log.js";
-import { VideoDecodeUnit } from "./index.js";
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
+import { numToHex } from "../../util"
+import { ByteBuffer } from "../buffer"
+import { Logger } from "../log"
+import { VideoDecodeUnit } from "./index"
 
 // Translates annex b prefixed NALU's into AvCc 
 

@@ -1,9 +1,9 @@
-import { globalObject } from "../../util.js"
-import { Logger } from "../log.js"
-import { Pipe, PipeInfo } from "../pipeline/index.js"
-import { addPipePassthrough } from "../pipeline/pipes.js"
-import { allVideoCodecs } from "../video.js"
-import { CanvasRenderer, getStreamRectCorrected, UseCanvasResult, VideoRendererSetup } from "./index.js"
+import { globalObject } from "../../util"
+import { Logger } from "../log"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { allVideoCodecs } from "../video"
+import { CanvasRenderer, getStreamRectCorrected, UseCanvasResult, VideoRendererSetup } from "./index"
 
 function getColorSpace(hdrEnabled: boolean): string {
     return hdrEnabled ? "rec2020-pq" : "srgb"

@@ -1,9 +1,9 @@
-import { ByteBuffer } from "../buffer.js";
-import { Logger } from "../log.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough, DataPipe } from "../pipeline/pipes.js";
-import { allVideoCodecs } from "../video.js";
-import { DataVideoRenderer, VideoRendererSetup } from "./index.js";
+import { ByteBuffer } from "../buffer"
+import { Logger } from "../log"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough, DataPipe } from "../pipeline/pipes"
+import { allVideoCodecs } from "../video"
+import { DataVideoRenderer, VideoRendererSetup } from "./index"
 
 export class DepacketizeVideoPipe implements DataPipe {
 

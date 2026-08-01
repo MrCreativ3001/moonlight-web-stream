@@ -1,5 +1,5 @@
-import { StreamSupportedVideoCodecs } from "../api_bindings.js"
-import { VideoFormats } from "../uniffi/moonlight_common_bindings.js"
+import { StreamSupportedVideoCodecs } from "../api_bindings"
+import { VideoFormats } from "../uniffi/moonlight_common_bindings"
 
 export function emptyVideoCodecs(): VideoFormats {
     return {

@@ -1,7 +1,7 @@
-import { PostHostRequest } from "../../api_bindings.js"
-import { getCurrentLanguage, getTranslations } from "../../i18n.js"
-import { InputComponent } from "../input.js"
-import { FormModal } from "../modal/form.js"
+import { PostHostRequest } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { InputComponent } from "../input"
+import { FormModal } from "../modal/form"
 
 export class AddHostModal extends FormModal<PostHostRequest> {
 

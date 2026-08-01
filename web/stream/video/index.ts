@@ -1,6 +1,6 @@
-import { Component } from "../../component/index.js"
-import { Pipe } from "../pipeline/index.js"
-import { VideoFormats } from "../../uniffi/moonlight_common_bindings.js"
+import { Component } from "../../component/index"
+import { Pipe } from "../pipeline/index"
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
 
 export type VideoRendererSetup = {
     codec: keyof VideoFormats,

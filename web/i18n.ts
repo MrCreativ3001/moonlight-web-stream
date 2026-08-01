@@ -1,8 +1,8 @@
-import { en, type Translations } from "./locales/en.js"
-import { zhCN } from "./locales/zh-CN.js"
-import { ptBR } from "./locales/pt-BR.js"
-import { frFr } from "./locales/fr-FR.js"
-import { koKR } from "./locales/ko-KR.js"
+import { en, type Translations } from "./locales/en"
+import { zhCN } from "./locales/zh-CN"
+import { ptBR } from "./locales/pt-BR"
+import { frFr } from "./locales/fr-FR"
+import { koKR } from "./locales/ko-KR"
 
 export type Language = "en" | "zh-CN" | "pt-BR" | "fr-FR" | "ko-KR"
 

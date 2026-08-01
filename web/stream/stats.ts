@@ -1,7 +1,7 @@
-import { globalObject } from "../util.js"
-import { Logger } from "./log.js"
-import { Pipe } from "./pipeline/index.js"
-import { Transport } from "./transport/index.js"
+import { globalObject } from "../util"
+import { Logger } from "./log"
+import { Pipe } from "./pipeline/index"
+import { Transport } from "./transport/index"
 
 export type StatValue = string | number
 

@@ -1,9 +1,9 @@
-import { Logger, LogMessageType } from "../log.js"
-import { andVideoCodecs } from "../video.js"
-import { buildPipeline, getPipe, Pipe, PipeInfo, pipeName } from "./index.js"
-import { WorkerOffscreenCanvasSendPipe } from "./worker_io.js"
-import { WorkerReceiver } from "./worker_pipe.js"
-import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types.js"
+import { Logger, LogMessageType } from "../log"
+import { andVideoCodecs } from "../video"
+import { buildPipeline, getPipe, Pipe, PipeInfo, pipeName } from "./index"
+import { WorkerOffscreenCanvasSendPipe } from "./worker_io"
+import { WorkerReceiver } from "./worker_pipe"
+import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types"
 
 // Configure logger
 const logger = new Logger()

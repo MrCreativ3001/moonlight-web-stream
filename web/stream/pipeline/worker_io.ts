@@ -1,11 +1,11 @@
-import { globalObject } from "../../util.js";
-import { Logger } from "../log.js";
-import { BaseCanvasVideoRenderer } from "../video/canvas.js";
-import { CanvasRenderer, DataVideoRenderer, FrameVideoRenderer, TrackVideoRenderer, UseCanvasResult, VideoDecodeUnit, VideoRendererSetup } from "../video/index.js";
-import { Pipe, PipeInfo } from "./index.js";
-import { addPipePassthrough, DataPipe } from "./pipes.js";
-import { WorkerPipe, WorkerReceiver } from "./worker_pipe.js";
-import { WorkerMessage } from "./worker_types.js";
+import { globalObject } from "../../util"
+import { Logger } from "../log"
+import { BaseCanvasVideoRenderer } from "../video/canvas"
+import { CanvasRenderer, DataVideoRenderer, FrameVideoRenderer, TrackVideoRenderer, UseCanvasResult, VideoDecodeUnit, VideoRendererSetup } from "../video/index"
+import { Pipe, PipeInfo } from "./index"
+import { addPipePassthrough, DataPipe } from "./pipes"
+import { WorkerPipe, WorkerReceiver } from "./worker_pipe"
+import { WorkerMessage } from "./worker_types"
 
 class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer, TrackVideoRenderer {
     static async getInfo(): Promise<PipeInfo> {

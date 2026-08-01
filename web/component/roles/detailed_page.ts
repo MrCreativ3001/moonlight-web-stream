@@ -1,11 +1,11 @@
-import { Component, ComponentEvent } from "../index.js";
-import { Api, apiPatchRole } from "../../api.js";
-import { DetailedRole, PatchRoleRequest, RoleType } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { InputComponent, SelectComponent } from "../input.js";
-import { tryDeleteRole, RoleEventListener } from "./index.js";
-import { RolePermissionsMenu } from "./permissions.js";
-import { StreamSettingsComponent } from "../settings_menu.js";
+import { Component, ComponentEvent } from "../index"
+import { Api, apiPatchRole } from "../../api"
+import { DetailedRole, PatchRoleRequest, RoleType } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { InputComponent, SelectComponent } from "../input"
+import { tryDeleteRole, RoleEventListener } from "./index"
+import { RolePermissionsMenu } from "./permissions"
+import { StreamSettingsComponent } from "../settings_menu"
 
 export class DetailedRolePage implements Component {
 

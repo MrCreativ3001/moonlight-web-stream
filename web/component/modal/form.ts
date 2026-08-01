@@ -1,6 +1,6 @@
-import { Component } from "../index.js"
-import { getCurrentLanguage, getTranslations } from "../../i18n.js"
-import { Modal, showModal } from "./index.js"
+import { Component } from "../index"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { Modal, showModal } from "./index"
 
 export abstract class FormModal<Output> implements Component, Modal<Output | null> {
 

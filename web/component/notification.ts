@@ -1,6 +1,6 @@
-import { Component } from "./index.js"
-import { ERROR_IMAGE, INFO_IMAGE, WARN_IMAGE } from "../resources/index.js"
-import { ListComponent } from "./list.js"
+import { Component } from "./index"
+import { ERROR_IMAGE, INFO_IMAGE, WARN_IMAGE } from "../resources/index"
+import { ListComponent } from "./list"
 
 type NotificationLevel = "error" | "warn" | "info"
 

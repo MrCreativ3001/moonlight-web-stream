@@ -1,11 +1,11 @@
-import { Component, ComponentEvent } from "../index.js";
-import { Api, apiDeleteUser, apiGetRoles, apiPatchUser } from "../../api.js";
-import { DetailedUser, PatchUserRequest } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { InputComponent, SelectComponent } from "../input.js";
-import { createSelectRoleInput } from "./role_select.js";
-import { tryDeleteUser, UserEventListener } from "./index.js";
-import { showNotification } from "../notification.js";
+import { Component, ComponentEvent } from "../index"
+import { Api, apiGetRoles, apiPatchUser } from "../../api"
+import { DetailedUser, PatchUserRequest } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { InputComponent, SelectComponent } from "../input"
+import { createSelectRoleInput } from "./role_select"
+import { tryDeleteUser, UserEventListener } from "./index"
+import { showNotification } from "../notification"
 
 export class DetailedUserPage implements Component {
 

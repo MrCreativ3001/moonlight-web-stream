@@ -1,10 +1,10 @@
-import { Api, apiGetRoles } from "../../api.js";
-import { PostUserRequest, UndetailedRole } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { showNotification } from "../notification.js";
-import { InputComponent, SelectComponent } from "../input.js";
-import { FormModal } from "../modal/form.js";
-import { createSelectRoleInput } from "./role_select.js";
+import { Api, apiGetRoles } from "../../api"
+import { PostUserRequest, UndetailedRole } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { showNotification } from "../notification"
+import { InputComponent, SelectComponent } from "../input"
+import { FormModal } from "../modal/form"
+import { createSelectRoleInput } from "./role_select"
 
 export class AddUserModal extends FormModal<PostUserRequest> {
 

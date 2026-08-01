@@ -1,7 +1,7 @@
-import { globalObject } from "../../util.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { AudioPlayerSetup, TrackAudioPlayer } from "./index.js";
+import { globalObject } from "../../util"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { AudioPlayerSetup, TrackAudioPlayer } from "./index"
 
 export class AudioElementPlayer implements TrackAudioPlayer {
 

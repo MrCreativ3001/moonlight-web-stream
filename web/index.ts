@@ -1,19 +1,19 @@
-import "./polyfill/index.js"
-import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost, apiGetRole, apiPatchRole } from "./api.js";
-import { AddHostModal } from "./component/host/add_modal.js";
-import { HostList } from "./component/host/list.js";
-import { Component, ComponentEvent } from "./component/index.js";
-import { showNotification } from "./component/notification.js";
-import { showMessage, showModal } from "./component/modal/index.js";
-import { setContextMenu } from "./component/context_menu.js";
-import { GameList } from "./component/game/list.js";
-import { Host } from "./component/host/index.js";
-import { App, DetailedRole, DetailedUser } from "./api_bindings.js";
-import { getLocalStreamSettings, globalDefaultSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu.js";
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
-import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
-import { buildUrl } from "./config_.js";
-import { setStyle as setPageStyle } from "./styles/index.js";
+import "./polyfill/index"
+import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost, apiGetRole, apiPatchRole } from "./api"
+import { AddHostModal } from "./component/host/add_modal"
+import { HostList } from "./component/host/list"
+import { Component, ComponentEvent } from "./component/index"
+import { showNotification } from "./component/notification"
+import { showMessage, showModal } from "./component/modal/index"
+import { setContextMenu } from "./component/context_menu"
+import { GameList } from "./component/game/list"
+import { Host } from "./component/host/index"
+import { App, DetailedRole, DetailedUser } from "./api_bindings"
+import { getLocalStreamSettings, globalDefaultSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu"
+import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n"
+import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click"
+import { buildUrl } from "./config_"
+import { setStyle as setPageStyle } from "./styles/index"
 
 // TODO: look at this? https://developer.mozilla.org/en-US/docs/Web/API/Web_components
 

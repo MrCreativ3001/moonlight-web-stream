@@ -1,12 +1,12 @@
-import { Api, fetchApi, WebRTCAnswer } from "../../api.js";
-import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, EstimatedRttInfo, InputBatcher, PacketDirection, UdpTransmit, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings.js";
-import { globalObject, uniffiMillisUntil, uniffiNow, wait } from "../../util.js";
-import { AudioPlayer, TrackAudioPlayer } from "../audio/index.js";
-import { Logger } from "../log.js";
-import { DataPipe } from "../pipeline/pipes.js";
-import { StatValue } from "../stats.js";
-import { TrackVideoRenderer, VideoRenderer } from "../video/index.js";
-import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index.js";
+import { Api, fetchApi, WebRTCAnswer } from "../../api"
+import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, ControlStream, ControlStreamEvent, ControlStreamEvent_Tags, EstimatedRttInfo, InputBatcher, PacketDirection, UdpTransmit, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
+import { globalObject, uniffiMillisUntil, uniffiNow, wait } from "../../util"
+import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
+import { Logger } from "../log"
+import { DataPipe } from "../pipeline/pipes"
+import { StatValue } from "../stats"
+import { TrackVideoRenderer, VideoRenderer } from "../video/index"
+import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index"
 
 export class WebRTCTransport implements Transport {
 

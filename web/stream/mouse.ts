@@ -1,4 +1,4 @@
-import { MouseButton } from "../uniffi/moonlight_common_bindings.js"
+import { MouseButton } from "../uniffi/moonlight_common_bindings"
 
 const BUTTON_MAPPINGS = new Array(5)
 BUTTON_MAPPINGS[0] = MouseButton.Left

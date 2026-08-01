@@ -77,11 +77,7 @@ export default {
         }),
     ],
     resolve: {
-        // TODO: migrate all files to ts
-        extensions: [".ts", ".js"],
-        extensionAlias: {
-            ".js": [".ts", ".js"]
-        }
+        extensions: [".ts", ".js"]
     },
     output: {
         filename: "[name].js",

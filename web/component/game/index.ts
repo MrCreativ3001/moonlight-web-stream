@@ -1,11 +1,11 @@
-import { Component, ComponentEvent } from "../index.js";
-import { Api, apiGetAppImage, apiHostCancel } from "../../api.js";
-import { App } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { setContextMenu } from "../context_menu.js";
-import { showMessage } from "../modal/index.js";
-import { APP_NO_IMAGE } from "../../resources/index.js";
-import { buildUrl } from "../../config_.js";
+import { Component, ComponentEvent } from "../index"
+import { Api, apiGetAppImage, apiHostCancel } from "../../api"
+import { App } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { setContextMenu } from "../context_menu"
+import { showMessage } from "../modal/index"
+import { APP_NO_IMAGE } from "../../resources/index"
+import { buildUrl } from "../../config_"
 
 export type GameCache = App & { activeApp: number | null }
 

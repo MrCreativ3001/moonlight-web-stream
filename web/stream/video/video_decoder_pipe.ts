@@ -85,6 +85,8 @@ export class VideoDecoderPipe implements DataVideoRenderer {
 
     private base: FrameVideoRenderer
 
+    private width = 0
+    private height = 0
     private fps = 0
 
     private errored = false
@@ -118,28 +120,38 @@ export class VideoDecoderPipe implements DataVideoRenderer {
     }
 
     private async trySetConfig(codec: string) {
+        const baseConfig = {
+            codedWidth: this.width,
+            codedHeight: this.height,
+        }
+
         if (!this.config) {
             this.config = await getIfConfigSupported({
                 codec,
                 hardwareAcceleration: "prefer-hardware",
-                optimizeForLatency: true
+                optimizeForLatency: true,
+                ...baseConfig
             })
         }
 
         if (!this.config) {
             this.config = await getIfConfigSupported({
                 codec,
-                optimizeForLatency: true
+                optimizeForLatency: true,
+                ...baseConfig
             })
         }
 
         if (!this.config) {
             this.config = await getIfConfigSupported({
                 codec,
+                ...baseConfig
             })
         }
     }
     async setup(setup: VideoRendererSetup): Promise<void> {
+        this.width = setup.width
+        this.height = setup.height
         this.fps = setup.fps
 
         const codec = VIDEO_DECODER_CODECS_IN_BAND[setup.codec]

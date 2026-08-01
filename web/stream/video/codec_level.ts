@@ -1,5 +1,3 @@
-import { VideoCodecSupport } from "../video.js"
-
 /// Computes codec strings whose level matches the actual stream dimensions
 /// and frame rate.
 ///
@@ -9,6 +7,8 @@ import { VideoCodecSupport } from "../video.js"
 /// Chrome can silently fall back to software decoding even though the
 /// hardware decoder would have been fine. See
 /// https://github.com/MrCreativ3001/moonlight-web-stream/issues/136
+
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
 
 // H.264 (ITU-T H.264 Table A-1): level -> [level_idc, MaxFS in MBs, MaxMBPS in MB/s]
 const H264_LEVELS: Array<[number, number, number]> = [
@@ -94,31 +94,31 @@ function pad2(value: number): string {
 /// Profile bytes stay identical to the previous hardcoded strings; only the
 /// level is dynamic.
 export function videoDecoderCodecInBand(
-    codec: keyof VideoCodecSupport,
+    codec: keyof VideoFormats,
     width: number,
     height: number,
     fps: number,
 ): string | null {
     switch (codec) {
-        case "H264":
+        case "h264":
             return `avc3.42E0${toHex(h264LevelIdc(width, height, fps))}`
-        case "H264_HIGH8_444":
+        case "h264High8444":
             return `avc3.6400${toHex(h264LevelIdc(width, height, fps))}`
-        case "H265":
+        case "h265":
             return `hev1.1.6.L${h265Level(width, height, fps)}.B0`
-        case "H265_MAIN10":
+        case "h265Main10":
             return `hev1.2.4.L${h265Level(width, height, fps)}.90`
-        case "H265_REXT8_444":
+        case "h265Rext8444":
             return `hev1.6.6.L${h265Level(width, height, fps)}.90`
-        case "H265_REXT10_444":
+        case "h265Rext10444":
             return `hev1.6.10.L${h265Level(width, height, fps)}.90`
-        case "AV1_MAIN8":
+        case "av1Main8":
             return `av01.0.${pad2(av1LevelIdx(width, height, fps))}M.08`
-        case "AV1_MAIN10":
+        case "av1Main10":
             return `av01.0.${pad2(av1LevelIdx(width, height, fps))}M.10`
-        case "AV1_HIGH8_444":
+        case "av1High8444":
             return `av01.0.${pad2(av1LevelIdx(width, height, fps))}M.08`
-        case "AV1_HIGH10_444":
+        case "av1High10444":
             return `av01.0.${pad2(av1LevelIdx(width, height, fps))}M.10`
         default:
             // Unknown codec: let the caller fall back to its static table

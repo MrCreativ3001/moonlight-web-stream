@@ -5,7 +5,6 @@ import { Transport } from "./transport/index.js"
 
 export type StatValue = string | number
 
-// TODO: remove this struct
 export type StreamStatsData = {
     videoPipeline: string | null
     audioPipeline: string | null

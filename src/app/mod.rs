@@ -111,7 +111,7 @@ pub enum AppError {
 
 impl ResponseError for AppError {
     fn status_code(&self) -> StatusCode {
-        unreachable!()
+        self.error_response().status()
     }
 
     fn error_response(&self) -> HttpResponse<BoxBody> {

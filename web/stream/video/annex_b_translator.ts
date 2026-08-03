@@ -235,6 +235,9 @@ export class H264StreamVideoTranslator extends CodecStreamTranslator {
         if (nalType == 6) {
             // SEI, not needed, discard
             return { include: false }
+        } else if (nalType == 12) {
+            // Filler Data, discard
+            return { include: false }
         } else if (nalType == 7) {
             // Sps
             this.sps = new Uint8Array(slice)

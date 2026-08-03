@@ -545,7 +545,7 @@ Changes:
 - moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`
   - Change the Web Socket Endpoint when using a Reserve Proxy: See [Proxying via Apache2](#proxying-via-apache-2)
 - `config.json` is not generated at first startup and can optionally be used for more granular control
-  - generate the currently used config with `./web-server config generate`
+  - you can generate the config with `./web-server config generate`
 - removed old unused `default_settings` value in the config
 
 ## Contributors

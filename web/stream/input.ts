@@ -194,7 +194,29 @@ export class StreamInput {
         }))
     }
     sendText(text: string) {
-        // TODO
+        const MAX_CHUNK_LENGTH = 30
+
+        const encoder = new TextEncoder()
+
+        let currentChunk: Array<number> = []
+        const sendChunk = () =>
+            this.controlStream?.sendRaw(new ControlPacket.Text({
+                text: new Uint8Array(currentChunk).buffer
+            }))
+
+        for (const char of text) {
+            const bytes = encoder.encode(char)
+
+            if (currentChunk.length + bytes.byteLength > MAX_CHUNK_LENGTH) {
+                sendChunk()
+                currentChunk = []
+            }
+            currentChunk.push(...bytes)
+        }
+
+        if (currentChunk.length > 0) {
+            sendChunk()
+        }
     }
 
     // -- Mouse

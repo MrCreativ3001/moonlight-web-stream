@@ -83,15 +83,11 @@ export class MediaSourceDecoder implements DataVideoRenderer {
         }
     }
 
-    // A source buffer is created on each idr
+    // A source buffer is only created on first idr
     private createNewSourceBuffer(codec: string) {
-        // Clean the old source buffer
-        if (this.sourceBuffer) {
-            this.mediaSource.removeSourceBuffer(this.sourceBuffer)
-            this.sourceBuffer = null
-        }
-
-        this.sourceBuffer = this.mediaSource.addSourceBuffer(`video/mp4; codecs=${codec}`)
+        this.sourceBuffer = this.mediaSource.addSourceBuffer(
+            `video/mp4; codecs="${codec}"`
+        )
 
         this.sourceBuffer.addEventListener("error", this.onError.bind(this))
         this.sourceBuffer.addEventListener("updateend", this.onUpdateEnd.bind(this))
@@ -137,7 +133,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             return
         }
 
-        if (configure) {
+        if (configure && !this.sourceBuffer) {
             if (!configure.description
                 || !(configure.description instanceof Uint8Array)
             ) {
@@ -192,7 +188,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
                 this.sequenceNumber,
                 (this.sequenceNumber - 1) * this.frameDuration,
                 this.frameDuration,
-                false,
+                unit.type == "key",
                 chunk
             )
             segment.flip()

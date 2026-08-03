@@ -1,4 +1,4 @@
-import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyModifiers, MouseButton, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings"
+import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, ControlPacket, ControlPacket_Tags, KeyAction, KeyModifiers, MouseButton, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings"
 import { U16_MAX } from "./buffer"
 import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad"
 import { StreamCapabilities } from "./index"
@@ -64,7 +64,6 @@ export class StreamInput {
     private controlStream: IControlStream | null = null
 
     private localCursorPosition: [number, number] | null = null
-    buffer: any
 
     private streamSize: [number, number] = [0, 0]
 
@@ -1016,20 +1015,12 @@ export class StreamInput {
         }
     }
 
-    private onControllerData(data: ArrayBuffer) {
-        this.buffer.reset()
-
-        this.buffer.putU8Array(new Uint8Array(data))
-        this.buffer.flip()
-
-        // TODO: maybe move this into their respective controller channels?
-
-        const ty = this.buffer.getU8()
-        if (ty == 0) {
+    onReceivePacket(packet: ControlPacket) {
+        if (packet.tag == ControlPacket_Tags.ControllerRumbleData) {
             // Rumble
-            const id = this.buffer.getU8()
-            const lowFrequencyMotor = this.buffer.getU16() / U16_MAX
-            const highFrequencyMotor = this.buffer.getU16() / U16_MAX
+            const id = packet.inner.controllerNumber
+            const lowFrequencyMotor = packet.inner.lowFrequency / U16_MAX
+            const highFrequencyMotor = packet.inner.highFrequency / U16_MAX
 
             const gamepadIndex = this.gamepads[id]?.gamepadIndex
             if (gamepadIndex == null) {
@@ -1037,11 +1028,11 @@ export class StreamInput {
             }
 
             this.setGamepadEffect(gamepadIndex, "dual-rumble", { lowFrequencyMotor, highFrequencyMotor })
-        } else if (ty == 1) {
+        } else if (packet.tag == ControlPacket_Tags.ControllerRumbleTriggers) {
             // Trigger Rumble
-            const id = this.buffer.getU8()
-            const leftTrigger = this.buffer.getU16() / U16_MAX
-            const rightTrigger = this.buffer.getU16() / U16_MAX
+            const id = packet.inner.controllerNumber
+            const leftTrigger = packet.inner.leftTriggerMotor / U16_MAX
+            const rightTrigger = packet.inner.rightTriggerMotor / U16_MAX
 
             const gamepadIndex = this.gamepads[id]?.gamepadIndex
             if (gamepadIndex == null) {

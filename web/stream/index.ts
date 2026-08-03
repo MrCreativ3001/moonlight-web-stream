@@ -570,14 +570,9 @@ export class Stream implements Component {
                     this.videoRenderer?.setHdrMode(packet.inner.enabled, packet.inner.sunshine)
                 }
                 break
-            case ControlPacket_Tags.ControllerRumbleData:
-                // TODO
-                break
-            case ControlPacket_Tags.ControllerRumbleTriggers:
-                // TODO
-                break
         }
-        // TODO
+
+        this.input.onReceivePacket(packet)
     }
 
     // -- Class Api

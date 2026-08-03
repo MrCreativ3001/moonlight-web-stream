@@ -1,6 +1,6 @@
 import { Component } from "../../component/index"
 import { Pipe } from "../pipeline/index"
-import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
+import { SunshineHdrMetadata, VideoFormats } from "../../uniffi/moonlight_common_bindings"
 
 export type VideoRendererSetup = {
     codec: keyof VideoFormats,
@@ -30,7 +30,7 @@ export interface VideoRenderer extends Component, Pipe {
     unmount(parent: HTMLElement): void
 
     /// Optional: Set HDR mode (enabled/disabled)
-    setHdrMode?(enabled: boolean): void
+    setHdrMode?(enabled: boolean, sunshine?: SunshineHdrMetadata): void
 }
 
 export function getStreamRectCorrected(boundingRect: DOMRect, videoSize: [number, number]): DOMRect {

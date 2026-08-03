@@ -567,7 +567,7 @@ export class Stream implements Component {
         switch (packet.tag) {
             case ControlPacket_Tags.HdrMode:
                 if (this.videoRenderer && this.videoRenderer.setHdrMode) {
-                    this.videoRenderer?.setHdrMode(packet.inner.enabled)
+                    this.videoRenderer?.setHdrMode(packet.inner.enabled, packet.inner.sunshine)
                 }
                 break
             case ControlPacket_Tags.ControllerRumbleData:

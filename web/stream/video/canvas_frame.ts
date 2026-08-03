@@ -75,6 +75,7 @@ abstract class BaseCanvasFrameDrawPipe implements Pipe {
 }
 
 export class CanvasFrameDrawPipe extends BaseCanvasFrameDrawPipe implements FrameVideoRenderer {
+    static readonly pipeName = "CanvasFrameDrawPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         // no link
@@ -121,6 +122,7 @@ export class CanvasFrameDrawPipe extends BaseCanvasFrameDrawPipe implements Fram
 }
 
 export class CanvasRgbaFrameDrawPipe extends BaseCanvasFrameDrawPipe implements RgbaFrameVideoRenderer {
+    static readonly pipeName = "CanvasRgbaFrameDrawPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         // no link
@@ -166,6 +168,8 @@ export class CanvasRgbaFrameDrawPipe extends BaseCanvasFrameDrawPipe implements 
 }
 
 export class CanvasYuv420FrameDrawPipe extends BaseCanvasFrameDrawPipe implements Yuv420FrameVideoRenderer {
+    static readonly pipeName = "CanvasYuv420FrameDrawPipe"
+
     static async getInfo(): Promise<PipeInfo> {
         // no link
         return {

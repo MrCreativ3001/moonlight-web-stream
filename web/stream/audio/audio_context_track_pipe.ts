@@ -5,6 +5,7 @@ import { AudioContextBasePipe } from "./audio_context_base"
 import { AudioPlayerSetup, TrackAudioPlayer } from "./index"
 
 export class AudioContextTrackPipe extends AudioContextBasePipe {
+    static readonly pipeName = "AudioContextTrackPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         return {

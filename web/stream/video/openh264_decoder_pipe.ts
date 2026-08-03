@@ -7,6 +7,8 @@ import { DataVideoRenderer, Yuv420FrameVideoRenderer, VideoDecodeUnit } from "./
 
 /// A fallback for the normal VideoDecoder that only works in a secure context
 export class OpenH264DecoderPipe implements DataVideoRenderer {
+    static readonly pipeName = "OpenH264DecoderPipe"
+
     static async getInfo(): Promise<PipeInfo> {
         const videoCodecs = emptyVideoCodecs()
         videoCodecs.h264 = true

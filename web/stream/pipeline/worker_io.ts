@@ -59,15 +59,19 @@ class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer
     submitDecodeUnit(_unit: VideoDecodeUnit): void { }
 }
 export class WorkerVideoFrameReceivePipe extends WorkerReceiverPipe {
+    static readonly pipeName = "WorkerVideoFrameReceivePipe"
     static readonly baseType = "videoframe"
 }
 export class WorkerDataReceivePipe extends WorkerReceiverPipe {
+    static readonly pipeName = "WorkerDataReceivePipe"
     static readonly baseType = "data"
 }
 export class WorkerVideoDataReceivePipe extends WorkerReceiverPipe {
+    static readonly pipeName = "WorkerVideoDataReceivePipe"
     static readonly baseType = "videodata"
 }
 export class WorkerVideoTrackReceivePipe extends WorkerReceiverPipe {
+    static readonly pipeName = "WorkerVideoTrackReceivePipe"
     static readonly baseType = "videotrack"
 }
 
@@ -117,20 +121,25 @@ class WorkerSenderPipe implements DataPipe, FrameVideoRenderer, TrackVideoRender
 }
 
 export class WorkerVideoFrameSendPipe extends WorkerSenderPipe {
+    static readonly pipeName = "WorkerVideoFrameSendPipe"
     static readonly type = "videoframe"
 }
 export class WorkerDataSendPipe extends WorkerSenderPipe {
+    static readonly pipeName = "WorkerDataSendPipe"
     static readonly type = "data"
 }
 export class WorkerVideoDataSendPipe extends WorkerSenderPipe {
+    static readonly pipeName = "WorkerVideoDataSendPipe"
     static readonly type = "videodata"
 }
 export class WorkerVideoTrackSendPipe extends WorkerSenderPipe {
+    static readonly pipeName = "WorkerVideoTrackSendPipe"
     static readonly type = "videotrack"
 }
 
 
 export class WorkerOffscreenCanvasSendPipe extends WorkerSenderPipe implements CanvasRenderer {
+    static readonly pipeName = "WorkerOffscreenCanvasSendPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         return {

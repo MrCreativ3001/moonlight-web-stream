@@ -67,6 +67,8 @@ async function getIfConfigSupported(config: VideoDecoderConfig): Promise<VideoDe
 }
 
 export class VideoDecoderPipe implements DataVideoRenderer {
+    static readonly pipeName = "VideoDecoderPipe"
+
     static readonly baseType = "videoframe"
     static readonly type = "videodata"
 

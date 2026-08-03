@@ -3,6 +3,7 @@ import { addPipePassthrough, DataPipe } from "../pipeline/pipes"
 import { AudioPlayerSetup, DataAudioPlayer } from "./index"
 
 export class DepacketizeAudioPipe implements DataPipe {
+    static readonly pipeName = "DepacketizeAudioPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         return {

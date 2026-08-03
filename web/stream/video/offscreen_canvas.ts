@@ -7,6 +7,7 @@ import { BaseCanvasVideoRenderer } from "./canvas"
 import { VideoRendererSetup } from "./index"
 
 export class OffscreenCanvasRenderer extends BaseCanvasVideoRenderer implements WorkerReceiver {
+    static readonly pipeName = "OffscreenCanvasRenderer"
 
     static async getInfo(): Promise<PipeInfo> {
         return {

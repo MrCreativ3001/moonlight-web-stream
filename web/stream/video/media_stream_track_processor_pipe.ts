@@ -11,6 +11,7 @@ function wait(time: number): Promise<void> {
 }
 
 export class VideoMediaStreamTrackProcessorPipe implements TrackVideoRenderer {
+    static readonly pipeName = "VideoMediaStreamTrackProcessorPipe"
 
     static readonly baseType = "videoframe"
     static readonly type = "videotrack"

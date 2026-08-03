@@ -3,7 +3,7 @@ import { AudioDecoderPipe } from "./audio_decoder_pipe"
 import { AudioElementPlayer } from "./audio_element"
 import { AudioMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe"
 import { Logger } from "../log"
-import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, PipeStatic } from "../pipeline/index"
+import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, pipeName, PipeStatic } from "../pipeline/index"
 import { OpusAudioDecoderPipe } from "./opus_decoder_pipe"
 import { AudioBufferPipe as AudioPcmBufferPipe } from "./audio_buffer_pipe"
 import { ContextDestinationNodeAudioPlayer } from "./audio_context_destination"
@@ -18,7 +18,9 @@ const AUDIO_PLAYERS: Array<AudioPlayerStatic> = [
 
 type PipelineResult<T> = { audioPlayer: T, error: false } | { audioPlayer: null, error: true }
 
-interface AudioPlayerStatic extends PipeInfoStatic, OutputPipeStatic { }
+interface AudioPlayerStatic extends PipeInfoStatic, OutputPipeStatic {
+    readonly pipeName: string
+}
 
 export type AudioPipelineOptions = {
 }
@@ -46,7 +48,7 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
         // Print supported pipes
         const audioPlayerInfoPromises = []
         for (const audioPlayer of AUDIO_PLAYERS) {
-            audioPlayerInfoPromises.push(audioPlayer.getInfo().then(info => [audioPlayer.name, info]))
+            audioPlayerInfoPromises.push(audioPlayer.getInfo().then(info => [pipeName(audioPlayer), info]))
         }
         const audioPlayerInfo = await Promise.all(audioPlayerInfoPromises)
 
@@ -72,7 +74,7 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
         for (const pipe of pipeline.pipes) {
             const pipeInfo = pipesInfo.get(pipe)
             if (!pipeInfo) {
-                logger?.debug(`Failed to query info for audio pipe ${pipe.name}`)
+                logger?.debug(`Failed to query info for audio pipe ${pipeName(pipe)}`)
                 continue pipelineLoop
             }
 
@@ -83,7 +85,7 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
 
         const playerInfo = await pipeline.player.getInfo()
         if (!playerInfo) {
-            logger?.debug(`Failed to query info for audio player ${pipeline.player.name}`)
+            logger?.debug(`Failed to query info for audio player ${pipeName(pipeline.player)}`)
             continue pipelineLoop
         }
 

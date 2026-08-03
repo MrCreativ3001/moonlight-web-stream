@@ -9,6 +9,7 @@ import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, PcmAudioPlayer } fr
 // TODO: use AudioWorklets? https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_AudioWorklet
 
 export class OpusAudioDecoderPipe implements DataAudioPlayer {
+    static readonly pipeName = "OpusAudioDecoderPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         return {

@@ -11,6 +11,8 @@ import { DataVideoRenderer, UrlVideoRenderer, VideoDecodeUnit, VideoRendererSetu
 const DEBUG_FILE = false
 
 export class MediaSourceDecoder implements DataVideoRenderer {
+    static readonly pipeName = "MediaSourceDecoder"
+
     static async getInfo(): Promise<PipeInfo> {
         const environmentSupported = "MediaSource" in globalObject() && "isTypeSupported" in MediaSource
 

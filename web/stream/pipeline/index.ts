@@ -36,6 +36,7 @@ export interface PipeInfoStatic {
     getInfo(): Promise<PipeInfo>
 }
 export interface PipeStatic extends PipeInfoStatic, InputPipeStatic {
+    readonly pipeName: string
     readonly type: string
 
     new(base: any, logger?: Logger): Pipe
@@ -58,16 +59,16 @@ export function pipelineToString(pipeline: Pipeline): string {
     return pipeline.pipes.map(pipe => pipeName(pipe)).join(" -> ")
 }
 
-export function pipeName(pipe: string | PipeStatic): string {
+export function pipeName(pipe: string | { pipeName: string }): string {
     if (typeof pipe == "string") {
         return pipe
     } else {
-        return pipe.name
+        return pipe.pipeName
     }
 }
 export function getPipe(pipe: string | PipeStatic): PipeStatic | null {
     if (typeof pipe == "string") {
-        const foundPipe = pipes().find(check => check.name == pipe)
+        const foundPipe = pipes().find(check => check.pipeName == pipe)
 
         return foundPipe ?? null
     } else {
@@ -89,7 +90,7 @@ export function buildPipeline(base: OutputPipeStatic, pipeline: Pipeline, logger
         }
 
         if (previousPipeStatic && currentPipe.baseType != previousPipeStatic.type) {
-            logger?.debug(`Failed to create pipeline "${pipelineToString(pipeline)}" because baseType of "${currentPipe.name}" is "${currentPipe.baseType}", but it's trying to connect with "${previousPipeStatic.type}"`)
+            logger?.debug(`Failed to create pipeline "${pipelineToString(pipeline)}" because baseType of "${pipeName(currentPipe)}" is "${currentPipe.baseType}", but it's trying to connect with "${previousPipeStatic.type}"`)
             return null
         }
 

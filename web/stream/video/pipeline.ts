@@ -5,7 +5,7 @@ import { VideoDecoderPipe } from "./video_decoder_pipe"
 import { DepacketizeVideoPipe } from "./depackitize_pipe"
 import { Logger } from "../log"
 import { andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "../video"
-import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfo, PipeInfoStatic, PipeStatic } from "../pipeline/index"
+import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfo, PipeInfoStatic, pipeName, PipeStatic } from "../pipeline/index"
 import { DataPipe } from "../pipeline/pipes"
 import { workerPipe } from "../pipeline/worker_pipe"
 import { WorkerVideoDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "../pipeline/worker_io"
@@ -20,7 +20,9 @@ import { MediaSourceDecoder } from "./media_source_decoder"
 import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
 
 // -- Gather information about the browser
-interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic { }
+interface VideoRendererStatic extends PipeInfoStatic, OutputPipeStatic {
+    readonly pipeName: string
+}
 
 const VIDEO_RENDERERS: Array<VideoRendererStatic> = [
     VideoElementRenderer,
@@ -81,7 +83,7 @@ const PIPELINES: Array<Pipeline> = [
     { input: "data", pipes: [DepacketizeVideoPipe, MediaSourceDecoder], renderer: UrlVideoElementRenderer },
 ]
 
-const FORCE_CANVAS_PIPELINES: Array<Pipeline> = PIPELINES.filter(pipeline => pipeline.renderer.name.includes("Canvas"))
+const FORCE_CANVAS_PIPELINES: Array<Pipeline> = PIPELINES.filter(pipeline => pipeName(pipeline.renderer).includes("Canvas"))
 
 async function queryPipelineInfo(pipeline: Pipeline, supportedCodecs: VideoFormats, logger?: Logger): Promise<PipeInfo> {
     const pipesInfo = await gatherPipeInfo()
@@ -90,7 +92,7 @@ async function queryPipelineInfo(pipeline: Pipeline, supportedCodecs: VideoForma
     for (const pipe of pipeline.pipes) {
         const pipeInfo = pipesInfo.get(pipe)
         if (!pipeInfo) {
-            logger?.debug(`Failed to query info for video pipe ${pipe.name}`)
+            logger?.debug(`Failed to query info for video pipe ${pipeName(pipe)}`)
             return {
                 environmentSupported: false
             }
@@ -109,7 +111,7 @@ async function queryPipelineInfo(pipeline: Pipeline, supportedCodecs: VideoForma
 
     const rendererInfo = await pipeline.renderer.getInfo()
     if (!rendererInfo) {
-        logger?.debug(`Failed to query info for video renderer ${pipeline.renderer.name}`)
+        logger?.debug(`Failed to query info for video renderer ${pipeName(pipeline.renderer)}`)
         return {
             environmentSupported: false
         }
@@ -171,7 +173,7 @@ async function selectPipeline(type: string, settings: VideoPipelineOptions, logg
         const pipelineInfo = await queryPipelineInfo(pipeline, supportedCodecs)
 
         if (!hasAnyCodec(pipelineInfo?.supportedVideoCodecs ?? emptyVideoCodecs())) {
-            logger?.debug(`Not using pipe ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer) because it doesn't support any codec the user wants`)
+            logger?.debug(`Not using pipe ${pipeline.pipes.map(pipeName).join(" -> ")} -> ${pipeName(pipeline.renderer)} (renderer) because it doesn't support any codec the user wants`)
             continue pipelineLoop
         }
 
@@ -186,7 +188,7 @@ export async function queryVideoPipelineInfo(type: "videotrack" | "data", settin
         // Print supported pipes
         const videoRendererInfoPromises = []
         for (const videoRenderer of VIDEO_RENDERERS) {
-            videoRendererInfoPromises.push(videoRenderer.getInfo().then(info => [videoRenderer.name, info]))
+            videoRendererInfoPromises.push(videoRenderer.getInfo().then(info => [pipeName(videoRenderer), info]))
         }
         const videoRendererInfo = await Promise.all(videoRendererInfoPromises)
 
@@ -257,7 +259,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         for (const pipe of pipeline.pipes) {
             const pipeInfo = pipesInfo.get(pipe)
             if (!pipeInfo) {
-                logger?.debug(`Failed to query info for video pipe ${pipe.name}`)
+                logger?.debug(`Failed to query info for video pipe ${pipeName(pipe)}`)
                 continue pipelineLoop
             }
 
@@ -272,7 +274,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
 
         const rendererInfo = await pipeline.renderer.getInfo()
         if (!rendererInfo) {
-            logger?.debug(`Failed to query info for video renderer ${pipeline.renderer.name}`)
+            logger?.debug(`Failed to query info for video renderer ${pipeName(pipeline.renderer)}`)
             continue pipelineLoop
         }
 
@@ -284,20 +286,20 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
         }
 
         if (!hasAnyCodec(supportedCodecs)) {
-            logger?.debug(`Not using pipe ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer) because it doesn't support any codec the user wants`)
+            logger?.debug(`Not using pipe ${pipeline.pipes.map(pipeName).join(" -> ")} -> ${pipeName(pipeline.renderer)} (renderer) because it doesn't support any codec the user wants`)
             continue pipelineLoop
         }
 
         // Build that pipeline
-        logger?.debug(`Trying to build pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
+        logger?.debug(`Trying to build pipeline: ${pipeline.pipes.map(pipeName).join(" -> ")} -> ${pipeName(pipeline.renderer)} (renderer)`)
         const rendererOptions = { drawOnSubmit: !settings.canvasVsync }
         const videoRenderer = buildPipeline(pipeline.renderer, { pipes: pipeline.pipes }, logger, rendererOptions)
         if (!videoRenderer) {
-            logger?.debug(`Failed to build video pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
+            logger?.debug(`Failed to build video pipeline: ${pipeline.pipes.map(pipeName).join(" -> ")} -> ${pipeName(pipeline.renderer)} (renderer)`)
             continue pipelineLoop
         }
 
-        logger?.debug(`Successfully built video pipeline: ${pipeline.pipes.map(pipe => pipe.name).join(" -> ")} -> ${pipeline.renderer.name} (renderer)`)
+        logger?.debug(`Successfully built video pipeline: ${pipeline.pipes.map(pipeName).join(" -> ")} -> ${pipeName(pipeline.renderer)} (renderer)`)
         return { videoRenderer: videoRenderer as VideoRenderer, supportedCodecs, error: false }
     }
 

@@ -4,6 +4,7 @@ import { addPipePassthrough } from "../pipeline/pipes"
 import { AudioPlayerSetup, TrackAudioPlayer } from "./index"
 
 export class AudioElementPlayer implements TrackAudioPlayer {
+    static readonly pipeName = "AudioElementPlayer"
 
     static readonly type = "audiotrack"
 

@@ -44,6 +44,8 @@ function detectCodecs(): VideoFormats {
 }
 
 export class VideoElementRenderer implements TrackVideoRenderer, VideoRenderer {
+    static readonly pipeName = "VideoElementRenderer"
+
     static readonly type = "videotrack"
 
     static async getInfo(): Promise<PipeInfo> {
@@ -172,6 +174,8 @@ export class VideoElementRenderer implements TrackVideoRenderer, VideoRenderer {
 }
 
 export class UrlVideoElementRenderer implements UrlVideoRenderer, VideoRenderer {
+    static readonly pipeName = "UrlVideoElementRenderer"
+
     static readonly type = "videourl"
 
     static async getInfo(): Promise<PipeInfo> {

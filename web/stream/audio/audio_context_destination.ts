@@ -5,6 +5,7 @@ import { AudioContextBasePipe } from "./audio_context_base"
 import { AudioPlayer, AudioPlayerSetup } from "./index"
 
 export class ContextDestinationNodeAudioPlayer extends AudioContextBasePipe implements AudioPlayer {
+    static readonly pipeName = "ContextDestinationNodeAudioPlayer"
 
     static async getInfo(): Promise<PipeInfo> {
         return {

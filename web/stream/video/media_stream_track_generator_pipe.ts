@@ -5,6 +5,7 @@ import { allVideoCodecs } from "../video"
 import { FrameVideoRenderer, TrackVideoRenderer } from "./index"
 
 export class VideoMediaStreamTrackGeneratorPipe implements FrameVideoRenderer {
+    static readonly pipeName = "VideoMediaStreamTrackGeneratorPipe"
 
     static readonly baseType = "videotrack"
     static readonly type = "videoframe"

@@ -3,6 +3,8 @@ import { addPipePassthrough } from "../pipeline/pipes"
 import { RgbaFrameVideoRenderer, Yuv420FrameVideoRenderer, Yuv420VideoFrame } from "./index"
 
 export class Yuv420ToRgbaFramePipe implements Yuv420FrameVideoRenderer {
+    static readonly pipeName = "Yuv420ToRgbaFramePipe"
+
     static async getInfo(): Promise<PipeInfo> {
         // no link
         return {

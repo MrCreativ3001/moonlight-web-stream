@@ -143,6 +143,8 @@ export class WorkerPipe implements WorkerReceiver {
 
 export function workerPipe(name: string, pipeline: Pipeline): PipeStatic {
     class CustomWorkerPipe extends WorkerPipe {
+        static readonly pipeName = name
+
         static async getInfo(): Promise<PipeInfo> {
             return await this.getInfoInternal(pipeline)
         }
@@ -154,8 +156,6 @@ export function workerPipe(name: string, pipeline: Pipeline): PipeStatic {
             super(base, pipeline, logger)
         }
     }
-
-    Object.defineProperty(CustomWorkerPipe, "name", { value: name })
 
     return CustomWorkerPipe
 }

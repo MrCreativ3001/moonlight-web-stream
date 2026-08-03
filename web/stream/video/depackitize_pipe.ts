@@ -6,6 +6,7 @@ import { allVideoCodecs } from "../video"
 import { DataVideoRenderer, VideoRendererSetup } from "./index"
 
 export class DepacketizeVideoPipe implements DataPipe {
+    static readonly pipeName = "DepacketizeVideoPipe"
 
     static readonly baseType = "videodata"
     static readonly type = "wsdata"

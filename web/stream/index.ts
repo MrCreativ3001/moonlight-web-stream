@@ -7,7 +7,7 @@ import { AudioPlayer, AudioPlayerSetup } from "./audio/index"
 import { buildAudioPipeline } from "./audio/pipeline"
 import { defaultStreamInputConfig, StreamInput } from "./input"
 import { Logger, LogMessageInfo } from "./log"
-import { gatherPipeInfo } from "./pipeline/index"
+import { gatherPipeInfo, pipeName } from "./pipeline/index"
 import { StreamStats } from "./stats"
 import { Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./transport/index"
 import { WebSocketTransport } from "./transport/web_socket"
@@ -380,7 +380,7 @@ export class Stream implements Component {
         this.logger.debug(`Supported Pipes: {`)
         let isFirst = true
         for (const [pipe, info] of pipesInfo) {
-            this.logger.debug(`${isFirst ? "" : ","}"${pipe.name}": ${JSON.stringify(info)}`)
+            this.logger.debug(`${isFirst ? "" : ","}"${pipeName(pipe)}": ${JSON.stringify(info)}`)
             isFirst = false
         }
         this.logger.debug(`}`)

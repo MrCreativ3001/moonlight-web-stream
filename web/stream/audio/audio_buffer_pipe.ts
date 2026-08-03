@@ -4,6 +4,7 @@ import { addPipePassthrough } from "../pipeline/pipes"
 import { AudioPcmUnit, AudioPlayerSetup, NodeAudioPlayer, PcmAudioPlayer } from "./index"
 
 export class AudioBufferPipe implements PcmAudioPlayer {
+    static readonly pipeName = "AudioBufferPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         return {

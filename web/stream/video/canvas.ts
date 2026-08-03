@@ -187,6 +187,7 @@ export type CanvasVideoRendererOptions = {
 }
 
 export class MainCanvasRenderer extends BaseCanvasVideoRenderer {
+    static readonly pipeName = "MainCanvasRenderer"
 
     static async getInfo(): Promise<PipeInfo> {
         // no link

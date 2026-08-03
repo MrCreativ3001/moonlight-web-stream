@@ -21,6 +21,7 @@ async function detectCodec(): Promise<boolean> {
 }
 
 export class AudioDecoderPipe implements DataAudioPlayer {
+    static readonly pipeName = "AudioDecoderPipe"
 
     static readonly baseType = "audiosample"
     static readonly type = "audiodata"

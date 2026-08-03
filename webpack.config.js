@@ -85,6 +85,7 @@ export default {
         clean: true
     },
     externals: {
+        "./config.js": "window.__CONFIG_JS__",
         "../../libopenh264/decoder.js": "window.__OPENH264_DECODER__",
     }
 };

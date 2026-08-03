@@ -1,5 +1,5 @@
-import "./config.js"
+import CONFIG from "./config.js"
 
 export function buildUrl(path: string): string {
-    return `${window.location.origin}${window.__CONFIG_JS__.path_prefix ?? ""}${path}`
+    return `${window.location.origin}${CONFIG.path_prefix ?? ""}${path}`
 }

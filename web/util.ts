@@ -88,7 +88,7 @@ export function uniffiMillisUntil(until: bigint): number {
     if (waitTime <= 0) {
         return 0
     } else {
-        // adding 999 will round up to the next millsecond
-        return Number((waitTime + BigInt(999)) / BigInt(1_000_000))
+        // substracting 999 will round down to the  millsecond
+        return Number(waitTime) / 1_000_000
     }
 }

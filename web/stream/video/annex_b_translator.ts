@@ -232,7 +232,10 @@ export class H264StreamVideoTranslator extends CodecStreamTranslator {
     protected onChunkUnit(slice: Uint8Array): { include: boolean } {
         const nalType = h264NalType(slice[0])
 
-        if (nalType == 7) {
+        if (nalType == 6) {
+            // SEI, not needed, discard
+            return { include: false }
+        } else if (nalType == 7) {
             // Sps
             this.sps = new Uint8Array(slice)
 

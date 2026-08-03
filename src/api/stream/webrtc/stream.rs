@@ -74,6 +74,10 @@ pub async fn webrtc_loop(
                         video_channel.on_frame(frame);
                     }
                     MoonlightStreamEvent::Control(ControlStreamEvent::Packet(packet)) => {
+                        if let ControlPacket::HdrMode { enabled, sunshine } = &packet {
+                            video_channel.set_hdr_enabled(*enabled, *sunshine);
+                        }
+
                         control_channel.send(packet);
                     }
                     _ => {}

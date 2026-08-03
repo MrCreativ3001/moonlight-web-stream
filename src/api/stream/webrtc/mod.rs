@@ -1,5 +1,6 @@
 use crate::api::stream::webrtc::audio::AudioChannel;
 use crate::api::stream::webrtc::control::ControlChannel;
+use crate::api::stream::webrtc::ext_color_space::COLOR_SPACE_URI;
 use crate::api::stream::webrtc::stream::webrtc_loop;
 use crate::api::stream::webrtc::video::VideoChannel;
 use crate::config::PortRange;
@@ -63,6 +64,7 @@ use crate::app::{AppError, user::AuthenticatedUser};
 mod audio;
 mod control;
 mod convert;
+mod ext_color_space;
 mod ice_servers;
 mod stream;
 mod video;
@@ -147,7 +149,6 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
 
     // register extensions
     const PLAYOUT_DELAY_URI: &str = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay";
-    const COLOR_SPACE_URI: &str = "http://www.webrtc.org/experiments/rtp-hdrext/color-space";
 
     media_engine
         .register_header_extension(

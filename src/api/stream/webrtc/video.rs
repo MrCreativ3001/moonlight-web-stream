@@ -4,7 +4,7 @@ use bytes::Bytes;
 use moonlight_common::{
     stream::{
         proto::video::frame::OwnedVideoFrame,
-        video::{VideoFormat, VideoFormats, VideoSetup},
+        video::{SunshineHdrMetadata, VideoFormat, VideoFormats, VideoSetup},
     },
     webrtc::sdp::Session,
 };
@@ -39,10 +39,15 @@ use webrtc::{
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
 
-use crate::app::AppError;
+use crate::{api::stream::webrtc::ext_color_space::ColorSpaceExtension, app::AppError};
 
 pub enum VideoChannelEvent {
     SignalIdr,
+}
+
+enum Message {
+    Frame(OwnedVideoFrame),
+    HdrMetadata(Option<SunshineHdrMetadata>),
 }
 
 enum State {
@@ -51,7 +56,7 @@ enum State {
     Sending {
         rtcp_buffer: Vec<u8>,
         rtcp_receiver: Arc<RTCRtpSender>,
-        frame_sender: UnboundedSender<OwnedVideoFrame>,
+        frame_sender: UnboundedSender<Message>,
     },
 }
 
@@ -118,7 +123,16 @@ impl VideoChannel {
             async move {
                 let mut sequence_number = 0u16;
 
-                while let Some(frame) = frame_receiver.recv().await {
+                let mut hdr_metadata = None;
+
+                while let Some(message) = frame_receiver.recv().await {
+                    let frame = match message {
+                        Message::HdrMetadata(metadata) => {
+                            hdr_metadata = metadata;
+                            continue;
+                        }
+                        Message::Frame(frame) => frame,
+                    };
                     let frame = frame.as_ref();
 
                     let timestamp =
@@ -145,13 +159,37 @@ impl VideoChannel {
                     for (i, payload) in payloads.into_iter().enumerate() {
                         sequence_number = sequence_number.wrapping_add(1);
 
+                        let is_last = i == len - 1;
+
+                        let extensions: &[HeaderExtension] =
+                            if is_last && let Some(_metadata) = &hdr_metadata {
+                                // TODO: find correct hdr fields
+                                let _color_space = ColorSpaceExtension::default();
+
+                                &[
+                                    HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
+                                        min_delay: 0,
+                                        max_delay: 0,
+                                    }),
+                                    // HeaderExtension::Custom {
+                                    //     uri: Cow::Borrowed(COLOR_SPACE_URI),
+                                    //     extension: Box::new(ColorSpaceExtension {}),
+                                    // },
+                                ]
+                            } else {
+                                &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
+                                    min_delay: 0,
+                                    max_delay: 0,
+                                })]
+                            };
+
                         if let Err(err) = track
                             .write_rtp_with_extensions(
                                 &Packet {
                                     header: Header {
                                         version: 2,
                                         // Marker needs to mark the end of one frame
-                                        marker: i == len - 1,
+                                        marker: is_last,
                                         sequence_number,
                                         timestamp,
                                         payload_type: codec.payload_type,
@@ -159,10 +197,7 @@ impl VideoChannel {
                                     },
                                     payload,
                                 },
-                                &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
-                                    min_delay: 0,
-                                    max_delay: 0,
-                                })],
+                                extensions,
                             )
                             .await
                         {
@@ -185,7 +220,18 @@ impl VideoChannel {
                 panic!("VideoChannel is in an invalid state")
             }
             State::Sending { frame_sender, .. } => {
-                let _ = frame_sender.send(frame);
+                let _ = frame_sender.send(Message::Frame(frame));
+            }
+        }
+    }
+
+    pub fn set_hdr_enabled(&mut self, _enabled: bool, metadata: Option<SunshineHdrMetadata>) {
+        match &mut self.state {
+            State::SelectVideoFormat | State::Panic => {
+                panic!("VideoChannel is in an invalid state")
+            }
+            State::Sending { frame_sender, .. } => {
+                let _ = frame_sender.send(Message::HdrMetadata(metadata));
             }
         }
     }

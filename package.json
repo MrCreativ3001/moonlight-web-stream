@@ -22,8 +22,8 @@
     "url": "This is required for uniffi-bindgen-react-native"
   },
   "scripts": {
-    "dev": "npm run prebuild && webpack --watch",
-    "build": "npm run prebuild && webpack",
+    "dev": "npm run prebuild && webpack --watch --mode=development",
+    "build": "npm run prebuild && webpack --mode=production",
     "prebuild": "npm run generate-bindings && npm run build-moonlight-common",
     "generate-bindings": "cargo test export_bindings",
     "build-moonlight-common": "npm run ubrn:checkout && npm run ubrn:build",

@@ -10,8 +10,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default {
-    // TODO: change based on env
-    mode: "development",
     entry: {
         // TODO: also include i18n
         common: ["./web/styles/index.ts"],

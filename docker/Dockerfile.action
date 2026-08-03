@@ -12,7 +12,8 @@ WORKDIR ${MOONLIGHT_WEB_PATH}
 COPY moonlight-web/ ${MOONLIGHT_WEB_PATH}/
 
 # Mark executables as executable, create server directory, and change ownership
-RUN mkdir -p ${MOONLIGHT_WEB_PATH}/server && \
+RUN chmod +x ${MOONLIGHT_WEB_PATH}/web-server \
+    mkdir -p ${MOONLIGHT_WEB_PATH}/server && \
     chown -R moonlight:moonlight ${MOONLIGHT_WEB_PATH}
 
 # Create a volume with the config.json and data.json

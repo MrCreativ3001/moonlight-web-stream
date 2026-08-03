@@ -165,7 +165,6 @@ jobs:
       - name: Create archive
         run: |
           mkdir package
-          mv dist/streamer${{ matrix.suffix }} package/
           mv dist/web-server${{ matrix.suffix }} package/
           mv dist/static package/
 

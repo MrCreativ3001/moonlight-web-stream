@@ -507,8 +507,8 @@ export async function apiWebRTCOffer(api: Api, offerSdp: string): Promise<WebRTC
 
     // 201 == Created
     if (response.status != 201) {
-        // TODO
-        throw "TODO"
+        const reason = await response.text()
+        throw new FetchError("failed", ENDPOINT, POST, response, reason)
     }
 
     // Get sdp

@@ -88,7 +88,6 @@ async function startApp() {
             }
         }
     }
-    // TODO: check for prod or dev env
     uniffiSetLogger(new CustomUniffiLogger(), LogLevel.Debug)
 
     // Start and Mount App

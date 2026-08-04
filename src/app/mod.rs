@@ -12,7 +12,7 @@ use hex::FromHexError;
 use moonlight_common::{
     crypto::rustcrypto::{RustCryptoBackend, RustCryptoError},
     high::{MoonlightClientError, StreamConfigError},
-    http::{client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
+    http::{ParseError, client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
     stream::tokio::MoonlightStreamError,
     webrtc::WebRTCParseError,
 };
@@ -156,6 +156,12 @@ impl ResponseError for AppError {
             }
             Self::WebRTCParse(error) => {
                 HttpResponse::new(StatusCode::BAD_REQUEST).set_body(BoxBody::new(error.to_string()))
+            }
+            Self::Moonlight(MoonlightClientError::Backend(err))
+                if let Some(err) = err.downcast_ref::<ParseError>() =>
+            {
+                HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR)
+                    .set_body(BoxBody::new(err.to_string()))
             }
             Self::Moonlight(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::MoonlightStream(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),

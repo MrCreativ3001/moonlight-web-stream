@@ -132,6 +132,9 @@ export const ptBR: Translations = {
         allowWebrtc: "Permitir WebRTC",
         allowWebSockets: "Permitir WebSockets",
         roleDeleteBlocked: (users: string[]) => `Para remover este perfil, todos os usuários atribuídos a ele precisam ser excluídos ou reatribuídos a outro perfil.\nUsuários com este perfil:\n${JSON.stringify(users)}`,
+        setDefault: "Definir como padrão",
+        removeAsDefault: "Remover como padrão",
+        setDefaultUserDialog: "Deseja definir este usuário como usuário padrão?"
     },
     host: {
         showDetails: "Mostrar Detalhes",

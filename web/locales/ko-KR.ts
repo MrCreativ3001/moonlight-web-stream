@@ -132,6 +132,9 @@ export const koKR: Translations = {
         allowWebrtc: "WebRTC 허용",
         allowWebSockets: "Web Sockets 허용",
         roleDeleteBlocked: (users: string[]) => `이 역할을 삭제하려면 해당 역할이 할당된 모든 사용자를 삭제하거나 다른 역할로 변경해야 합니다.\n현재 이 역할을 가진 사용자:\n${JSON.stringify(users)}`,
+        setDefault: "기본값으로 설정",
+        removeAsDefault: "기본값 해제",
+        setDefaultUserDialog: "이 사용자를 기본 사용자로 설정하시겠습니까?"
     },
     host: {
         showDetails: "상세 정보",

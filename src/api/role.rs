@@ -1,12 +1,13 @@
-use crate::{
-    api::bindings::{
-        DeleteRoleQuery, GetRoleQuery, GetRoleResponse, GetRolesResponse, PatchRoleRequest,
-        PostRoleRequest, PostRoleResponse, StreamPermissions,
+use crate::api::{
+    bindings::{
+        DeleteRoleQuery, GetDefaultRoleResponse, GetRoleQuery, GetRoleResponse, GetRolesResponse,
+        PatchRoleRequest, PostRoleRequest, PostRoleResponse, PutDefaultRoleRequest,
+        StreamPermissions,
     },
-    api::bindings_ext::TsAny,
+    bindings_ext::TsAny,
 };
 use actix_web::{
-    HttpResponse, delete, get, patch, post,
+    HttpResponse, delete, get, patch, post, put,
     web::{Data, Json, Query},
 };
 
@@ -161,4 +162,36 @@ pub async fn list_roles(app: Data<App>, admin: Admin) -> Result<Json<GetRolesRes
     }
 
     Ok(Json(GetRolesResponse { roles: out_roles }))
+}
+
+#[put("/role/default")]
+pub async fn put_default_role(
+    app: Data<App>,
+    admin: Admin,
+    Json(request): Json<PutDefaultRoleRequest>,
+) -> Result<HttpResponse, AppError> {
+    let role_id = RoleId(request.id);
+
+    let role = app.role_by_id(role_id).await?;
+
+    app.set_default_role(&admin, Some(&role)).await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+#[delete("/role/default")]
+pub async fn delete_default_role(app: Data<App>, admin: Admin) -> Result<HttpResponse, AppError> {
+    app.set_default_role(&admin, None).await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+#[get("/role/default")]
+pub async fn get_default_role(
+    app: Data<App>,
+    _admin: Admin,
+) -> Result<Json<GetDefaultRoleResponse>, AppError> {
+    let role = app.default_role().await?;
+
+    Ok(Json(GetDefaultRoleResponse { id: role.id().0 }))
 }

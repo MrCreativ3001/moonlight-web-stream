@@ -1,4 +1,4 @@
-import { Api, apiGetRoles } from "../../api"
+import { Api, apiGetDefaultRole, apiGetRoles } from "../../api"
 import { PostUserRequest, UndetailedRole } from "../../api_bindings"
 import { getCurrentLanguage, getTranslations } from "../../i18n"
 import { showNotification } from "../notification"
@@ -36,10 +36,12 @@ export class AddUserModal extends FormModal<PostUserRequest> {
 
         this.role = createSelectRoleInput([])
         this.role.mount(this.modalRoot)
-        apiGetRoles(api).then(roles => {
+        Promise.all([apiGetRoles(api), apiGetDefaultRole(api)]).then(value => {
+            const [roles, { id: defaultRoleId }] = value
+
             this.role.unmount(this.modalRoot)
 
-            this.role = createSelectRoleInput(roles.roles)
+            this.role = createSelectRoleInput(roles.roles, defaultRoleId)
             this.role.mountBefore(this.modalRoot, this.clientUniqueId)
         })
 

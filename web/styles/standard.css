@@ -1391,6 +1391,7 @@ canvas.video-stream {
 }
 
 .user-info-delete,
+.user-info-remove-as-default,
 .role-info-delete {
     background-color: red;
 }

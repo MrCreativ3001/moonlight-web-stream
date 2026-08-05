@@ -195,6 +195,8 @@ fn migrate_v2_to_v3(old: V2) -> V3 {
             .collect(),
         hosts: old.hosts,
         roles,
+        default_role_id: None,
+        default_user_id: None,
     }
 }
 
@@ -208,6 +210,10 @@ pub struct V3 {
     pub hosts: HashMap<u32, V2Host>,
     #[serde(deserialize_with = "de_int_key")]
     pub roles: HashMap<u32, V3Role>,
+    #[serde(default)]
+    pub default_role_id: Option<u32>,
+    #[serde(default)]
+    pub default_user_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

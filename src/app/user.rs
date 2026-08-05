@@ -25,7 +25,8 @@ use crate::{
         password::StoragePassword,
         role::{Role, RoleId},
         storage::{
-            StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
+            Either, StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser,
+            StorageUserModify,
         },
     },
 };
@@ -101,7 +102,15 @@ impl User {
     pub async fn is_default_user(&self) -> Result<bool, AppError> {
         let app = self.app.access()?;
 
-        Ok(app.config.web_server.default_user_id.map(UserId) == Some(self.id))
+        let Some(default_user) = app.storage.default_user().await? else {
+            return Ok(false);
+        };
+        let default_user_id = match default_user {
+            Either::Left(id) => id,
+            Either::Right(storage) => storage.id,
+        };
+
+        Ok(self.id == default_user_id)
     }
 
     pub async fn role_id(&mut self) -> Result<RoleId, AppError> {

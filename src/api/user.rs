@@ -1,9 +1,9 @@
 use crate::api::bindings::{
-    DeleteUserRequest, DetailedUser, GetUserQuery, GetUsersResponse, PatchUserRequest,
-    PostUserRequest,
+    DeleteUserRequest, DetailedUser, GetDefaultUserResponse, GetUserQuery, GetUsersResponse,
+    PatchUserRequest, PostUserRequest, PutDefaultUserRequest,
 };
 use actix_web::{
-    HttpResponse, delete, get, patch, post,
+    HttpResponse, delete, get, patch, post, put,
     web::{Data, Json, Query},
 };
 use futures::future::join_all;
@@ -161,4 +161,38 @@ pub async fn list_users(app: Data<App>, admin: Admin) -> Result<Json<GetUsersRes
     }
 
     Ok(Json(GetUsersResponse { users: out_users }))
+}
+
+#[put("/user/default")]
+pub async fn put_default_user(
+    app: Data<App>,
+    admin: Admin,
+    Json(request): Json<PutDefaultUserRequest>,
+) -> Result<HttpResponse, AppError> {
+    let user_id = UserId(request.id);
+
+    let user = app.user_by_id(user_id).await?;
+
+    app.set_default_user(&admin, Some(&user)).await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+#[delete("/user/default")]
+pub async fn delete_default_user(app: Data<App>, admin: Admin) -> Result<HttpResponse, AppError> {
+    app.set_default_user(&admin, None).await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+#[get("/user/default")]
+pub async fn get_default_user(
+    app: Data<App>,
+    _admin: Admin,
+) -> Result<Json<GetDefaultUserResponse>, AppError> {
+    let user = app.default_user().await?;
+
+    Ok(Json(GetDefaultUserResponse {
+        id: user.map(|x| x.id().0),
+    }))
 }

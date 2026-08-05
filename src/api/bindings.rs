@@ -282,6 +282,18 @@ pub struct GetUsersResponse {
 
 #[derive(Serialize, Deserialize, Debug, TS)]
 #[ts(export, export_to = EXPORT_PATH)]
+pub struct PutDefaultUserRequest {
+    pub id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetDefaultUserResponse {
+    pub id: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
 pub struct DetailedRole {
     pub id: u32,
     pub name: String,
@@ -362,6 +374,18 @@ pub struct DeleteRoleQuery {
 #[ts(export, export_to = EXPORT_PATH)]
 pub struct GetRolesResponse {
     pub roles: Vec<UndetailedRole>,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PutDefaultRoleRequest {
+    pub id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, TS)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct GetDefaultRoleResponse {
+    pub id: u32,
 }
 
 // -- Stream

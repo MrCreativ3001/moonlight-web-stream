@@ -461,6 +461,7 @@ input[type=number] {
     opacity: 0;
     transition: opacity 0.2s linear;
 }
+
 .sidebar-button.sidebar-button-unobtrusive:hover,
 .sidebar-button.sidebar-button-unobtrusive:focus-visible,
 .sidebar-show .sidebar-button.sidebar-button-unobtrusive {
@@ -999,6 +1000,7 @@ canvas.video-stream {
 }
 
 .user-info-delete,
+.user-info-remove-as-default,
 .role-info-delete {
     background-color: red;
 }

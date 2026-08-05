@@ -180,6 +180,9 @@ pub trait Storage {
     async fn remove_role(&self, role_id: RoleId) -> Result<(), AppError>;
     /// The returned tuple can contain a Vec<RoleId> or Vec<StorageRole> if the Storage thinks it's more efficient to query all data directly
     async fn list_roles(&self) -> Result<Either<Vec<RoleId>, Vec<StorageRole>>, AppError>;
+    /// Returns an explicitly specified default role for all new users
+    async fn default_role(&self) -> Result<Option<Either<RoleId, StorageRole>>, AppError>;
+    async fn set_default_role(&self, role_id: Option<RoleId>) -> Result<(), AppError>;
 
     // -- Users --
     /// No duplicate names are allowed!
@@ -193,6 +196,9 @@ pub trait Storage {
     /// The returned tuple can contain a Vec<UserId> or Vec<StorageUser> if the Storage thinks it's more efficient to query all data directly
     async fn list_users(&self) -> Result<Either<Vec<UserId>, Vec<StorageUser>>, AppError>;
     async fn any_user_exists(&self) -> Result<bool, AppError>;
+    /// Returns an explicitly specified default user that is used when no login is provided.
+    async fn default_user(&self) -> Result<Option<Either<UserId, StorageUser>>, AppError>;
+    async fn set_default_user(&self, user_id: Option<UserId>) -> Result<(), AppError>;
 
     // -- Session Tokens --
     async fn create_session_token(

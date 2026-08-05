@@ -236,6 +236,8 @@ By default the [auto create missing user](#forwarded-header-auto-create-missing-
 }
 ```
 
+If `auto_create_missing_user` is enabled, newly created users will be assigned the role configured as the default in the Admin Panel.
+
 ### Using WebSocket Transport
 
 In some networks (for example, corporate or highly restricted environments), establishing a WebRTC connection can be difficult or may not work at all.
@@ -545,7 +547,9 @@ Changes:
 - moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`
   - Change the Web Socket Endpoint when using a Reserve Proxy: See [Proxying via Apache2](#proxying-via-apache-2)
 - `config.json` is not generated at first startup and can optionally be used for more granular control
-  - you can generate the config with `./web-server config generate`
+  - you can generate a config with `./web-server config generate`, if required
+- moved `default_user_id` and `default_role_id` from the `config.json` into the `data.json` file
+  - go into the admin panel and set the user or role you that you want to be the default to the default at the bottom of the page
 - removed old unused `default_settings` value in the config
 
 ## Contributors

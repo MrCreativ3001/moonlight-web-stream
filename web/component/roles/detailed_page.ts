@@ -1,11 +1,12 @@
 import { Component, ComponentEvent } from "../index"
-import { Api, apiPatchRole } from "../../api"
+import { Api, apiPatchRole, apiPutDefaultRole } from "../../api"
 import { DetailedRole, PatchRoleRequest, RoleType } from "../../api_bindings"
 import { getCurrentLanguage, getTranslations } from "../../i18n"
 import { InputComponent, SelectComponent } from "../input"
 import { tryDeleteRole, RoleEventListener } from "./index"
 import { RolePermissionsMenu } from "./permissions"
 import { StreamSettingsComponent } from "../settings_menu"
+import { showPrompt } from "../modal"
 
 export class DetailedRolePage implements Component {
 
@@ -31,6 +32,7 @@ export class DetailedRolePage implements Component {
     // -- Apply buttons
     private applyButton = document.createElement("button")
     private deleteButton = document.createElement("button")
+    private setDefaultButton = document.createElement("button")
 
     constructor(api: Api, role: DetailedRole) {
         this.api = api
@@ -86,6 +88,11 @@ export class DetailedRolePage implements Component {
         this.deleteButton.type = "button"
         this.formRoot.appendChild(this.deleteButton)
 
+        this.setDefaultButton.addEventListener("click", this.setDefault.bind(this))
+        this.setDefaultButton.innerText = i.setDefault
+        this.setDefaultButton.type = "button"
+        this.formRoot.appendChild(this.setDefaultButton)
+
         this.formRoot.addEventListener("submit", this.apply.bind(this))
     }
 
@@ -118,6 +125,12 @@ export class DetailedRolePage implements Component {
         }
 
         this.formRoot.dispatchEvent(new ComponentEvent("ml-roledeleted", this))
+    }
+
+    private async setDefault() {
+        await apiPutDefaultRole(this.api, {
+            id: this.id,
+        })
     }
 
     addDeletedListener(listener: RoleEventListener, options?: EventListenerOptions) {

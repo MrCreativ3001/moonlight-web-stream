@@ -53,6 +53,8 @@ pub struct JsonStorage {
     hosts: RwLock<HashMap<u32, RwLock<V2Host>>>,
     roles: RwLock<HashMap<u32, RwLock<V3Role>>>,
     sessions: RwLock<HashMap<SessionToken, Session>>,
+    default_role_id: RwLock<Option<u32>>,
+    default_user_id: RwLock<Option<u32>>,
 }
 
 impl Drop for JsonStorage {
@@ -110,6 +112,8 @@ impl JsonStorage {
             users: Default::default(),
             roles: Default::default(),
             sessions: Default::default(),
+            default_role_id: Default::default(),
+            default_user_id: Default::default(),
         };
         let this = Arc::new(this);
 
@@ -167,6 +171,8 @@ impl JsonStorage {
             let mut users = self.users.write().await;
             let mut hosts = self.hosts.write().await;
             let mut roles = self.roles.write().await;
+            let mut default_role_id = self.default_role_id.write().await;
+            let mut default_user_id = self.default_user_id.write().await;
 
             *users = data
                 .users
@@ -183,6 +189,8 @@ impl JsonStorage {
                 .into_iter()
                 .map(|(id, role)| (id, RwLock::new(role)))
                 .collect();
+            *default_role_id = data.default_role_id;
+            *default_user_id = data.default_user_id;
         }
 
         Ok(())
@@ -192,6 +200,8 @@ impl JsonStorage {
             let users = self.users.read().await;
             let hosts = self.hosts.read().await;
             let roles = self.roles.read().await;
+            let default_role_id = self.default_role_id.read().await;
+            let default_user_id = self.default_user_id.read().await;
 
             let mut users_json = HashMap::new();
             for (key, value) in users.iter() {
@@ -218,6 +228,8 @@ impl JsonStorage {
                 users: users_json,
                 hosts: hosts_json,
                 roles: roles_json,
+                default_role_id: *default_role_id,
+                default_user_id: *default_user_id,
             })
         };
 
@@ -477,6 +489,20 @@ impl Storage for JsonStorage {
         let out = join_all(futures).await;
         Ok(Either::Right(out))
     }
+    async fn default_role(&self) -> Result<Option<Either<RoleId, StorageRole>>, AppError> {
+        let default_role_id = self.default_role_id.read().await;
+
+        Ok(default_role_id.map(RoleId).map(Either::Left))
+    }
+    async fn set_default_role(&self, role_id: Option<RoleId>) -> Result<(), AppError> {
+        let mut default_role_id = self.default_role_id.write().await;
+
+        *default_role_id = role_id.map(|x| x.0);
+
+        self.force_write();
+
+        Ok(())
+    }
 
     async fn add_user(&self, user: StorageUserAdd) -> Result<StorageUser, AppError> {
         let user = V3User {
@@ -619,6 +645,21 @@ impl Storage for JsonStorage {
         let users = self.users.read().await;
 
         Ok(!users.is_empty())
+    }
+
+    async fn default_user(&self) -> Result<Option<Either<UserId, StorageUser>>, AppError> {
+        let default_user_id = self.default_user_id.read().await;
+
+        Ok(default_user_id.map(UserId).map(Either::Left))
+    }
+    async fn set_default_user(&self, user_id: Option<UserId>) -> Result<(), AppError> {
+        let mut default_user_id = self.default_user_id.write().await;
+
+        *default_user_id = user_id.map(|x| x.0);
+
+        self.force_write();
+
+        Ok(())
     }
 
     async fn create_session_token(

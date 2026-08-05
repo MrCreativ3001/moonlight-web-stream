@@ -47,6 +47,8 @@ pub enum AppError {
     AppDestroyed,
     #[error("the user was not found")]
     UserNotFound,
+    #[error("a default user was specified but not found")]
+    DefaultUserNotFound,
     #[error("the role was not found")]
     RoleNotFound,
     #[error("more than one user already exists")]
@@ -131,6 +133,7 @@ impl ResponseError for AppError {
             Self::UserNotFound => {
                 HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("user not found"))
             }
+            Self::DefaultUserNotFound => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::RoleNotFound => {
                 HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("role not found"))
             }
@@ -330,21 +333,11 @@ impl App {
     pub async fn user_by_auth(&self, auth: UserAuth) -> Result<AuthenticatedUser, AppError> {
         match auth {
             UserAuth::None => {
-                let user_id = self.config().web_server.default_user_id.map(UserId);
-                if let Some(user_id) = user_id {
-                    let user = match self.user_by_id(user_id).await {
-                        Ok(user) => user,
-                        Err(AppError::UserNotFound) => {
-                            error!("the default user {user_id:?} was not found!");
-                            return Err(AppError::UserNotFound);
-                        }
-                        Err(err) => return Err(err),
-                    };
+                let Some(user) = self.default_user().await? else {
+                    return Err(AppError::Unauthorized);
+                };
 
-                    user.authenticate(&UserAuth::None).await
-                } else {
-                    Err(AppError::Unauthorized)
-                }
+                user.authenticate(&UserAuth::None).await
             }
             UserAuth::UserPassword { ref username, .. } => {
                 let user = self.user_by_name(username).await?;
@@ -524,9 +517,9 @@ impl App {
     }
     /// Returns the first user role it finds
     pub async fn default_role(&self) -> Result<Role, AppError> {
-        let default_role_id = self.config().web_server.default_role_id.map(RoleId);
+        let default_role = self.inner.storage.default_role().await?;
 
-        match default_role_id {
+        match default_role {
             None => {
                 let result = self
                     .find_role(async |role| {
@@ -559,7 +552,12 @@ impl App {
                     Err(err) => Err(err),
                 }
             }
-            Some(id) => self.role_by_id(id).await,
+            Some(Either::Left(role_id)) => self.role_by_id(role_id).await,
+            Some(Either::Right(role)) => Ok(Role {
+                app: self.new_ref(),
+                id: role.id,
+                cache_storage: Some(Arc::new(role)),
+            }),
         }
     }
 
@@ -613,5 +611,50 @@ impl App {
         };
 
         Ok(roles)
+    }
+
+    pub async fn set_default_user(
+        &self,
+        _admin: &Admin,
+        user: Option<&User>,
+    ) -> Result<(), AppError> {
+        self.inner
+            .storage
+            .set_default_user(user.map(User::id))
+            .await
+    }
+    pub async fn default_user(&self) -> Result<Option<User>, AppError> {
+        let Some(user) = self.inner.storage.default_user().await? else {
+            return Ok(None);
+        };
+
+        let user = match user {
+            Either::Right(storage) => User {
+                app: self.new_ref(),
+                id: storage.id,
+                cache_storage: Some(Arc::new(storage)),
+            },
+            Either::Left(user_id) => match self.user_by_id(user_id).await {
+                Ok(user) => user,
+                Err(AppError::UserNotFound) => {
+                    error!("the default user {user_id:?} was not found!");
+                    return Err(AppError::DefaultUserNotFound);
+                }
+                Err(err) => return Err(err),
+            },
+        };
+
+        Ok(Some(user))
+    }
+
+    pub async fn set_default_role(
+        &self,
+        _admin: &Admin,
+        role: Option<&Role>,
+    ) -> Result<(), AppError> {
+        self.inner
+            .storage
+            .set_default_role(role.map(Role::id))
+            .await
     }
 }

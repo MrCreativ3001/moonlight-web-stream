@@ -65,6 +65,7 @@ export async function showModal<Output>(modal: Modal<Output> | null): Promise<Ou
 
 /// --- Helper Modals
 
+// TODO: remove this
 export async function showPrompt(prompt: string, promptInit?: PromptInit): Promise<string | null> {
     const modal = new PromptModal(prompt, promptInit)
 

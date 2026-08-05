@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, } from "./api_bindings"
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, PutDefaultUserRequest, PutDefaultRoleRequest, GetDefaultRoleResponse, GetDefaultUserResponse, } from "./api_bindings"
 import { showNotification } from "./component/notification"
 import { showMessage, showModal } from "./component/modal/index"
 import { ApiUserPasswordPrompt } from "./component/modal/login"
@@ -73,6 +73,7 @@ export async function tryLogin(): Promise<Api | null> {
 
 const OPTIONS = "OPTIONS"
 const GET = "GET"
+const PUT = "PUT"
 const POST = "POST"
 const PATCH = "PATCH"
 const DELETE = "DELETE"
@@ -354,6 +355,21 @@ export async function apiDeleteUser(api: Api, data: DeleteUserRequest): Promise<
     })
 }
 
+export async function apiPutDefaultUser(api: Api, data: PutDefaultUserRequest): Promise<void> {
+    await fetchApi(api, "/user/default", PUT, {
+        json: data,
+        response: "ignore"
+    })
+}
+export async function apiDeleteDefaultUser(api: Api): Promise<void> {
+    await fetchApi(api, "/user/default", DELETE, {
+        response: "ignore"
+    })
+}
+export async function apiGetDefaultUser(api: Api): Promise<GetDefaultUserResponse> {
+    return await fetchApi(api, "/user/default", GET)
+}
+
 export async function apiGetRoles(api: Api): Promise<GetRolesResponse> {
     const response = await fetchApi(api, "/roles", GET, {
         response: "json"
@@ -387,6 +403,21 @@ export async function apiDeleteRole(api: Api, query: DeleteRoleQuery): Promise<v
         query,
         response: "ignore",
     })
+}
+
+export async function apiPutDefaultRole(api: Api, data: PutDefaultRoleRequest): Promise<void> {
+    await fetchApi(api, "/role/default", PUT, {
+        json: data,
+        response: "ignore"
+    })
+}
+export async function apiDeleteDefaultRole(api: Api): Promise<void> {
+    await fetchApi(api, "/role/default", DELETE, {
+        response: "ignore"
+    })
+}
+export async function apiGetDefaultRole(api: Api): Promise<GetDefaultRoleResponse> {
+    return await fetchApi(api, "/role/default", GET)
 }
 
 export async function apiGetHosts(api: Api): Promise<StreamedJsonResponse<GetHostsResponse, UndetailedHost>> {

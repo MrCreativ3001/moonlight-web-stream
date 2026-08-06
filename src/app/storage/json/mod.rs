@@ -241,8 +241,13 @@ impl JsonStorage {
             }
         };
 
+        if let Some(parent) = self.file.parent()
+            && let Err(err) = fs::create_dir_all(parent).await
+        {
+            error!(error = %err, "Failed to create directory for data");
+        }
         if let Err(err) = fs::write(&self.file, text).await {
-            error!("Failed to write data to file: {err:?}");
+            error!(error = %err, "Failed to write data to file");
         }
     }
 }

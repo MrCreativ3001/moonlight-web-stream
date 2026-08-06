@@ -1918,7 +1918,7 @@ dependencies = [
 [[package]]
 name = "moonlight-common"
 version = "0.1.0"
-source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=32c6b1eeae2e7904172cee4cfe0c2b532f7ed627#32c6b1eeae2e7904172cee4cfe0c2b532f7ed627"
+source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=ad0d86fafa98b06aa8ac25263411270205256b5a#ad0d86fafa98b06aa8ac25263411270205256b5a"
 dependencies = [
  "aes",
  "aes-gcm",

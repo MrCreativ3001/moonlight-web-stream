@@ -51,19 +51,22 @@ export default {
             filename: 'index.html',
             template: './web/index.html',
             chunks: ['index'],
-            scriptLoading: 'blocking'
+            scriptLoading: 'blocking',
+            favicon: "./web/resources/moonlight.svg"
         }),
         new HtmlWebpackPlugin({
             filename: 'stream.html',
             template: './web/stream.html',
             chunks: ['stream'],
-            scriptLoading: 'blocking'
+            scriptLoading: 'blocking',
+            favicon: "./web/resources/moonlight.svg"
         }),
         new HtmlWebpackPlugin({
             filename: 'admin.html',
             template: './web/admin.html',
             chunks: ['admin'],
-            scriptLoading: 'blocking'
+            scriptLoading: 'blocking',
+            favicon: "./web/resources/moonlight.svg"
         }),
         new CopyPlugin({
             patterns: [

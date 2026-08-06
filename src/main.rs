@@ -162,7 +162,7 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
         let (writer, guard) = non_blocking(file);
 
         let fmt_layer = fmt::layer()
-            .with_span_events(FmtSpan::FULL)
+            .with_span_events(FmtSpan::ACTIVE)
             .with_writer(writer)
             .with_ansi(false);
 

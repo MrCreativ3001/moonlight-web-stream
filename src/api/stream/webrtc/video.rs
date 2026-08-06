@@ -66,8 +66,17 @@ pub struct VideoChannel {
 }
 
 impl VideoChannel {
-    pub fn new(sdp: &Session) -> Result<Self, AppError> {
-        let video_formats_mapping = get_video_formats(sdp);
+    pub fn new(sdp: &Session, preferred_formats: VideoFormats) -> Result<Self, AppError> {
+        let mut video_formats_mapping = get_video_formats(sdp);
+
+        // Remove all not preferred codecs
+        for format in VideoFormat::all() {
+            if !format.contained_in(preferred_formats) {
+                video_formats_mapping.remove(&format);
+            }
+        }
+
+        debug!(formats = ?video_formats_mapping, "found video codecs");
 
         Ok(Self {
             video_formats: video_formats_mapping,
@@ -412,8 +421,6 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
             );
         }
     }
-
-    debug!(formats = ?formats, "found video codecs");
 
     formats
 }

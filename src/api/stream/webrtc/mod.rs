@@ -278,7 +278,10 @@ pub async fn webrtc_post(
     setting_engine.set_ice_timeouts(None, Some(Duration::from_secs(10)), None);
 
     // Create video
-    let mut video_channel = VideoChannel::new(&offer_sdp)?;
+    let mut video_channel = VideoChannel::new(
+        &offer_sdp,
+        session.preferred_codecs.unwrap_or(VideoFormats::all()),
+    )?;
 
     // Create media engine
     let mut media_engine = create_media_engine(video_channel.supported_video_formats());

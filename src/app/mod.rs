@@ -5,8 +5,12 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use crate::{app::host::AppId, config::Config};
+use crate::{
+    app::host::AppId,
+    config::{Config, ForwardedHeaders},
+};
 use actix_web::{HttpResponse, ResponseError, body::BoxBody, http::StatusCode, web::Bytes};
+use futures::future::try_join_all;
 use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
 use moonlight_common::{
@@ -57,6 +61,9 @@ pub enum AppError {
     FirstLoginCreateAdminNotSet,
     #[error("the user already exists")]
     UserAlreadyExists,
+    /// Could happen when using ignore case for usernames in the request header
+    #[error("multiple users where found to match the request")]
+    MultipleUsersFound,
     #[error("the host was not found")]
     HostNotFound,
     #[error("the host was already paired")]
@@ -141,6 +148,8 @@ impl ResponseError for AppError {
                 HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("stream not found"))
             }
             Self::UserAlreadyExists => HttpResponse::new(StatusCode::CONFLICT),
+            Self::MultipleUsersFound => HttpResponse::new(StatusCode::CONFLICT)
+                .set_body(BoxBody::new("multiple users match the requested user name")),
             Self::CredentialsWrong => HttpResponse::new(StatusCode::UNAUTHORIZED),
             Self::SessionTokenNotFound => HttpResponse::new(StatusCode::UNAUTHORIZED),
             Self::Unauthorized => HttpResponse::new(StatusCode::UNAUTHORIZED),
@@ -350,7 +359,21 @@ impl App {
                 Ok(user)
             }
             UserAuth::ForwardedHeaders { ref username } => {
-                let user = match self.user_by_name(username).await {
+                let config_forwarded_header = ForwardedHeaders::default();
+                let config_forwarded_header = self
+                    .config()
+                    .web_server
+                    .forwarded_header
+                    .as_ref()
+                    .unwrap_or(&config_forwarded_header);
+
+                let result = if config_forwarded_header.ignore_case {
+                    self.user_by_name_ignore_case(username).await
+                } else {
+                    self.user_by_name(username).await
+                };
+
+                let user = match result {
                     Ok(user) => user,
                     Err(AppError::UserNotFound) => {
                         let Some(config_forwarded_headers) =
@@ -402,6 +425,38 @@ impl App {
             app: self.new_ref(),
             id: user_id,
             cache_storage: user.map(Into::into),
+        })
+    }
+    pub async fn user_by_name_ignore_case(&self, name: &str) -> Result<User, AppError> {
+        let users = self.inner.storage.list_users().await?;
+
+        let users = match users {
+            Either::Left(user_ids) => {
+                try_join_all(
+                    user_ids
+                        .into_iter()
+                        .map(|user_id| self.inner.storage.get_user(user_id)),
+                )
+                .await?
+            }
+            Either::Right(users) => users,
+        };
+        let mut iter = users
+            .into_iter()
+            .filter(|user| user.name.eq_ignore_ascii_case(name));
+
+        let Some(user) = iter.next() else {
+            return Err(AppError::UserNotFound);
+        };
+
+        if iter.next().is_some() {
+            return Err(AppError::MultipleUsersFound);
+        }
+
+        Ok(User {
+            app: self.new_ref(),
+            id: user.id,
+            cache_storage: Some(Arc::new(user)),
         })
     }
     pub async fn user_by_session(

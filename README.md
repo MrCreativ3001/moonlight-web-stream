@@ -523,6 +523,20 @@ Automatically create a new user when the requested user specified in the [userna
 }
 ```
 
+### Forwarded Header Ignore Case
+Perform a case-insensitive lookup for the user in the in the [username_header](#forwarded-header-username).
+If multiple users match the given name, the request will fail.
+
+```json
+{
+    "web_server": {
+        "forwarded_header": {
+            "ignore_case": true
+        }
+    }
+}
+```
+
 ## Migrating to v2
 1. Some config options have changed so backup your old config by renaming it to something like `old_config.json`.
 

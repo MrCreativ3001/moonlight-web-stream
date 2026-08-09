@@ -213,12 +213,22 @@ impl User {
             UserAuth::ForwardedHeaders { username } => {
                 let app = self.app.access()?;
 
-                if app.config.web_server.forwarded_header.is_none() {
+                let Some(config_forwarded_headers) = &app.config.web_server.forwarded_header else {
                     return Err(AppError::HeaderAuthDisabled);
-                }
+                };
 
                 let storage = self.storage_user().await?;
-                if storage.name.as_str() == username.as_str() {
+
+                let user_matches = if config_forwarded_headers.ignore_case {
+                    storage
+                        .name
+                        .as_str()
+                        .eq_ignore_ascii_case(username.as_str())
+                } else {
+                    storage.name.as_str() == username.as_str()
+                };
+
+                if user_matches {
                     Ok(AuthenticatedUser { inner: self })
                 } else {
                     Err(AppError::Forbidden)

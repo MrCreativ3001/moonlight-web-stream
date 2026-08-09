@@ -175,6 +175,12 @@ impl CliConfig {
                     .clone()
                     .unwrap_or_default()
                     .auto_create_missing_user,
+                ignore_case: config
+                    .web_server
+                    .forwarded_header
+                    .clone()
+                    .unwrap_or_default()
+                    .ignore_case,
             });
         }
         if let Some(log_level_filter) = self.log_level_filter {

@@ -264,6 +264,8 @@ pub struct ForwardedHeaders {
     pub username_header: String,
     #[serde(default = "default_forwarded_headers_auto_create_user")]
     pub auto_create_missing_user: bool,
+    #[serde(default = "default_forwarded_headers_ignore_case")]
+    pub ignore_case: bool,
 }
 
 impl Default for ForwardedHeaders {
@@ -271,12 +273,17 @@ impl Default for ForwardedHeaders {
         Self {
             username_header: "X-Forwarded-User".to_string(),
             auto_create_missing_user: default_forwarded_headers_auto_create_user(),
+            ignore_case: default_forwarded_headers_ignore_case(),
         }
     }
 }
 
 fn default_forwarded_headers_auto_create_user() -> bool {
     true
+}
+
+fn default_forwarded_headers_ignore_case() -> bool {
+    false
 }
 
 // -- Moonlight

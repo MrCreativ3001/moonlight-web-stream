@@ -2,7 +2,7 @@
 
 rust:
   repo: https://github.com/MrCreativ3001/moonlight-common-rust.git
-  branch: ad0d86fafa98b06aa8ac25263411270205256b5a
+  branch: b5d19d54f61f6f737b0fb57706c12608d0d84640
   manifestPath: bindings/Cargo.toml
 
 web:

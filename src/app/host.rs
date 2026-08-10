@@ -326,7 +326,7 @@ impl Host {
                     address: storage.address,
                     http_port: storage.http_port,
                     https_port: 0,
-                    external_port: 0,
+                    external_port: None,
                     version: "Offline".to_string(),
                     gfe_version: "Offline".to_string(),
                     unique_id: "Offline".to_string(),

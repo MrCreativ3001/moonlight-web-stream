@@ -88,7 +88,7 @@ pub struct DetailedHost {
     pub address: String,
     pub http_port: u16,
     pub https_port: u16,
-    pub external_port: u16,
+    pub external_port: Option<u16>,
     pub version: String,
     pub gfe_version: String,
     pub unique_id: String,

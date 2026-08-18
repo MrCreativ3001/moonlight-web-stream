@@ -1918,7 +1918,7 @@ dependencies = [
 [[package]]
 name = "moonlight-common"
 version = "0.1.0"
-source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=b1d2690537017ba5c11cf09bbe5947859c4fa316#b1d2690537017ba5c11cf09bbe5947859c4fa316"
+source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=cb5d61b2dfdae40208d7d53358060a956106950e#cb5d61b2dfdae40208d7d53358060a956106950e"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1953,6 +1953,7 @@ dependencies = [
  "sha2 0.10.9",
  "signature",
  "smallvec",
+ "socket2 0.6.5",
  "spki",
  "thiserror 2.0.18",
  "tokio",

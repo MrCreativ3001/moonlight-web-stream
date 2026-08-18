@@ -560,7 +560,16 @@ class WebRtcControlStream implements IControlStream {
         }
 
         if (handleInput) {
-            this.controlStream.handleTimeout(uniffiNow())
+            try {
+                this.controlStream.handleTimeout(uniffiNow())
+            } catch (e) {
+                console.info("reconstructing enet control stream", e)
+                if (this.config) {
+                    this.setChannel(this.channel, "enet", this.config)
+                } else {
+                    this.logger?.debug("failed to reconstruct new client control stream because of missing packet config")
+                }
+            }
         }
 
         let send: UdpTransmit | undefined
@@ -582,12 +591,6 @@ class WebRtcControlStream implements IControlStream {
             } else if (event.tag === ControlStreamEvent_Tags.Disconnect) {
                 this.logger?.debug("control stream got disconnected for an unknown reason, constructing with new client control stream")
                 this.enetConnected = false
-
-                if (this.config) {
-                    this.setChannel(this.channel, "enet", this.config)
-                } else {
-                    this.logger?.debug("failed to reconstruct new client control stream because of missing packet config")
-                }
             }
         }
 

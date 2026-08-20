@@ -186,7 +186,7 @@ export class WebRTCTransport implements Transport {
             this.logger?.debug(`sending ice candidate: ${candidate}`)
         }
 
-        if (this.location) {
+        if (this.location && this.pendingIceCandidates.length > 0) {
             const trickleIceSdpFrag = this.pendingIceCandidates.map(x => `a=${x}`).join("\r\n")
 
             await fetchApi(this.api, this.location, "PATCH", {
@@ -280,6 +280,10 @@ export class WebRTCTransport implements Transport {
     async close(): Promise<void> {
         // Close the peer
         this.peer.close()
+
+        // Delete the ice candidate send loop
+        globalObject().clearTimeout(this.iceCandidateSendTimer)
+        this.iceCandidateSendTimer = null
 
         // Delete our current session on the server
         if (this.location) {

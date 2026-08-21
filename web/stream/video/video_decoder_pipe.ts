@@ -5,8 +5,14 @@ import { Pipe, PipeInfo } from "../pipeline/index"
 import { addPipePassthrough } from "../pipeline/pipes"
 import { emptyVideoCodecs, } from "../video"
 import { videoDecoderCodecInBand } from "./codec_level"
-import { CodecStreamTranslator, H264StreamVideoTranslator, H265StreamVideoTranslator, VIDEO_DECODER_CODECS_OUT_OF_BAND } from "./annex_b_translator"
+import { Av1StreamVideoTranslator, CodecStreamTranslator, H264StreamVideoTranslator, H265StreamVideoTranslator, VIDEO_DECODER_CODECS_OUT_OF_BAND } from "./annex_b_translator"
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index"
+
+const DECODER_QUEUE_STALL_MS = 200
+const DECODER_OUTPUT_STALL_MS = 1500
+const VIDEO_INPUT_STALL_MS = 1500
+const ACTIVE_VIDEO_INPUT_MS = 500
+const IDR_RETRY_INTERVAL_MS = 1000
 
 export const VIDEO_DECODER_CODECS_IN_BAND: Record<keyof VideoFormats, string> = {
     // avc1 = out of band config, avc3 = in band with sps, pps, idr
@@ -118,6 +124,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
     }
 
     private onOutput(frame: VideoFrame) {
+        this.lastDecoderOutputAt = Date.now()
         this.base.submitFrame(frame)
     }
 
@@ -155,6 +162,11 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         this.width = setup.width
         this.height = setup.height
         this.fps = setup.fps
+        const isAv1 = setup.codec == "av1Main8" || setup.codec == "av1Main10" || setup.codec == "av1High8444" || setup.codec == "av1High10444"
+
+        if (isAv1) {
+            this.translator = new Av1StreamVideoTranslator(this.logger ?? undefined)
+        }
 
         const codec = videoDecoderCodecInBand(setup.codec, setup.width, setup.height, setup.fps)
             ?? VIDEO_DECODER_CODECS_IN_BAND[setup.codec]
@@ -172,9 +184,8 @@ export class VideoDecoderPipe implements DataVideoRenderer {
                 const codec = VIDEO_DECODER_CODECS_OUT_OF_BAND[setup.codec]
                 await this.trySetConfig(codec)
             } else if (setup.codec == "av1Main8" || setup.codec == "av1Main10" || setup.codec == "av1High8444" || setup.codec == "av1High10444") {
-                this.errored = true
-                this.logger?.debug("Av1 stream translator is not implemented currently!", { type: "fatalDescription" })
-                return
+                const codec = VIDEO_DECODER_CODECS_OUT_OF_BAND[setup.codec]
+                await this.trySetConfig(codec)
             } else {
                 this.errored = true
                 this.logger?.debug(`Failed to find stream translator for codec ${setup.codec}`)
@@ -202,6 +213,10 @@ export class VideoDecoderPipe implements DataVideoRenderer {
 
     private decoderSetupFinished = false
     private requestedIdr = false
+    private lastIdrRequestAt = 0
+    private lastVideoInputAt = 0
+    private lastDecodeSubmitAt = 0
+    private lastDecoderOutputAt = Date.now()
     private needsKeyFrame = true
 
     private bufferedUnits: Array<VideoDecodeUnit> = []
@@ -210,6 +225,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
             console.debug("Cannot submit video decode unit because the stream errored")
             return
         }
+        this.lastVideoInputAt = Date.now()
         if (!this.decoderSetupFinished) {
             this.bufferedUnits.push(unit)
             return
@@ -232,7 +248,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
                 return
             }
 
-            const { configure, chunk } = value
+            const { configure, chunk, type } = value
 
             if (!chunk) {
                 console.debug("No chunk received!")
@@ -245,16 +261,25 @@ export class VideoDecoderPipe implements DataVideoRenderer {
                 this.decoder.reset()
                 this.decoder.configure(configure)
 
+            }
+
+            const chunkType = type ?? unit.type
+            if (chunkType != "key" && this.needsKeyFrame) {
+                return
+            }
+            this.needsKeyFrame = false
+            if (chunkType == "key") {
                 // This likely is an idr
                 this.requestedIdr = false
             }
 
             const encodedChunk = new EncodedVideoChunk({
-                type: unit.type,
+                type: chunkType,
                 timestamp: unit.timestampMicroseconds,
                 duration: unit.durationMicroseconds,
                 data: chunk,
             })
+            this.lastDecodeSubmitAt = Date.now()
             this.decoder.decode(encodedChunk)
         } else {
             if (unit.type != "key" && this.needsKeyFrame) {
@@ -270,21 +295,24 @@ export class VideoDecoderPipe implements DataVideoRenderer {
                 duration: unit.durationMicroseconds
             })
 
+            this.lastDecodeSubmitAt = Date.now()
             this.decoder.decode(chunk)
         }
     }
 
     private reset() {
-        if (!this.translator) {
-            this.decoder.reset()
-            this.needsKeyFrame = true
+        this.decoder.reset()
+        this.needsKeyFrame = true
+        this.lastDecodeSubmitAt = 0
+        this.lastDecoderOutputAt = Date.now()
 
-            if (this.config) {
-                this.decoder.configure(this.config)
-            } else {
-                this.logger?.debug("Failed to configure VideoDecoder because of missing config", { type: "fatal" })
-            }
-        } else if (this.config) {
+        if (this.config) {
+            this.decoder.configure(this.config)
+        } else {
+            this.logger?.debug("Failed to configure VideoDecoder because of missing config", { type: "fatal" })
+        }
+
+        if (this.translator && this.config) {
             this.translator.setBaseConfig(this.config)
         }
     }
@@ -292,16 +320,35 @@ export class VideoDecoderPipe implements DataVideoRenderer {
     pollRequestIdr(): boolean {
         let requestIdr = false
 
+        const now = Date.now()
         const estimatedQueueDelayMs = this.decoder.decodeQueueSize * 1000 / this.fps
-        if (estimatedQueueDelayMs > 200 && this.decoder.decodeQueueSize > 2) {
-            // We have more than 200ms second backlog in the decoder
-            // -> This decoder is ass, request idr, flush that decoder
+        // We have more than 200ms second backlog in the decoder
+        // -> This decoder is ass, request idr, flush that decoder
+        const queueStalled = estimatedQueueDelayMs > DECODER_QUEUE_STALL_MS && this.decoder.decodeQueueSize > 2
+        const outputStalled = this.lastDecodeSubmitAt > 0 &&
+            now - this.lastDecodeSubmitAt < ACTIVE_VIDEO_INPUT_MS &&
+            now - this.lastDecoderOutputAt > DECODER_OUTPUT_STALL_MS
+        const inputStalled = this.lastVideoInputAt > 0 && now - this.lastVideoInputAt > VIDEO_INPUT_STALL_MS
+        const idrResponseStalled = this.requestedIdr && now - this.lastIdrRequestAt >= IDR_RETRY_INTERVAL_MS
 
-            if (!this.requestedIdr) {
+        if (queueStalled || outputStalled || inputStalled || idrResponseStalled) {
+            if (!this.requestedIdr || now - this.lastIdrRequestAt >= IDR_RETRY_INTERVAL_MS) {
                 requestIdr = true
-                this.reset()
+                this.lastIdrRequestAt = now
+                if (!this.requestedIdr) {
+                    this.reset()
+                }
             }
-            console.debug(`Requesting idr because of decode queue size(${this.decoder.decodeQueueSize}) and estimated delay of the queue: ${estimatedQueueDelayMs}`)
+            if (requestIdr) {
+                const reason = outputStalled
+                    ? `no decoder output for ${now - this.lastDecoderOutputAt}ms while video input is active`
+                    : inputStalled
+                        ? `no video input for ${now - this.lastVideoInputAt}ms`
+                        : idrResponseStalled
+                            ? "the previous idr request did not produce a key frame"
+                            : `decode queue size(${this.decoder.decodeQueueSize}) and estimated delay ${estimatedQueueDelayMs}ms`
+                console.debug(`Requesting idr because of ${reason}`)
+            }
         }
 
         if ("pollRequestIdr" in this.base && typeof this.base.pollRequestIdr == "function") {
@@ -312,6 +359,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
 
         if (requestIdr) {
             this.requestedIdr = true
+            this.lastIdrRequestAt = now
         }
 
         return requestIdr

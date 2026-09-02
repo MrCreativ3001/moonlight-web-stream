@@ -149,8 +149,9 @@ impl VideoChannel {
 
                     if track.all_binding_paused().await {
                         trace!("video track all binding paused");
-                        // Don't send any packets when the track is paused because we don't want to increment the sequence number
-                        return;
+                        // The peer may still be negotiating when Sunshine sends its first
+                        // frame. Drop that frame, but keep the relay alive for the bound track.
+                        continue;
                     }
 
                     let mut payloads = Vec::with_capacity(10);

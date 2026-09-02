@@ -52,6 +52,10 @@ pub struct Cli {
     #[arg(short, long, default_value = "./server/config.json")]
     pub config_path: String,
 
+    #[cfg_attr(windows, arg(long, hide = true))]
+    #[cfg_attr(not(windows), arg(skip))]
+    pub service: bool,
+
     #[command(flatten)]
     pub options: CliConfig,
 

@@ -48,6 +48,18 @@ impl ControlChannel {
 
         let (on_receive_sender, on_receive) = unbounded_channel();
 
+        // The browser uses the primary control channel for reliable packets such
+        // as mouse wheel input. Subchannels are only used for latency-sensitive
+        // input, so the primary channel must receive messages too.
+        let on_receive_sender_clone = on_receive_sender.clone();
+        channel.on_message(Box::new(move |message| {
+            let on_receive_sender = on_receive_sender_clone.clone();
+
+            Box::pin(async move {
+                let _ = on_receive_sender.send(message.data);
+            })
+        }));
+
         Ok(Self {
             channel,
             on_open,

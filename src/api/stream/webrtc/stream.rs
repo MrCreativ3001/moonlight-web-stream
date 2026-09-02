@@ -34,6 +34,12 @@ pub async fn webrtc_loop(
 ) -> Result<(), AppError> {
     info!("started main webrtc loop");
 
+    // Sunshine can begin encoding before the WebRTC peer has completed ICE.
+    // Ask for an IDR immediately so the first relayable frame is independently decodable.
+    if let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
+        warn!(error = %err, "failed to request initial idr");
+    }
+
     let mut moonlight_disconnected = false;
     loop {
         if !stream.is_alive() {

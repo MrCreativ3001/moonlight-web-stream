@@ -1,4 +1,8 @@
 use crate::{cli::ConfigCommand, config::Config};
+use futures::{
+    channel::oneshot,
+    future::{Either, select},
+};
 use rustls::{
     ServerConfig,
     pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
@@ -47,8 +51,34 @@ mod cli;
 mod config;
 mod human_json;
 
+#[cfg(not(windows))]
 #[actix_web::main]
 async fn main() {
+    if let Err(err) = run_application(None).await {
+        eprintln!("web-server failed: {err:?}");
+    }
+}
+
+#[cfg(windows)]
+fn main() {
+    let service_mode = std::env::args_os()
+        .skip(1)
+        .any(|argument| argument == std::ffi::OsStr::new("--service"));
+
+    if service_mode {
+        if let Err(err) = windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+        {
+            eprintln!("failed to start Windows service dispatcher: {err:?}");
+        }
+        return;
+    }
+
+    if let Err(err) = actix_web::rt::System::new().block_on(run_application(None)) {
+        eprintln!("web-server failed: {err:?}");
+    }
+}
+
+async fn run_application(shutdown: Option<oneshot::Receiver<()>>) -> Result<(), anyhow::Error> {
     let cli = Cli::load();
 
     // Load Config
@@ -71,7 +101,7 @@ async fn main() {
             let json =
                 serde_json::to_string_pretty(&config).expect("failed to serialize config to json");
             println!("{json}");
-            return;
+            return Ok(());
         }
         Some(Command::Config(ConfigCommand::Generate)) => {
             let value_str =
@@ -87,7 +117,7 @@ async fn main() {
                 .expect("failed to write default file");
 
             println!("Successfully generate config at {config_path:?}");
-            return;
+            return Ok(());
         }
         None | Some(Command::Run) => {
             // Fallthrough
@@ -102,11 +132,13 @@ async fn main() {
         .expect("failed to set ring crypto provider as default");
 
     // Start the server
-    if let Err(err) = start(config).await {
+    let result = start(config, shutdown).await;
+    if let Err(err) = &result {
         error!("{err:?}");
     }
 
     drop(guard);
+    result
 }
 
 fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
@@ -252,7 +284,10 @@ impl RootSpanBuilder for ActixDebugSpan {
     }
 }
 
-async fn start(config: Config) -> Result<(), anyhow::Error> {
+async fn start(
+    config: Config,
+    shutdown: Option<oneshot::Receiver<()>>,
+) -> Result<(), anyhow::Error> {
     let app = App::new(config.clone()).await?;
     let app = Data::new(app);
 
@@ -283,7 +318,7 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
         }
     });
 
-    if let Some(certificate) = app.config().web_server.certificate.as_ref() {
+    let server = if let Some(certificate) = app.config().web_server.certificate.as_ref() {
         info!("[Server]: Running Https Server with ssl tls");
 
         let certificate_chain = {
@@ -303,10 +338,115 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
             .with_no_client_auth()
             .with_single_cert(certificate_chain, private_key)?;
 
-        server.bind_rustls_0_23(bind_address, config)?.run().await?;
+        server.bind_rustls_0_23(bind_address, config)?.run()
     } else {
-        server.bind(bind_address)?.run().await?;
+        server.bind(bind_address)?.run()
+    };
+
+    let server_handle = server.handle();
+    match shutdown {
+        Some(shutdown) => match select(Box::pin(server), Box::pin(shutdown)).await {
+            Either::Left((result, _)) => result?,
+            Either::Right((_, _server)) => {
+                // A service stop must not wait for a WebRTC session to drain naturally.
+                server_handle.stop(false).await;
+            }
+        },
+        None => server.await?,
     }
 
     Ok(())
+}
+
+#[cfg(windows)]
+const SERVICE_NAME: &str = "MoonlightWebStream";
+
+#[cfg(windows)]
+windows_service::define_windows_service!(ffi_service_main, windows_service_main);
+
+#[cfg(windows)]
+fn windows_service_main(_arguments: Vec<std::ffi::OsString>) {
+    use std::{
+        env,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+    use windows_service::{
+        service::{
+            ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
+            ServiceType,
+        },
+        service_control_handler::{self, ServiceControlHandlerResult},
+    };
+
+    let (shutdown_sender, shutdown_receiver) = oneshot::channel();
+    let shutdown_sender = Arc::new(Mutex::new(Some(shutdown_sender)));
+    let control_sender = shutdown_sender.clone();
+    let event_handler = move |control_event| match control_event {
+        ServiceControl::Stop | ServiceControl::Shutdown => {
+            if let Ok(mut sender) = control_sender.lock() {
+                if let Some(sender) = sender.take() {
+                    let _ = sender.send(());
+                }
+            }
+            // Windows SCM must release the executable before an installer can replace it.
+            // Actix may retain stream workers indefinitely, so do not wait for them here.
+            std::process::exit(0);
+        }
+        ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+        _ => ServiceControlHandlerResult::NotImplemented,
+    };
+
+    let status_handle = match service_control_handler::register(SERVICE_NAME, event_handler) {
+        Ok(handle) => handle,
+        Err(err) => {
+            eprintln!("failed to register Windows service control handler: {err:?}");
+            return;
+        }
+    };
+
+    let running_status = ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Running,
+        controls_accepted: ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN,
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    };
+    if let Err(err) = status_handle.set_service_status(running_status) {
+        eprintln!("failed to report Windows service status: {err:?}");
+        return;
+    }
+
+    let result = (|| -> Result<(), anyhow::Error> {
+        let executable_directory = env::current_exe()?
+            .parent()
+            .expect("executable does not have a parent directory")
+            .to_path_buf();
+        env::set_current_dir(executable_directory)?;
+
+        actix_web::rt::System::new().block_on(run_application(Some(shutdown_receiver)))
+    })();
+
+    if let Err(err) = &result {
+        eprintln!("Windows service failed: {err:?}");
+    }
+
+    let stopped_status = ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: if result.is_ok() {
+            ServiceExitCode::Win32(0)
+        } else {
+            ServiceExitCode::Win32(1)
+        },
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    };
+    if let Err(err) = status_handle.set_service_status(stopped_status) {
+        eprintln!("failed to report Windows service stop status: {err:?}");
+    }
 }

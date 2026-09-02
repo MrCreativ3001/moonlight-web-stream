@@ -5,7 +5,7 @@ use crate::api::{
         StreamStatsClientboundMessage, StreamStatsServerboundMessage, WebSocketChannel,
         WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse,
     },
-    stream::apply_role_restrictions,
+    stream::{apply_role_restrictions, resolve_stream_address},
 };
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
@@ -196,6 +196,7 @@ async fn handle_ws(
             MoonlightStreamSetup::launch_query_parameters(),
         )
         .await?;
+    let config = resolve_stream_address(config).await?;
 
     let stream = MoonlightStream::connect(
         config,

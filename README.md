@@ -34,7 +34,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 
 ## Installation
 
-You can install it [manually](#install-manually) or with [docker](docker/README.md)
+You can install it [manually](#install-manually), as a [Windows service](#windows-service), or with [docker](docker/README.md)
 
 ### Install Manually
 
@@ -49,6 +49,20 @@ You can install it [manually](#install-manually) or with [docker](docker/README.
 > **NOTE**
 > A `config.json` file is **not generated automatically on first startup**.
 > If you plan to follow the configuration guides below, you will need to create a config.json with `./web-server config generate`
+
+### Windows Service
+
+[`installer/moonlight-web-stream.iss`](installer/moonlight-web-stream.iss) creates a Windows x64 installer. All runtime files, including `web-server.exe`, `static/`, and the generated `server/` directory, remain under the selected installation directory. The installer registers `MoonlightWebStream` as an automatic Windows service.
+
+Place `web-server.exe` and `static/` in `installer/package/`, then compile the installer with:
+
+```powershell
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion="3.0.0" installer\moonlight-web-stream.iss
+```
+
+The installer starts the service after installation. Uninstall stops and removes the service while leaving the `server/` configuration and data in the installation directory.
+
+The installer creates inbound Windows Firewall rules for the selected Web UI TCP port and UDP ports `50000-50020`, which are used by WebRTC.
 
 ## Setup
 

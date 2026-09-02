@@ -65,6 +65,7 @@ hex = { version = "0.4.3" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
+windows-service = "=0.8.0"
 
 [lints.clippy]
 too_many_arguments = "allow"

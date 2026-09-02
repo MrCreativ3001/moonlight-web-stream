@@ -489,32 +489,8 @@ pub async fn webrtc_post(
         return Err(err.into());
     }
 
-    // Wait for ice gathering to complete
-    let _ = ice_complete.recv().await;
-
-    // Use the local description with video and audio tracks, control channel and all ice candidates included
-    let answer = peer
-        .local_description()
-        .await
-        .expect("web_post: peer.local_description()");
-
-    // Append additional data to the response
-    let mut answer_sdp =
-        Session::parse(answer.sdp.as_bytes()).expect("failed to get parse sdp answer");
-    let additional_answer = WebRTCSessionAnswer {
-        app_name: app_title,
-        microphone: false,
-    };
-    additional_answer.apply(&mut answer_sdp);
-
-    let mut answer = Vec::new();
-    answer_sdp
-        .write(&mut answer)
-        .expect("failed to write sdp answer");
-    let answer = String::from_utf8_lossy(&answer).to_string();
-
-    info!("ice gathering completed, sending answer to client");
-
+    // Keep the Moonlight transport alive while STUN/ICE gathering runs. Waiting here can
+    // take several seconds when a configured STUN server is unreachable.
     spawn({
         let peer = peer.clone();
 
@@ -540,6 +516,32 @@ pub async fn webrtc_post(
         }
         .instrument(debug_span!("moonlight stream"))
     });
+
+    // Wait for ice gathering to complete
+    let _ = ice_complete.recv().await;
+
+    // Use the local description with video and audio tracks, control channel and all ice candidates included
+    let answer = peer
+        .local_description()
+        .await
+        .expect("web_post: peer.local_description()");
+
+    // Append additional data to the response
+    let mut answer_sdp =
+        Session::parse(answer.sdp.as_bytes()).expect("failed to get parse sdp answer");
+    let additional_answer = WebRTCSessionAnswer {
+        app_name: app_title,
+        microphone: false,
+    };
+    additional_answer.apply(&mut answer_sdp);
+
+    let mut answer = Vec::new();
+    answer_sdp
+        .write(&mut answer)
+        .expect("failed to write sdp answer");
+    let answer = String::from_utf8_lossy(&answer).to_string();
+
+    info!("ice gathering completed, sending answer to client");
 
     // Add stream to the list of streams
     let (event_sender, mut event_receiver) = mpsc::channel(20);

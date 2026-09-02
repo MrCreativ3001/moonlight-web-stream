@@ -38,6 +38,12 @@ pub async fn webrtc_loop(
 ) -> Result<(), AppError> {
     info!("started main webrtc loop");
 
+    // Sunshine can begin encoding before the WebRTC peer has completed ICE.
+    // Ask for an IDR immediately so the first relayable frame is independently decodable.
+    if let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
+        warn!(error = %err, "failed to request initial idr");
+    }
+
     let mut last_key_states_sequence_number = 0;
     let mut last_key_states = CompactKeyStates::default();
 

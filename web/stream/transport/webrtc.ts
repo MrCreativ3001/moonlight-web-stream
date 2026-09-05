@@ -636,7 +636,7 @@ class WebRtcControlStream implements IControlStream {
 
     private sendKeysCompact() {
         // Get key modifiers for sending reliable keys as fallback
-        let modifiers = KeyModifiers.create({ alt: false, ctrl: false, meta: false, shift: false })
+        let modifiers = { alt: false, ctrl: false, meta: false, shift: false }
         if (this.currentPressedKeys.has(StreamKeys.VK_SHIFT) || this.currentPressedKeys.has(StreamKeys.VK_LSHIFT) || this.currentPressedKeys.has(StreamKeys.VK_RSHIFT)) {
             modifiers.shift = true
         }

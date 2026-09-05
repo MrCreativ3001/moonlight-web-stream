@@ -68,6 +68,8 @@ export function generateControlPacketConfig(): ControlPacketConfig {
         throw "generated invalid packet config"
     }
 
+    config.webState = 0x7001;
+
     return config
 }
 

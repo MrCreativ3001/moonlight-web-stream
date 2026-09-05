@@ -1,8 +1,9 @@
 import { Api, fetchApi, WebRTCAnswer } from "../../api"
-import { showNotification } from "../../component/notification"
-import { ClientInputEvent, ControlHost, ControlPacket, ControlPacket_Tags, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, InputBatcher, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
-import { globalObject, uniffiMillisUntil, uniffiNow, wait } from "../../util"
+import { StreamKeys } from "../../api_bindings"
+import { ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, KeyAction, KeyModifiers, keyStatesCanStore, keyStatesEmpty, keyStatesSetPressed, MouseButton, MouseButtonAction, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
+import { globalObject, wait } from "../../util"
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
+import { U16_MAX } from "../buffer"
 import { Logger } from "../log"
 import { DataPipe } from "../pipeline/pipes"
 import { StatValue } from "../stats"
@@ -67,7 +68,6 @@ export class WebRTCTransport implements Transport {
 
         // Insert custom options
         this.sdpOfferOptions = {
-            controlEnet: false,
             ...options
         }
         const sdp = webrtcSessionOfferApply(offer.sdp ?? "", this.sdpOfferOptions)
@@ -379,54 +379,70 @@ class WebRtcControlStream implements IControlStream {
     private config: ControlPacketConfig | null = null
 
     private channel: RTCDataChannel | null = null
-
-    private keyboard: RTCDataChannel
-
-    private mouseButton: RTCDataChannel
+    private mouseAbsolute: RTCDataChannel
     private mouse: RTCDataChannel
-
+    private keysCompact: RTCDataChannel
+    private keys: RTCDataChannel
     private controller: RTCDataChannel
 
-    private batcher: InputBatcher = new InputBatcher()
+    // Input Batching
+    private mouseState:
+        { x: number, y: number, referenceWidth: number, referenceHeight: number } |
+        { moveX: number, moveY: number }
+        = { moveX: 0, moveY: 0 }
+    private mouseScrollX = 0
+    private mouseScrollY = 0
 
+    private remoteKeyStates: Set<number> = new Set()
+    private currentPressedKeys: Set<number> = new Set()
+    private keyStatesSequenceNumber = 0
+
+    // Buffering
     private packetBuffer: Array<ControlPacket> = []
 
     constructor(peer: RTCPeerConnection, logger?: Logger) {
         this.logger = logger
 
-        this.mouseButton = peer.createDataChannel("moonlight.control.mouse_button")
-        this.mouseButton.bufferedAmountLowThreshold = this.maxBufferedAmount(this.mouseButton)
+        this.mouseAbsolute = peer.createDataChannel("moonlight.control.mouseAbsolute", {
+            ordered: false,
+        })
+        this.mouseAbsolute.bufferedAmountLowThreshold = this.maxBufferedAmount(this.mouseAbsolute)
 
-        // TODO: batch better
         this.mouse = peer.createDataChannel("moonlight.control.mouse", {
             ordered: false,
-            maxRetransmits: 0,
+            maxPacketLifeTime: 30,
         })
         this.mouse.bufferedAmountLowThreshold = this.maxBufferedAmount(this.mouse)
 
-        this.keyboard = peer.createDataChannel("moonlight.control.keyboard")
-        this.keyboard.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keyboard)
+        this.keysCompact = peer.createDataChannel("moonlight.control.keysCompact", {
+            ordered: false,
+            maxRetransmits: 0,
+        })
+        this.keysCompact.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keysCompact)
 
-        // TODO: only send latest state (e.g. controllerstate array)
+        this.keys = peer.createDataChannel("moonlight.control.keys")
+        this.keys.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keys)
+
         this.controller = peer.createDataChannel("moonlight.control.controller", {
             ordered: false,
             maxRetransmits: 0,
         })
         this.controller.bufferedAmountLowThreshold = this.maxBufferedAmount(this.controller)
 
-        for (const channel of [this.mouseButton, this.mouse, this.keyboard, this.controller]) {
+        for (const channel of [this.mouseAbsolute, this.mouse, this.keysCompact, this.keys, this.controller]) {
             channel.onbufferedamountlow = this.boundTrySendBufferedPackets
         }
+
+        // Hook into frame loop for sending packets
+        globalObject().requestAnimationFrame(this.boundSendBatchedInputs)
     }
 
     private maxBufferedAmount(channel: RTCDataChannel): number {
         switch (channel) {
-            case this.keyboard:
-                return 1024
+            case this.mouseAbsolute:
             case this.mouse:
-                return 1024
-            case this.mouseButton:
-                return 1024
+            case this.keys:
+                return 512
             case this.controller:
                 return 4 * 1024
             case this.channel:
@@ -476,83 +492,231 @@ class WebRtcControlStream implements IControlStream {
     }
 
     send(input: ClientInputEvent): void {
-        for (const packet of this.batcher.batchInput(input)) {
-            this.sendRaw(packet)
-        }
+        switch (input.tag) {
+            case ClientInputEvent_Tags.MouseMoveAbsolute:
+                this.mouseState = {
+                    x: input.inner.x,
+                    y: input.inner.y,
+                    referenceWidth: input.inner.referenceWidth,
+                    referenceHeight: input.inner.referenceHeight,
+                }
+                break
+            case ClientInputEvent_Tags.MouseMoveRelative:
+                if ("moveX" in this.mouseState) {
+                    this.mouseState.moveX += input.inner.deltaX
+                    this.mouseState.moveY += input.inner.deltaY
+                } else {
+                    this.mouseState = {
+                        moveX: input.inner.deltaX,
+                        moveY: input.inner.deltaY
+                    }
+                }
+                break
+            case ClientInputEvent_Tags.MouseScrollVertical:
+                this.mouseScrollY += input.inner.scrollY
+                break
+            case ClientInputEvent_Tags.MouseScrollHorizontal:
+                this.mouseScrollX += input.inner.scrollX
+                break
+            case ClientInputEvent_Tags.MouseButton:
+                let keyCode = null
+                switch (input.inner.button) {
+                    case MouseButton.Left:
+                        keyCode = StreamKeys.VK_LBUTTON
+                        break
+                    case MouseButton.Middle:
+                        keyCode = StreamKeys.VK_MBUTTON
+                        break
+                    case MouseButton.Right:
+                        keyCode = StreamKeys.VK_RBUTTON
+                        break
+                    case MouseButton.X1:
+                        keyCode = StreamKeys.VK_XBUTTON1
+                        break
+                    case MouseButton.X2:
+                        keyCode = StreamKeys.VK_XBUTTON2
+                        break
+                }
 
-        this.sendBatchedInputs()
+                if (keyCode) {
+                    if (input.inner.action == MouseButtonAction.Press) {
+                        this.currentPressedKeys.add(keyCode)
+                    } else {
+                        this.currentPressedKeys.delete(keyCode)
+                    }
+                }
+
+                this.sendKeysCompact()
+                break
+            case ClientInputEvent_Tags.Keyboard:
+                if (input.inner.action == KeyAction.Down) {
+                    this.currentPressedKeys.add(input.inner.keyCode)
+                } else {
+                    this.currentPressedKeys.delete(input.inner.keyCode)
+                }
+
+                this.sendKeysCompact()
+                break
+        }
     }
 
     sendRaw(packet: ControlPacket): void {
+        this.packetBuffer.push(packet)
+
         this.trySendBufferedPackets()
-
-        if (!this.trySendRaw(packet)) {
-            this.packetBuffer.push(packet)
-        }
-    }
-    private trySendRaw(packet: ControlPacket): boolean {
-        if (!this.channel || !this.config) {
-            return false
-        }
-
-        let channel = this.channel
-        let canDrop = false
-        switch (packet.tag) {
-            case ControlPacket_Tags.MouseButton:
-                channel = this.mouseButton
-                // TODO: only drop based on currently pressed keys
-                canDrop = true
-                break
-            case ControlPacket_Tags.MouseMoveRelative:
-            case ControlPacket_Tags.MouseMoveAbsolute:
-                channel = this.mouse
-                canDrop = true
-                break
-            case ControlPacket_Tags.Keyboard:
-                channel = this.keyboard
-                // TODO: only drop based on currently pressed keys
-                canDrop = true
-                break
-            case ControlPacket_Tags.ControllerState:
-                channel = this.controller
-                canDrop = true
-                break
-        }
-        const maxBufferedAmount = this.maxBufferedAmount(channel)
-
-        if (
-            channel.readyState != "open" ||
-            channel.bufferedAmount > maxBufferedAmount
-        ) {
-            if (canDrop) {
-                console.info(packet, "dropping packet because of exceeded buffered amount")
-                return true
-            }
-            return false
-        }
-
-        console.debug(packet, `sending packet over ${channel.label}`)
-        const data = controlPacketSerialize(this.config, packet)
-        if (data) {
-            channel.send(data)
-        }
-
-        return true
     }
 
     private boundTrySendBufferedPackets = this.trySendBufferedPackets.bind(this)
     private trySendBufferedPackets() {
+        if (!this.channel) {
+            return
+        }
+
+        if (this.channel.readyState != "open") {
+            return
+        }
+
         // Try to send packets
         for (const packet of this.packetBuffer.splice(0)) {
-            if (!this.trySendRaw(packet)) {
-                this.packetBuffer.push(packet)
-            }
+            this.trySendOn(this.channel, packet)
         }
     }
 
+    private boundSendBatchedInputs = this.sendBatchedInputs.bind(this)
     private sendBatchedInputs() {
-        for (const packet of this.batcher.removeBatchedInputs()) {
-            this.sendRaw(packet)
+        if (this.channel?.readyState == "closed") {
+            return
+        }
+        globalObject().requestAnimationFrame(this.boundSendBatchedInputs)
+
+        // -- Send mouse
+        if ("x" in this.mouseState) {
+            this.trySendOn(this.mouseAbsolute, new ControlPacket.MouseMoveAbsolute({
+                x: this.mouseState.x,
+                y: this.mouseState.y,
+                referenceWidth: this.mouseState.referenceWidth,
+                referenceHeight: this.mouseState.referenceHeight,
+                unused: 0,
+            }))
+        } else {
+            const notChanged = this.mouseState.moveX == 0 && this.mouseState.moveY == 0
+            const changed = !notChanged
+
+            if (changed) {
+                this.trySendOn(this.mouse, new ControlPacket.MouseMoveRelative({
+                    deltaX: this.mouseState.moveX,
+                    deltaY: this.mouseState.moveY
+                }))
+            }
+
+            this.mouseState = {
+                moveX: 0,
+                moveY: 0,
+            }
+        }
+
+        // -- Send Mouse Scroll
+        if (this.mouseScrollX != 0) {
+            this.trySendOn(this.mouseAbsolute, new ControlPacket.MouseHorizontalScroll({
+                scrollAmount: this.mouseScrollX
+            }))
+            this.mouseScrollX = 0
+        }
+        if (this.mouseScrollY != 0) {
+            this.trySendOn(this.mouseAbsolute, new ControlPacket.MouseScroll({
+                scrollAmount1: this.mouseScrollY,
+                scrollAmount2: this.mouseScrollY,
+                zero: 0,
+            }))
+            this.mouseScrollY = 0
+        }
+
+        this.sendKeysCompact()
+    }
+
+    private sendKeysCompact() {
+        // Get key modifiers for sending reliable keys as fallback
+        let modifiers = KeyModifiers.create({ alt: false, ctrl: false, meta: false, shift: false })
+        if (this.currentPressedKeys.has(StreamKeys.VK_SHIFT) || this.currentPressedKeys.has(StreamKeys.VK_LSHIFT) || this.currentPressedKeys.has(StreamKeys.VK_RSHIFT)) {
+            modifiers.shift = true
+        }
+        if (this.currentPressedKeys.has(StreamKeys.VK_LWIN) || this.currentPressedKeys.has(StreamKeys.VK_RWIN)) {
+            modifiers.meta = true
+        }
+        if (this.currentPressedKeys.has(StreamKeys.VK_CONTROL) || this.currentPressedKeys.has(StreamKeys.VK_LCONTROL) || this.currentPressedKeys.has(StreamKeys.VK_RCONTROL)) {
+            modifiers.ctrl = true
+        }
+        if (this.currentPressedKeys.has(StreamKeys.VK_MENU) || this.currentPressedKeys.has(StreamKeys.VK_LMENU) || this.currentPressedKeys.has(StreamKeys.VK_RMENU)) {
+            modifiers.alt = true
+        }
+
+        let keyStates = keyStatesEmpty()
+
+        // Go through pressed keys
+        for (const key of this.currentPressedKeys) {
+            if (keyStatesCanStore(keyStates, key)) {
+                keyStates = keyStatesSetPressed(keyStates, key, KeyAction.Down)
+            } else {
+                // only send reliable key press if the host doesn't know about it
+                if (this.remoteKeyStates.has(key)) {
+                    continue
+                }
+
+                this.trySendOn(this.keys, new ControlPacket.Keyboard({
+                    action: KeyAction.Down,
+                    flags: { sunshineNonNormalized: false },
+                    keyCode: key,
+                    modifiers,
+                    zero: 0,
+                }))
+
+                this.remoteKeyStates.add(key)
+            }
+        }
+
+        // Make a copy to not delete while iterating
+        const remoteKeyStates = [...this.remoteKeyStates]
+
+        for (const key of remoteKeyStates) {
+            if (!this.currentPressedKeys.has(key) && !keyStatesCanStore(keyStates, key)) {
+                this.trySendOn(this.keys, new ControlPacket.Keyboard({
+                    action: KeyAction.Up,
+                    flags: { sunshineNonNormalized: false },
+                    keyCode: key,
+                    modifiers,
+                    zero: 0,
+                }))
+
+                this.remoteKeyStates.delete(key)
+            }
+        }
+
+        // Send key states
+        this.trySendOn(this.keysCompact, new ControlPacket.WebState({
+            sequenceNumber: this.keyStatesSequenceNumber,
+            keys: keyStates
+        }))
+
+        if (this.keyStatesSequenceNumber >= U16_MAX - 1) {
+            this.keyStatesSequenceNumber = 0
+        }
+        this.keyStatesSequenceNumber += 1
+    }
+
+    private trySendOn(channel: RTCDataChannel, packet: ControlPacket) {
+        if (!this.config) {
+            return
+        }
+
+        if (channel.bufferedAmount > this.maxBufferedAmount(channel)) {
+            // Cannot send more packets because of buffered amount
+            // -> Drop the packet
+            return
+        }
+
+        const buffer = controlPacketSerialize(this.config, packet)
+        if (buffer) {
+            channel.send(buffer)
         }
     }
 }

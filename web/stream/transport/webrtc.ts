@@ -1,6 +1,6 @@
 import { Api, fetchApi, WebRTCAnswer } from "../../api"
 import { StreamKeys } from "../../api_bindings"
-import { ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, KeyAction, KeyModifiers, keyStatesCanStore, keyStatesEmpty, keyStatesSetPressed, MouseButton, MouseButtonAction, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
+import { ActiveGamepads, ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, KeyAction, KeyModifiers, keyStatesCanStore, keyStatesEmpty, keyStatesSetPressed, MouseButton, MouseButtonAction, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
 import { globalObject, wait } from "../../util"
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
 import { U16_MAX } from "../buffer"
@@ -397,11 +397,15 @@ class WebRtcControlStream implements IControlStream {
     private currentPressedKeys: Set<number> = new Set()
     private keyStatesSequenceNumber = 0
 
+    private controllerStates: Array<typeof ControlPacket.ControllerState | null> = new Array(16)
+
     // Buffering
     private packetBuffer: Array<ControlPacket> = []
 
     constructor(peer: RTCPeerConnection, logger?: Logger) {
         this.logger = logger
+
+        this.controllerStates.fill(null)
 
         this.mouseAbsolute = peer.createDataChannel("moonlight.control.mouseAbsolute", {
             ordered: false,
@@ -557,6 +561,50 @@ class WebRtcControlStream implements IControlStream {
 
                 this.sendKeysCompact()
                 break
+            case ClientInputEvent_Tags.ControllerConnect:
+                let controllerNumber = input.inner.controllerNumber % 16
+
+                this.controllerStates[controllerNumber]
+
+                this.sendRaw(new ControlPacket.ControllerArrival({
+                    controllerNumber,
+                    ty: input.inner.ty,
+                    supportedButtons: input.inner.supportedButtons,
+                    capabilities: input.inner.capabilities,
+                }))
+                break
+            case ClientInputEvent_Tags.ControllerState:
+                controllerNumber = input.inner.controllerNumber % 16
+
+                throw "TODO"
+
+                break
+            case ClientInputEvent_Tags.ControllerDisconnect:
+                controllerNumber = input.inner.controllerNumber % 16
+
+                this.controllerStates[controllerNumber] = null
+
+                this.sendRaw(new ControlPacket.ControllerState({
+                    controllerNumber,
+                    activeGamepadMask: this.getControllerMask(),
+                    buttonFlags: 0,
+                    buttonFlags2: 0,
+                    headerB: 0,
+                    leftStickX: 0,
+                    leftStickY: 0,
+                    leftTrigger: 0,
+                    midB: 0,
+                    rightStickX: 0,
+                    rightStickY: 0,
+                    rightTrigger: 0,
+                    tailA: 0,
+                    tailB: 0,
+                }))
+                break
+            case ClientInputEvent_Tags.Touch:
+                break
+            case ClientInputEvent_Tags.Pen:
+                break
         }
     }
 
@@ -701,6 +749,17 @@ class WebRtcControlStream implements IControlStream {
             this.keyStatesSequenceNumber = 0
         }
         this.keyStatesSequenceNumber += 1
+    }
+
+    private getControllerMask(): ActiveGamepads {
+        const gamepads: Record<string, boolean> = {}
+
+        for (let i = 0; i < 16; i++) {
+            const exists = this.controllerStates[i] != null
+            gamepads[`gamepad${i + 1}`] = exists
+        }
+
+        return gamepads as ActiveGamepads
     }
 
     private trySendOn(channel: RTCDataChannel, packet: ControlPacket) {

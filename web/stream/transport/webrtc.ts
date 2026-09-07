@@ -399,7 +399,7 @@ class WebRtcControlStream implements IControlStream {
     private currentPressedKeys: Set<number> = new Set()
     private keyStatesSequenceNumber = 0
 
-    private controllerStates: Array<typeof ControlPacket.ControllerState | null> = new Array(16)
+    private controllerStates: Array<boolean> = new Array(16)
 
     // Buffering
     private packetBuffer: Array<ControlPacket> = []
@@ -407,7 +407,7 @@ class WebRtcControlStream implements IControlStream {
     constructor(peer: RTCPeerConnection, logger?: Logger) {
         this.logger = logger
 
-        this.controllerStates.fill(null)
+        this.controllerStates.fill(false)
 
         this.mouseAbsolute = peer.createDataChannel("moonlight.control.mouseAbsolute", {
             ordered: false,
@@ -579,7 +579,7 @@ class WebRtcControlStream implements IControlStream {
             case ClientInputEvent_Tags.ControllerConnect:
                 let controllerNumber = input.inner.controllerNumber % 16
 
-                this.controllerStates[controllerNumber]
+                this.controllerStates[controllerNumber] = true
 
                 this.sendRaw(new ControlPacket.ControllerArrival({
                     controllerNumber,
@@ -593,27 +593,31 @@ class WebRtcControlStream implements IControlStream {
 
                 const controllerBitflags = createControllerPacketBitflags(input.inner.pressedButtons)
 
-                this.trySendOn(this.controller, new ControlPacket.ControllerState({
-                    headerB: MC_HEADER_B,
-                    controllerNumber,
-                    activeGamepadMask: this.getControllerMask(),
-                    midB: MC_MID_B,
-                    buttonFlags: controllerBitflags & 0xFFFF,
-                    leftTrigger: Math.min(Math.max(input.inner.leftTrigger, 0), 1) * U8_MAX,
-                    rightTrigger: Math.min(Math.max(input.inner.rightTrigger, 0), 1) * U8_MAX,
-                    leftStickX: Math.min(Math.max(input.inner.leftStickX, -1), 1) * I16_MAX,
-                    leftStickY: Math.min(Math.max(input.inner.leftStickY, -1), 1) * I16_MAX,
-                    rightStickX: Math.min(Math.max(input.inner.rightStickX, -1), 1) * I16_MAX,
-                    rightStickY: Math.min(Math.max(input.inner.rightStickY, -1), 1) * I16_MAX,
-                    tailA: MC_TAIL_A,
-                    buttonFlags2: (controllerBitflags >> 16) & 0xFFFF,
-                    tailB: MC_TAIL_B,
-                }))
+                if (this.controllerStates[controllerNumber]) {
+                    this.trySendOn(this.controller, new ControlPacket.ControllerState({
+                        headerB: MC_HEADER_B,
+                        controllerNumber,
+                        activeGamepadMask: this.getControllerMask(),
+                        midB: MC_MID_B,
+                        buttonFlags: controllerBitflags & 0xFFFF,
+                        leftTrigger: Math.min(Math.max(input.inner.leftTrigger, 0), 1) * U8_MAX,
+                        rightTrigger: Math.min(Math.max(input.inner.rightTrigger, 0), 1) * U8_MAX,
+                        leftStickX: Math.min(Math.max(input.inner.leftStickX, -1), 1) * I16_MAX,
+                        leftStickY: Math.min(Math.max(input.inner.leftStickY, -1), 1) * I16_MAX,
+                        rightStickX: Math.min(Math.max(input.inner.rightStickX, -1), 1) * I16_MAX,
+                        rightStickY: Math.min(Math.max(input.inner.rightStickY, -1), 1) * I16_MAX,
+                        tailA: MC_TAIL_A,
+                        buttonFlags2: (controllerBitflags >> 16) & 0xFFFF,
+                        tailB: MC_TAIL_B,
+                    }))
+                } else {
+                    console.debug("cannot send state for controller that wasn't added")
+                }
                 break
             case ClientInputEvent_Tags.ControllerDisconnect:
                 controllerNumber = input.inner.controllerNumber % 16
 
-                this.controllerStates[controllerNumber] = null
+                this.controllerStates[controllerNumber] = false
 
                 this.sendRaw(new ControlPacket.ControllerState({
                     controllerNumber,
@@ -811,8 +815,7 @@ class WebRtcControlStream implements IControlStream {
         const gamepads: Record<string, boolean> = {}
 
         for (let i = 0; i < 16; i++) {
-            const exists = this.controllerStates[i] != null
-            gamepads[`gamepad${i + 1}`] = exists
+            gamepads[`gamepad${i + 1}`] = this.controllerStates[i]
         }
 
         return gamepads as ActiveGamepads

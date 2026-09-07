@@ -31,6 +31,7 @@ export type TouchMode = "touch" | "mouseRelative" | "localCursor" | "pointAndDra
 
 export type StreamInputConfig = {
     mouseMode: MouseMode
+    mouseScrollMode: MouseScrollMode,
     touchMode: TouchMode
     localCursorSensitivity: number
     controllerConfig: ControllerConfig
@@ -39,6 +40,7 @@ export type StreamInputConfig = {
 export function defaultStreamInputConfig(): StreamInputConfig {
     return {
         mouseMode: "follow",
+        mouseScrollMode: "highres",
         touchMode: "mouseRelative",
         localCursorSensitivity: 1,
         controllerConfig: {
@@ -380,17 +382,29 @@ export class StreamInput {
         this.scrollRemainderX += deltaX
         this.scrollRemainderY += deltaY
 
-        const integerX = Math.trunc(this.scrollRemainderX)
-        const integerY = Math.trunc(this.scrollRemainderY)
+        let scrollX = 0
+        let scrollY = 0
+        if (this.config.mouseScrollMode == "highres") {
+            scrollX = Math.trunc(this.scrollRemainderX)
+            scrollY = Math.trunc(this.scrollRemainderY)
+        } else if (this.config.mouseScrollMode == "normal") {
+            const LI_WHEEL_DELTA = 120
 
-        if (integerX == 0 && integerY == 0) {
+            const stepsX = Math.floor(this.scrollRemainderX / LI_WHEEL_DELTA)
+            const stepsY = Math.floor(this.scrollRemainderY / LI_WHEEL_DELTA)
+
+            scrollX += stepsX * LI_WHEEL_DELTA
+            scrollY += stepsY * LI_WHEEL_DELTA
+        }
+
+        if (scrollX == 0 && scrollY == 0) {
             return
         }
 
-        this.scrollRemainderX -= integerX
-        this.scrollRemainderY -= integerY
+        this.scrollRemainderX -= scrollX
+        this.scrollRemainderY -= scrollY
 
-        this.sendMouseWheel(integerX, integerY)
+        this.sendMouseWheel(scrollX, scrollY)
     }
 
     // -- Touch

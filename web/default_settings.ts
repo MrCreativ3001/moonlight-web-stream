@@ -2,14 +2,12 @@ import { Settings } from "./component/settings_menu"
 
 const trueDefaultSettings: Settings =
 
-// When updated, update the README
 {
     // possible values: "left", "right", "up", "down"
     "sidebarEdge": "left",
     "hideSidebarButton": false,
     "bitrate": 10000,
     "fps": 60,
-    "videoFrameQueueSize": 3,
     // possible values: "720p", "1080p", "1440p", "4k", "native", "custom"
     "videoSize": "custom",
     // only works if videoSize=custom
@@ -24,7 +22,6 @@ const trueDefaultSettings: Settings =
     // Canvas only: when true, draw only on requestAnimationFrame (stable, may add ~0–17 ms). When false, draw on frame submit (low latency).
     "canvasVsync": false,
     "playAudioLocal": false,
-    "audioSampleQueueSize": 20,
     // possible values: "highres", "normal"
     "mouseScrollMode": "highres",
     // possible values: "relative", "follow", "pointAndDrag"

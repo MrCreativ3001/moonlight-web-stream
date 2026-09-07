@@ -11,7 +11,6 @@ export type Settings = {
     sidebarEdge: SidebarEdge,
     hideSidebarButton: boolean,
     bitrate: number
-    videoFrameQueueSize: number
     videoSize: "720p" | "1080p" | "1440p" | "4k" | "native" | "custom"
     videoSizeCustom: {
         width: number
@@ -23,7 +22,6 @@ export type Settings = {
     canvasRenderer: boolean
     canvasVsync: boolean
     playAudioLocal: boolean
-    audioSampleQueueSize: number
     mouseScrollMode: MouseScrollMode
     mouseMode: MouseMode
     touchMode: TouchMode
@@ -163,11 +161,8 @@ export class StreamSettingsComponent implements Component {
     private videoSizeWidth: InputComponent
     private videoSizeHeight: InputComponent
 
-    private videoSampleQueueSize: InputComponent
-
     private audioHeader: HTMLHeadingElement = document.createElement("h3")
     private playAudioLocal: InputComponent
-    private audioSampleQueueSize: InputComponent
 
     private mouseHeader: HTMLHeadingElement = document.createElement("h3")
     private mouseScrollMode: SelectComponent
@@ -287,14 +282,6 @@ export class StreamSettingsComponent implements Component {
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeHeight.mount(this.divElement)
 
-        // Video Sample Queue Size
-        this.videoSampleQueueSize = new InputComponent("videoFrameQueueSize", "number", i.videoFrameQueueSize, {
-            defaultValue: defaultSettings_.videoFrameQueueSize.toString(),
-            value: settings?.videoFrameQueueSize?.toString()
-        })
-        this.videoSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoSampleQueueSize.mount(this.divElement)
-
         // Codec
         const allowedVideoCodecs = [
             { value: "auto", name: i.autoExperimental },
@@ -365,14 +352,6 @@ export class StreamSettingsComponent implements Component {
         })
         this.playAudioLocal.addChangeListener(this.onSettingsChange.bind(this))
         this.playAudioLocal.mount(this.divElement)
-
-        // Audio Sample Queue Size
-        this.audioSampleQueueSize = new InputComponent("audioSampleQueueSize", "number", i.audioSampleQueueSize, {
-            defaultValue: defaultSettings_.audioSampleQueueSize.toString(),
-            value: settings?.audioSampleQueueSize?.toString()
-        })
-        this.audioSampleQueueSize.addChangeListener(this.onSettingsChange.bind(this))
-        this.audioSampleQueueSize.mount(this.divElement)
 
         // Mouse
         this.mouseHeader.innerText = i.mouse
@@ -570,14 +549,12 @@ export class StreamSettingsComponent implements Component {
             width: parseInt(this.videoSizeWidth.getValue()),
             height: parseInt(this.videoSizeHeight.getValue())
         }
-        settings.videoFrameQueueSize = parseInt(this.videoSampleQueueSize.getValue())
         settings.videoCodec = this.videoCodec.getValue() as any
         settings.forceVideoElementRenderer = this.forceVideoElementRenderer.isChecked()
         settings.canvasRenderer = this.canvasRenderer.isChecked()
         settings.canvasVsync = this.canvasVsync.isChecked()
 
         settings.playAudioLocal = this.playAudioLocal.isChecked()
-        settings.audioSampleQueueSize = parseInt(this.audioSampleQueueSize.getValue())
 
         settings.mouseScrollMode = this.mouseScrollMode.getValue() as any
         settings.mouseMode = this.mouseMode.getValue() as MouseMode

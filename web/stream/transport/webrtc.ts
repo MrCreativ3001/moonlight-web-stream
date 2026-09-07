@@ -3,7 +3,8 @@ import { StreamKeys } from "../../api_bindings"
 import { ActiveGamepads, ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, KeyAction, KeyModifiers, keyStatesCanStore, keyStatesEmpty, keyStatesSetPressed, MouseButton, MouseButtonAction, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
 import { globalObject, wait } from "../../util"
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
-import { U16_MAX } from "../buffer"
+import { I16_MAX, U16_MAX, U8_MAX } from "../buffer"
+import { createControllerPacketBitflags } from "../gamepad"
 import { Logger } from "../log"
 import { DataPipe } from "../pipeline/pipes"
 import { StatValue } from "../stats"
@@ -383,6 +384,7 @@ class WebRtcControlStream implements IControlStream {
     private mouse: RTCDataChannel
     private keysCompact: RTCDataChannel
     private keys: RTCDataChannel
+    private touch: RTCDataChannel
     private controller: RTCDataChannel
 
     // Input Batching
@@ -409,6 +411,7 @@ class WebRtcControlStream implements IControlStream {
 
         this.mouseAbsolute = peer.createDataChannel("moonlight.control.mouseAbsolute", {
             ordered: false,
+            maxRetransmits: 0,
         })
         this.mouseAbsolute.bufferedAmountLowThreshold = this.maxBufferedAmount(this.mouseAbsolute)
 
@@ -426,6 +429,9 @@ class WebRtcControlStream implements IControlStream {
 
         this.keys = peer.createDataChannel("moonlight.control.keys")
         this.keys.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keys)
+
+        this.touch = peer.createDataChannel("moonlight.control.touch")
+        this.touch.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keys)
 
         this.controller = peer.createDataChannel("moonlight.control.controller", {
             ordered: false,
@@ -448,7 +454,9 @@ class WebRtcControlStream implements IControlStream {
             case this.keys:
                 return 512
             case this.controller:
-                return 4 * 1024
+                return 4 * 512
+            case this.touch:
+                return 16 * 1024
             case this.channel:
                 return 16 * 1024
             default:
@@ -496,6 +504,13 @@ class WebRtcControlStream implements IControlStream {
     }
 
     send(input: ClientInputEvent): void {
+        const LI_ROT_UNKNOWN = 65535
+        const LI_TILT_UNKNOWN = 255
+        const MC_HEADER_B = 0x001A
+        const MC_MID_B = 0x0014
+        const MC_TAIL_A = 0x009C
+        const MC_TAIL_B = 0x0055
+
         switch (input.tag) {
             case ClientInputEvent_Tags.MouseMoveAbsolute:
                 this.mouseState = {
@@ -576,8 +591,24 @@ class WebRtcControlStream implements IControlStream {
             case ClientInputEvent_Tags.ControllerState:
                 controllerNumber = input.inner.controllerNumber % 16
 
-                throw "TODO"
+                const controllerBitflags = createControllerPacketBitflags(input.inner.pressedButtons)
 
+                this.trySendOn(this.controller, new ControlPacket.ControllerState({
+                    headerB: MC_HEADER_B,
+                    controllerNumber,
+                    activeGamepadMask: this.getControllerMask(),
+                    midB: MC_MID_B,
+                    buttonFlags: controllerBitflags & 0xFFFF,
+                    leftTrigger: Math.min(Math.max(input.inner.leftTrigger, 0), 1) * U8_MAX,
+                    rightTrigger: Math.min(Math.max(input.inner.rightTrigger, 0), 1) * U8_MAX,
+                    leftStickX: Math.min(Math.max(input.inner.leftStickX, -1), 1) * I16_MAX,
+                    leftStickY: Math.min(Math.max(input.inner.leftStickY, -1), 1) * I16_MAX,
+                    rightStickX: Math.min(Math.max(input.inner.rightStickX, -1), 1) * I16_MAX,
+                    rightStickY: Math.min(Math.max(input.inner.rightStickY, -1), 1) * I16_MAX,
+                    tailA: MC_TAIL_A,
+                    buttonFlags2: (controllerBitflags >> 16) & 0xFFFF,
+                    tailB: MC_TAIL_B,
+                }))
                 break
             case ClientInputEvent_Tags.ControllerDisconnect:
                 controllerNumber = input.inner.controllerNumber % 16
@@ -602,8 +633,33 @@ class WebRtcControlStream implements IControlStream {
                 }))
                 break
             case ClientInputEvent_Tags.Touch:
+                this.trySendOn(this.touch, new ControlPacket.Touch({
+                    eventType: input.inner.eventType,
+                    reserved: 0,
+                    pointerId: input.inner.pointerId,
+                    x: input.inner.x,
+                    y: input.inner.y,
+                    rotation: input.inner.rotation ?? LI_ROT_UNKNOWN,
+                    contactAreaMajor: input.inner.contactAreaMajor,
+                    contactAreaMinor: input.inner.contactAreaMinor,
+                    pressureOrDistance: input.inner.pressureOrDistance,
+                }))
                 break
             case ClientInputEvent_Tags.Pen:
+                this.sendRaw(new ControlPacket.Pen({
+                    eventType: input.inner.eventType,
+                    toolType: input.inner.toolType,
+                    buttons: input.inner.buttons,
+                    zero: 0,
+                    x: input.inner.x,
+                    y: input.inner.y,
+                    pressureOrDistance: input.inner.pressureOrDistance,
+                    rotation: input.inner.rotation ?? LI_ROT_UNKNOWN,
+                    tilt: input.inner.tilt ?? LI_TILT_UNKNOWN,
+                    zero2: 0,
+                    contactAreaMajor: input.inner.contactAreaMajor,
+                    contactAreaMinor: input.inner.contactAreaMinor,
+                }))
                 break
         }
     }

@@ -156,3 +156,65 @@ const FLOAT_COMPARE_MULTIPLIER = 100
 function areFloatsEqual(a: number, b: number): boolean {
     return Math.round(a * FLOAT_COMPARE_MULTIPLIER) == Math.round(b * FLOAT_COMPARE_MULTIPLIER)
 }
+
+// -- Bitflag mapping
+const A_FLAG = 4096
+const B_FLAG = 8192
+const X_FLAG = 16384
+const Y_FLAG = 32768
+const UP_FLAG = 1
+const DOWN_FLAG = 2
+const LEFT_FLAG = 4
+const RIGHT_FLAG = 8
+const LB_FLAG = 256
+const RB_FLAG = 512
+const PLAY_FLAG = 16
+const BACK_FLAG = 32
+const LS_CLK_FLAG = 64
+const RS_CLK_FLAG = 128
+const SPECIAL_FLAG = 1024
+const PADDLE1_FLAG = 65536
+const PADDLE2_FLAG = 131072
+const PADDLE3_FLAG = 262144
+const PADDLE4_FLAG = 524288
+const TOUCHPAD_FLAG = 1048576
+const MISC_FLAG = 2097152
+
+const BITFLAG_MAP: Record<keyof ControllerButtons, number> = {
+    a: A_FLAG,
+    b: B_FLAG,
+    x: X_FLAG,
+    y: Y_FLAG,
+    up: UP_FLAG,
+    down: DOWN_FLAG,
+    left: LEFT_FLAG,
+    right: RIGHT_FLAG,
+    lb: LB_FLAG,
+    rb: RB_FLAG,
+    play: PLAY_FLAG,
+    back: BACK_FLAG,
+    lsClk: LS_CLK_FLAG,
+    rsClk: RS_CLK_FLAG,
+    special: SPECIAL_FLAG,
+    paddle1: PADDLE1_FLAG,
+    paddle2: PADDLE2_FLAG,
+    paddle3: PADDLE3_FLAG,
+    paddle4: PADDLE4_FLAG,
+    touchpad: TOUCHPAD_FLAG,
+    misc: MISC_FLAG
+}
+
+export function createControllerPacketBitflags(buttons: ControllerButtons): number {
+    let bitflag = 0
+
+    for (const entry in Object.entries(buttons)) {
+        const [key, value] = entry
+        const button = key as keyof ControllerButtons
+
+        if (value) {
+            bitflag |= BITFLAG_MAP[button]
+        }
+    }
+
+    return bitflag
+}

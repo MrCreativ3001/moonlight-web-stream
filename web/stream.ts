@@ -1,23 +1,23 @@
-import "./polyfill/index"
-import "./styles/index"
 import { Api, apiGetRole, getApi } from "./api"
-import { Component } from "./component/index"
-import { showNotification } from "./component/notification"
-import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index"
-import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index"
-import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input"
-import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu"
-import { SelectComponent } from "./component/input"
-import { emptyKeyModifiers } from "./stream/keyboard"
-import { LogLevel, setLogger as uniffiSetLogger, Logger as UniffiLogger, uniffiInitAsync } from "./uniffi/entry"
 import { DetailedRole, StreamKeys } from "./api_bindings"
-import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard"
+import { Component } from "./component/index"
+import { SelectComponent } from "./component/input"
 import { FormModal } from "./component/modal/form"
-import { streamStatsToText } from "./stream/stats"
+import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index"
+import { showNotification } from "./component/notification"
+import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu"
+import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index"
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n"
 import { requestKeyboardLock } from "./iframe"
+import "./polyfill/index"
+import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard"
 import { InfoEvent, Stream, StreamCapabilities } from "./stream/index"
+import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input"
+import { emptyKeyModifiers } from "./stream/keyboard"
 import { LogMessageType } from "./stream/log"
+import { streamStatsToText } from "./stream/stats"
+import "./styles/index"
+import { LogLevel, uniffiInitAsync, Logger as UniffiLogger, setLogger as uniffiSetLogger } from "./uniffi/entry"
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -559,11 +559,11 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onTouchUpdate() {
+        window.requestAnimationFrame(this.onTouchUpdate.bind(this))
+
         this.stream.getInput().onTouchUpdate(this.getStreamRect())
         this.updateKeyboardViewportVideoOffset()
         this.renderLocalTouchCursor()
-
-        window.requestAnimationFrame(this.onTouchUpdate.bind(this))
     }
     onTouchMove(event: TouchEvent) {
         if (this.pendingAutoFullscreenTouchGesture) {
@@ -589,9 +589,9 @@ class ViewerApp implements Component {
         this.stream.getInput().onGamepadDisconnect(event)
     }
     onGamepadUpdate() {
-        this.stream.getInput().onGamepadUpdate()
-
         window.requestAnimationFrame(this.onGamepadUpdate.bind(this))
+
+        this.stream.getInput().onGamepadUpdate()
     }
 
     // Fullscreen

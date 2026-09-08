@@ -1,6 +1,7 @@
+import { showNotification } from "../component/notification"
 import { ClientInputEvent, ControllerButtons, ControllerCapabilities, ControllerType, ControlPacket, ControlPacket_Tags, KeyAction, KeyModifiers, MouseButton, MouseButtonAction, TouchEventType } from "../uniffi/moonlight_common_bindings"
 import { U16_MAX } from "./buffer"
-import { ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad"
+import { areGamepadStatesEqual, ControllerConfig, emptyGamepadState, extractGamepadState, GamepadState, SUPPORTED_BUTTONS } from "./gamepad"
 import { StreamCapabilities } from "./index"
 import { convertToKey, convertToModifiers, emptyKeyModifiers } from "./keyboard"
 import { convertToButton } from "./mouse"
@@ -1002,7 +1003,7 @@ export class StreamInput {
         this.sendControllerAdd(this.gamepads.length - 1, SUPPORTED_BUTTONS, capabilities)
 
         if (gamepad.mapping != "standard") {
-            console.warn(`[Gamepad]: Unable to read values of gamepad with mapping ${gamepad.mapping}`)
+            showNotification(`Unable to read values of gamepad with mapping ${gamepad.mapping}`, "warn")
         }
     }
     onGamepadDisconnect(event: GamepadEvent) {
@@ -1042,9 +1043,10 @@ export class StreamInput {
             }
 
             const state = extractGamepadState(gamepad, this.config.controllerConfig)
-            if (state == oldGamepadState.oldState) {
+            if (areGamepadStatesEqual(state, oldGamepadState.oldState)) {
                 continue
             }
+
             oldGamepadState.oldState = state
 
             this.sendController(gamepadId, state)
@@ -1168,8 +1170,12 @@ export class StreamInput {
 
     // -- Controller Sending
     sendControllerAdd(id: number, supportedButtons: ControllerButtons, capabilities: ControllerCapabilities) {
-        // TODO: add all controller when a new control stream is set
-        this.controlStream?.send(new ClientInputEvent.ControllerConnect({
+        if (!this.controlStream) {
+            showNotification("Wait for the stream to start before adding a controller", "error")
+            return
+        }
+
+        this.controlStream.send(new ClientInputEvent.ControllerConnect({
             controllerNumber: id,
             ty: ControllerType.Unknown,
             capabilities,

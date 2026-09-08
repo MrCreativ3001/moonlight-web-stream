@@ -1,6 +1,6 @@
 import { Api, fetchApi, WebRTCAnswer } from "../../api"
 import { StreamKeys } from "../../api_bindings"
-import { ActiveGamepads, ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, KeyAction, KeyModifiers, keyStatesCanStore, keyStatesEmpty, keyStatesSetPressed, MouseButton, MouseButtonAction, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
+import { ActiveGamepads, ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, KeyAction, keyStatesCanStore, keyStatesEmpty, keyStatesSetPressed, MouseButton, MouseButtonAction, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
 import { globalObject, wait } from "../../util"
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
 import { I16_MAX, U16_MAX, U8_MAX } from "../buffer"
@@ -399,7 +399,7 @@ class WebRtcControlStream implements IControlStream {
     private currentPressedKeys: Set<number> = new Set()
     private keyStatesSequenceNumber = 0
 
-    private controllerStates: Array<boolean> = new Array(16)
+    private controllerStates: Array<boolean> = []
 
     // Buffering
     private packetBuffer: Array<ControlPacket> = []
@@ -407,7 +407,9 @@ class WebRtcControlStream implements IControlStream {
     constructor(peer: RTCPeerConnection, logger?: Logger) {
         this.logger = logger
 
-        this.controllerStates.fill(false)
+        for (let i = 0; i < 16; i++) {
+            this.controllerStates.push(false)
+        }
 
         this.mouseAbsolute = peer.createDataChannel("moonlight.control.mouseAbsolute", {
             ordered: false,
@@ -431,7 +433,7 @@ class WebRtcControlStream implements IControlStream {
         this.keys.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keys)
 
         this.touch = peer.createDataChannel("moonlight.control.touch")
-        this.touch.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keys)
+        this.touch.bufferedAmountLowThreshold = this.maxBufferedAmount(this.touch)
 
         this.controller = peer.createDataChannel("moonlight.control.controller", {
             ordered: false,
@@ -439,18 +441,15 @@ class WebRtcControlStream implements IControlStream {
         })
         this.controller.bufferedAmountLowThreshold = this.maxBufferedAmount(this.controller)
 
-        for (const channel of [this.mouseAbsolute, this.mouse, this.keysCompact, this.keys, this.controller]) {
-            channel.onbufferedamountlow = this.boundTrySendBufferedPackets
-        }
-
         // Hook into frame loop for sending packets
-        globalObject().requestAnimationFrame(this.boundSendBatchedInputs)
+        this.sendBatchedInputs()
     }
 
     private maxBufferedAmount(channel: RTCDataChannel): number {
         switch (channel) {
             case this.mouseAbsolute:
             case this.mouse:
+            case this.keysCompact:
             case this.keys:
                 return 512
             case this.controller:
@@ -460,7 +459,7 @@ class WebRtcControlStream implements IControlStream {
             case this.channel:
                 return 16 * 1024
             default:
-                return 1024
+                throw "tried to get the max buffered amount of an unknown data channel"
         }
     }
 
@@ -511,6 +510,7 @@ class WebRtcControlStream implements IControlStream {
         const MC_TAIL_A = 0x009C
         const MC_TAIL_B = 0x0055
 
+        let controllerNumber
         switch (input.tag) {
             case ClientInputEvent_Tags.MouseMoveAbsolute:
                 this.mouseState = {
@@ -577,7 +577,7 @@ class WebRtcControlStream implements IControlStream {
                 this.sendKeysCompact()
                 break
             case ClientInputEvent_Tags.ControllerConnect:
-                let controllerNumber = input.inner.controllerNumber % 16
+                controllerNumber = input.inner.controllerNumber % 16
 
                 this.controllerStates[controllerNumber] = true
 
@@ -665,6 +665,8 @@ class WebRtcControlStream implements IControlStream {
                     contactAreaMinor: input.inner.contactAreaMinor,
                 }))
                 break
+            default:
+                throw "tried to send an unknown input to the server"
         }
     }
 

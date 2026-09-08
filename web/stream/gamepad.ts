@@ -207,9 +207,9 @@ const BITFLAG_MAP: Record<keyof ControllerButtons, number> = {
 export function createControllerPacketBitflags(buttons: ControllerButtons): number {
     let bitflag = 0
 
-    for (const entry in Object.entries(buttons)) {
-        const [key, value] = entry
+    for (const key in BITFLAG_MAP) {
         const button = key as keyof ControllerButtons
+        const value = buttons[button]
 
         if (value) {
             bitflag |= BITFLAG_MAP[button]

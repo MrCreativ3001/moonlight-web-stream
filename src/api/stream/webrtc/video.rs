@@ -21,11 +21,7 @@ use webrtc::{
         receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
     },
     rtp::{
-        codecs::{
-            av1::Av1Payloader,
-            h264::H264Payloader,
-            h265::{RTP_OUTBOUND_MTU},
-        },
+        codecs::{av1::Av1Payloader, h264::H264Payloader, h265::RTP_OUTBOUND_MTU},
         extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
         header::Header,
         packet::Packet,

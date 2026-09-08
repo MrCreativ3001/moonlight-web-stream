@@ -1,6 +1,6 @@
 use std::{collections::HashMap, mem::swap, sync::Arc};
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use moonlight_common::{
     stream::{
         proto::video::frame::OwnedVideoFrame,
@@ -24,7 +24,7 @@ use webrtc::{
         codecs::{
             av1::Av1Payloader,
             h264::H264Payloader,
-            h265::{HevcPayloader, RTP_OUTBOUND_MTU},
+            h265::{RTP_OUTBOUND_MTU},
         },
         extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
         header::Header,
@@ -39,7 +39,12 @@ use webrtc::{
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
 
-use crate::{api::stream::webrtc::ext_color_space::ColorSpaceExtension, app::AppError};
+use crate::{
+    api::stream::webrtc::{ext_color_space::ColorSpaceExtension, video::h265::H265Payloader},
+    app::AppError,
+};
+
+mod h265;
 
 pub enum VideoChannelEvent {
     SignalIdr,
@@ -115,10 +120,12 @@ impl VideoChannel {
         let mut payloader = if format.contained_in(VideoFormats::MASK_H264) {
             Box::new(H264Payloader::default()) as Box<dyn Payloader + Send + Sync>
         } else if format.contained_in(VideoFormats::MASK_H265) {
-            Box::new(HevcPayloader::default()) as Box<dyn Payloader + Send + Sync>
+            Box::new(H265Payloader::default()) as Box<dyn Payloader + Send + Sync>
         } else {
             Box::new(Av1Payloader::default()) as Box<dyn Payloader + Send + Sync>
         };
+
+        debug!(codec = ?format, webrtc_codec = ?codec, "webrtc video channel codec selected");
 
         let (frame_sender, mut frame_receiver) = unbounded_channel();
 
@@ -156,13 +163,58 @@ impl VideoChannel {
 
                     let mut payloads = Vec::with_capacity(10);
 
-                    // Each buffer is one nal
-                    for buffer in &frame.buffers {
-                        let nal_payloads = payloader
-                            .payload(RTP_OUTBOUND_MTU, &Bytes::copy_from_slice(buffer.data))
-                            .expect("failed to payload frame");
+                    // Create RTP Packets based on codec
+                    match format {
+                        // H264 / H265
+                        VideoFormat::H264
+                        | VideoFormat::H264High8_444
+                        | VideoFormat::H265
+                        | VideoFormat::H265Main10
+                        | VideoFormat::H265Rext8_444
+                        | VideoFormat::H265Rext10_444 => {
+                            // Each buffer is one nalu, beginning with start code
+                            for buffer in &frame.buffers {
+                                // strip start code
+                                let data = if buffer.data.starts_with(&[0, 0, 1]) {
+                                    &buffer.data[3..]
+                                } else if buffer.data.starts_with(&[0, 0, 0, 1]) {
+                                    &buffer.data[4..]
+                                } else {
+                                    warn!(data_start = ?buffer.data[0..10], "got h264 or h265 annex b data without a 3 or 4 byte start code");
+                                    buffer.data
+                                };
 
-                        payloads.extend(nal_payloads);
+                                let nal_payloads = payloader
+                                    .payload(RTP_OUTBOUND_MTU - 12, &Bytes::copy_from_slice(data))
+                                    .expect("failed to payload frame");
+
+                                payloads.extend(nal_payloads);
+                            }
+                        }
+                        VideoFormat::Av1Main8
+                        | VideoFormat::Av1Main10
+                        | VideoFormat::Av1High8_444
+                        | VideoFormat::Av1High10_444 => {
+                            // Put all buffers inside one array and let the payloader payload
+                            let full_frame = if frame.buffers.len() == 1 {
+                                // fast path
+                                Bytes::copy_from_slice(frame.buffers[0].data)
+                            } else {
+                                let mut full_frame = BytesMut::new();
+                                
+                                for buffer in &frame.buffers {
+                                    full_frame.extend_from_slice(buffer.data);
+                                }
+                                
+                                full_frame.freeze()
+                            };
+
+                            let nal_payloads = payloader
+                                .payload(RTP_OUTBOUND_MTU, &full_frame)
+                                .expect("failed to payload frame");
+
+                            payloads.extend(nal_payloads);
+                        }
                     }
 
                     let len = payloads.len();
@@ -198,11 +250,14 @@ impl VideoChannel {
                                 &Packet {
                                     header: Header {
                                         version: 2,
+                                        padding: false,
+                                        extension: false,
                                         // Marker needs to mark the end of one frame
                                         marker: is_last,
                                         sequence_number,
                                         timestamp,
-                                        payload_type: codec.payload_type,
+                                        payload_type: 0, // This is set in the write fn
+                                        ssrc: 0,         // This is set in the write fn
                                         ..Default::default()
                                     },
                                     payload,
@@ -368,9 +423,6 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
                     match value {
                         "1" => format = VideoFormat::H265,
                         "2" => format = VideoFormat::H265Main10,
-                        "4" => {
-                            // TODO: range extensions
-                        }
                         _ => debug!(profile_id = ?value, "unknown h265 profile-id"),
                     }
                 }
@@ -400,6 +452,9 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
                     match value {
                         "1" => format = VideoFormat::Av1Main8,
                         "2" => format = VideoFormat::Av1High8_444,
+                        "4" => {
+                            // TODO: range extensions
+                        }
                         // TODO: how do the Main10 / High10 profiles work?
                         _ => debug!(profile = ?value, "unknown av1 profile"),
                     }

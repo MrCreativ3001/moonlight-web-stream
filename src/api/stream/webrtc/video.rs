@@ -197,11 +197,11 @@ impl VideoChannel {
                                 Bytes::copy_from_slice(frame.buffers[0].data)
                             } else {
                                 let mut full_frame = BytesMut::new();
-                                
+
                                 for buffer in &frame.buffers {
                                     full_frame.extend_from_slice(buffer.data);
                                 }
-                                
+
                                 full_frame.freeze()
                             };
 

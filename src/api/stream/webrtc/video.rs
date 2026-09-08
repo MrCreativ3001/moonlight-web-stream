@@ -1,6 +1,6 @@
 use std::{collections::HashMap, mem::swap, sync::Arc};
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use moonlight_common::{
     stream::{
         proto::video::frame::OwnedVideoFrame,
@@ -21,7 +21,11 @@ use webrtc::{
         receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
     },
     rtp::{
-        codecs::{av1::Av1Payloader, h264::H264Payloader, h265::RTP_OUTBOUND_MTU},
+        codecs::{
+            av1::Av1Payloader,
+            h264::H264Payloader,
+            h265::{HevcPayloader, RTP_OUTBOUND_MTU},
+        },
         extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
         header::Header,
         packet::Packet,
@@ -35,12 +39,7 @@ use webrtc::{
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
 
-use crate::{
-    api::stream::webrtc::{ext_color_space::ColorSpaceExtension, video::h265::H265Payloader},
-    app::AppError,
-};
-
-mod h265;
+use crate::{api::stream::webrtc::ext_color_space::ColorSpaceExtension, app::AppError};
 
 pub enum VideoChannelEvent {
     SignalIdr,
@@ -116,7 +115,7 @@ impl VideoChannel {
         let mut payloader = if format.contained_in(VideoFormats::MASK_H264) {
             Box::new(H264Payloader::default()) as Box<dyn Payloader + Send + Sync>
         } else if format.contained_in(VideoFormats::MASK_H265) {
-            Box::new(H265Payloader::default()) as Box<dyn Payloader + Send + Sync>
+            Box::new(HevcPayloader::default()) as Box<dyn Payloader + Send + Sync>
         } else {
             Box::new(Av1Payloader::default()) as Box<dyn Payloader + Send + Sync>
         };
@@ -137,15 +136,17 @@ impl VideoChannel {
 
                 let mut hdr_metadata = None;
 
+                let mut payloads = Vec::with_capacity(10);
+
                 while let Some(message) = frame_receiver.recv().await {
-                    let frame = match message {
+                    let full_frame = match message {
                         Message::HdrMetadata(metadata) => {
                             hdr_metadata = metadata;
                             continue;
                         }
                         Message::Frame(frame) => frame,
                     };
-                    let frame = frame.as_ref();
+                    let frame = full_frame.as_ref();
 
                     let timestamp =
                         (frame.metadata.timestamp.as_millis() * clock_rate as u128 / 1000) as u32;
@@ -157,17 +158,11 @@ impl VideoChannel {
                         continue;
                     }
 
-                    let mut payloads = Vec::with_capacity(10);
-
                     // Create RTP Packets based on codec
                     match format {
                         // H264 / H265
                         VideoFormat::H264
-                        | VideoFormat::H264High8_444
-                        | VideoFormat::H265
-                        | VideoFormat::H265Main10
-                        | VideoFormat::H265Rext8_444
-                        | VideoFormat::H265Rext10_444 => {
+                        | VideoFormat::H264High8_444 => {
                             // Each buffer is one nalu, beginning with start code
                             for buffer in &frame.buffers {
                                 // strip start code
@@ -187,26 +182,28 @@ impl VideoChannel {
                                 payloads.extend(nal_payloads);
                             }
                         }
+                        VideoFormat::H265
+                        | VideoFormat::H265Main10
+                        | VideoFormat::H265Rext8_444
+                        | VideoFormat::H265Rext10_444 => {
+                            // TODO: don't copy the data, but use the bytes directly
+                            let full_frame = full_frame.raw();
+
+                            let nal_payloads = payloader
+                                .payload(RTP_OUTBOUND_MTU - 12, &Bytes::copy_from_slice(full_frame))
+                                .expect("failed to payload frame");
+
+                            payloads.extend(nal_payloads);
+                        }
                         VideoFormat::Av1Main8
                         | VideoFormat::Av1Main10
                         | VideoFormat::Av1High8_444
                         | VideoFormat::Av1High10_444 => {
-                            // Put all buffers inside one array and let the payloader payload
-                            let full_frame = if frame.buffers.len() == 1 {
-                                // fast path
-                                Bytes::copy_from_slice(frame.buffers[0].data)
-                            } else {
-                                let mut full_frame = BytesMut::new();
-
-                                for buffer in &frame.buffers {
-                                    full_frame.extend_from_slice(buffer.data);
-                                }
-
-                                full_frame.freeze()
-                            };
+                            // TODO: don't copy the data, but use the bytes directly
+                            let full_frame = full_frame.raw();
 
                             let nal_payloads = payloader
-                                .payload(RTP_OUTBOUND_MTU, &full_frame)
+                                .payload(RTP_OUTBOUND_MTU, &Bytes::copy_from_slice(full_frame))
                                 .expect("failed to payload frame");
 
                             payloads.extend(nal_payloads);
@@ -214,7 +211,7 @@ impl VideoChannel {
                     }
 
                     let len = payloads.len();
-                    for (i, payload) in payloads.into_iter().enumerate() {
+                    for (i, payload) in payloads.drain(..).enumerate() {
                         sequence_number = sequence_number.wrapping_add(1);
 
                         let is_last = i == len - 1;

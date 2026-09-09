@@ -1,5 +1,4 @@
 use std::{
-    fmt::Display,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     num::ParseIntError,
     str::FromStr,
@@ -90,8 +89,6 @@ pub struct WebRtcConfig {
     pub port_range: Option<PortRange>,
     #[serde(default)]
     pub nat_1to1: Option<WebRtcNat1To1Mapping>,
-    #[serde(default = "default_network_types")]
-    pub network_types: Vec<WebRtcNetworkType>,
     #[serde(default = "default_include_loopback_candidates")]
     pub include_loopback_candidates: bool,
 }
@@ -103,49 +100,7 @@ impl Default for WebRtcConfig {
             ice_server_script: None,
             port_range: None,
             nat_1to1: None,
-            network_types: default_network_types(),
             include_loopback_candidates: default_include_loopback_candidates(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum WebRtcNetworkType {
-    #[serde(rename = "udp4")]
-    Udp4,
-    #[serde(rename = "udp6")]
-    Udp6,
-    #[serde(rename = "tcp4")]
-    Tcp4,
-    #[serde(rename = "tcp6")]
-    Tcp6,
-}
-
-impl Display for WebRtcNetworkType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ty = match self {
-            Self::Udp4 => "udp4",
-            Self::Udp6 => "udp6",
-            Self::Tcp4 => "tcp4",
-            Self::Tcp6 => "tcp6",
-        };
-        write!(f, "{}", ty)
-    }
-}
-
-#[derive(Debug, Error)]
-#[error("not a valid network type")]
-pub struct WebRtcNetworkTypeFromStr;
-
-impl FromStr for WebRtcNetworkType {
-    type Err = WebRtcNetworkTypeFromStr;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "udp4" => Ok(Self::Udp4),
-            "udp6" => Ok(Self::Udp6),
-            "tcp4" => Ok(Self::Tcp4),
-            "tcp6" => Ok(Self::Tcp6),
-            _ => Err(WebRtcNetworkTypeFromStr),
         }
     }
 }
@@ -200,9 +155,6 @@ fn default_ice_servers() -> Vec<RtcIceServer> {
         ],
         ..Default::default()
     }]
-}
-fn default_network_types() -> Vec<WebRtcNetworkType> {
-    vec![WebRtcNetworkType::Udp4, WebRtcNetworkType::Udp6]
 }
 fn default_include_loopback_candidates() -> bool {
     true

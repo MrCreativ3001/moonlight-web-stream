@@ -7,7 +7,7 @@ use crate::{
     api::bindings::RtcIceServer,
     config::{
         Config, ConfigSsl, ForwardedHeaders, PortRange, WebRtcNat1To1IceCandidateType,
-        WebRtcNat1To1Mapping, WebRtcNetworkType,
+        WebRtcNat1To1Mapping,
     },
 };
 use clap::{Args, Parser, Subcommand};
@@ -88,9 +88,6 @@ pub struct CliConfig {
     /// Overwrites `webrtc.ice_server_script`.
     #[arg(long, env = "WEBRTC_ICE_SERVER_SCRIPT")]
     pub webrtc_ice_server_script: Option<String>,
-    /// Overwrites `webrtc.network_types`. Example: "udp4,udp6"
-    #[arg(long, env = "WEBRTC_NETWORK_TYPES", value_delimiter = ',')]
-    pub webrtc_network_types: Option<Vec<WebRtcNetworkType>>,
     /// Overwrites `webrtc.include_loopback_candidates`.
     #[arg(long, env = "WEBRTC_INCLUDE_LOOPBACK_CANDIDATES")]
     pub webrtc_include_loopback_candidates: Option<bool>,
@@ -141,9 +138,6 @@ impl CliConfig {
         }
         if let Some(webrtc_ice_server_script) = self.webrtc_ice_server_script {
             config.webrtc.ice_server_script = Some(webrtc_ice_server_script);
-        }
-        if let Some(webrtc_network_types) = self.webrtc_network_types {
-            config.webrtc.network_types = webrtc_network_types;
         }
         if let Some(webrtc_include_loopback_candidates) = self.webrtc_include_loopback_candidates {
             config.webrtc.include_loopback_candidates = webrtc_include_loopback_candidates;

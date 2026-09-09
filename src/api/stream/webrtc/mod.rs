@@ -42,6 +42,7 @@ use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_OPUS, MediaEngine};
 use webrtc::api::setting_engine::SettingEngine;
 use webrtc::data_channel::RTCDataChannel;
+use webrtc::ice::network_type::NetworkType;
 use webrtc::ice::udp_network::{EphemeralUDP, UDPNetwork};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 use webrtc::ice_transport::ice_server::RTCIceServer;
@@ -55,7 +56,7 @@ use webrtc::rtp_transceiver::rtp_codec::{
 };
 
 use crate::api::stream::apply_role_restrictions;
-use crate::api::stream::webrtc::convert::{into_webrtc_ice_candidate, into_webrtc_network_type};
+use crate::api::stream::webrtc::convert::into_webrtc_ice_candidate;
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
 use crate::app::App;
 use crate::app::host::HostId;
@@ -264,19 +265,12 @@ pub async fn webrtc_post(
             into_webrtc_ice_candidate(mapping.ice_candidate_type),
         );
     }
-    setting_engine.set_network_types(
-        app.config()
-            .webrtc
-            .network_types
-            .iter()
-            .copied()
-            .map(into_webrtc_network_type)
-            .collect(),
-    );
 
     setting_engine.set_include_loopback_candidate(app.config().webrtc.include_loopback_candidates);
 
     setting_engine.set_ice_timeouts(None, Some(Duration::from_secs(10)), None);
+
+    setting_engine.set_network_types(vec![NetworkType::Udp4, NetworkType::Udp6]);
 
     // Create video
     let mut video_channel = VideoChannel::new(

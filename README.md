@@ -565,6 +565,7 @@ Changes:
 - moved `default_user_id` and `default_role_id` from the `config.json` into the `data.json` file
   - go into the admin panel and set the user or role you that you want to be the default to the default at the bottom of the page
 - removed old unused `default_settings` value in the config
+- removed `webrtc.network_types` setting in the config
 
 ## Contributors
 Thanks to everyone who contributed to make this software better :).

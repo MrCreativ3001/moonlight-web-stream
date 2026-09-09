@@ -464,25 +464,6 @@ You can also use the cli argument `--webrtc-nat-1to1-host` or environment variab
 ENV WEBRTC_NAT_1TO1_HOST=74.125.224.72
 ```
 
-### WebRTC Network Types
-This will set the network types allowed by webrtc.
-<br>Allowed values:
-- udp4: All udp with ipv4
-- udp6: All udp with ipv6
-- tcp4: All tcp with ipv4
-- tcp6: All tcp with ipv6
-
-```json
-{
-    "webrtc": {
-        "network_types": [
-            "udp4",
-            "udp6",
-        ]
-    }
-}
-```
-
 ### Url Path Prefix
 This is useful when rerouting the web page using services like [Apache 2](#proxying-via-apache-2).
 Will always append the prefix to all requests made by the website.

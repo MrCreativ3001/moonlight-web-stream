@@ -571,8 +571,8 @@ pub async fn webrtc_post(
     // Wait for ice gathering to complete or 10 seconds to pass
     select! {
         _ = handler.on_ice_gathering_finished.notified() => {},
-        _ = sleep(Duration::from_secs(10)) => {
-            warn!("Couldn't fully gather ice candidates after 10 seconds! Sending response regardless of uncomplete ice gathering state.");
+        _ = sleep(Duration::from_secs(4)) => {
+            warn!("Couldn't fully gather ice candidates after 4 seconds! Sending response regardless of uncomplete ice gathering state.");
         }
     }
 

@@ -254,7 +254,7 @@ impl VideoChannel {
                                 })]
                             };
 
-                        if let Err(err) = track.write_rtp(
+                        if let Err(err) = track.write_rtp_with_extensions(
                                 Packet {
                                     header: Header {
                                         version: 2,
@@ -268,7 +268,7 @@ impl VideoChannel {
                                     },
                                     payload,
                                 },
-                                // extensions,
+                                extensions,
                             )
                             .await
                         {
@@ -320,22 +320,19 @@ impl VideoChannel {
                         continue;
                     };
 
-                    match event {
-                        TrackLocalEvent::OnRtcpPacket(packets) => {
-                            for packet in packets {
-                                let packet = packet.as_any();
+                    if let TrackLocalEvent::OnRtcpPacket(packets) = event {
+                        for packet in packets {
+                            let packet = packet.as_any();
 
-                                if packet.downcast_ref::<PictureLossIndication>().is_some() {
-                                    debug!("got picture loss indication, set need idr flag");
-                                    return Ok(VideoChannelEvent::SignalIdr);
-                                } else if let Some(ReceiverEstimatedMaximumBitrate { bitrate: _, .. }) =
-                                    packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
-                                {
-                                    // TODO
-                                }
+                            if packet.downcast_ref::<PictureLossIndication>().is_some() {
+                                debug!("got picture loss indication, set need idr flag");
+                                return Ok(VideoChannelEvent::SignalIdr);
+                            } else if let Some(ReceiverEstimatedMaximumBitrate { bitrate: _, .. }) =
+                                packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
+                            {
+                                // TODO
                             }
                         }
-                        _ => {}
                     }
                 }
             }

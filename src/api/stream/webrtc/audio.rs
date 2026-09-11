@@ -87,7 +87,7 @@ impl AudioChannel {
 
                     // Opus doesn't need any special payloading: https://github.com/webrtc-rs/webrtc/blob/6b94718e23111df28125f96af4b0de8cbb3dfd0d/rtp/src/codecs/opus/mod.rs#L9-L24
                     if let Err(err) = track
-                        .write_rtp(
+                        .write_rtp_with_extensions(
                             Packet {
                                 header: Header {
                                     version: 2,
@@ -99,10 +99,10 @@ impl AudioChannel {
                                 },
                                 payload: frame.buffer,
                             },
-                            // &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
-                            //     min_delay: 0,
-                            //     max_delay: 0,
-                            // })],
+                            &[HeaderExtension::PlayoutDelay(PlayoutDelayExtension {
+                                min_delay: 0,
+                                max_delay: 0,
+                            })],
                         )
                         .await
                     {

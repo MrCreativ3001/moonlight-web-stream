@@ -51,7 +51,7 @@ use webrtc::data_channel::DataChannel;
 use webrtc::peer_connection::{
     MediaEngine, PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler,
     RTCConfigurationBuilder, RTCIceCandidateInit, RTCIceGatheringState, RTCIceServer,
-    RTCPeerConnectionState, RTCSessionDescription, SettingEngine, SettingEngineBuilder,
+    RTCPeerConnectionState, RTCSessionDescription, SettingEngineBuilder,
     register_default_interceptors,
 };
 
@@ -149,6 +149,24 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
     // The media engine contains all supported codecs this peer has
     let mut media_engine = MediaEngine::default();
 
+    // register audio
+    media_engine
+        .register_codec(
+            RTCRtpCodecParameters {
+                rtp_codec: opus_codec(),
+                payload_type: 111,
+            },
+            RtpCodecKind::Audio,
+        )
+        .expect("register audio opus codec");
+
+    // register video
+    for codec in video_formats.values() {
+        media_engine
+            .register_codec(codec.clone(), RtpCodecKind::Video)
+            .expect("register video codec");
+    }
+
     // register extensions
     const PLAYOUT_DELAY_URI: &str = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay";
 
@@ -179,24 +197,6 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
             None,
         )
         .expect("register playout delay extension");
-
-    // register audio
-    media_engine
-        .register_codec(
-            RTCRtpCodecParameters {
-                rtp_codec: opus_codec(),
-                payload_type: 111,
-            },
-            RtpCodecKind::Audio,
-        )
-        .expect("register audio opus codec");
-
-    // register video
-    for codec in video_formats.values() {
-        media_engine
-            .register_codec(codec.clone(), RtpCodecKind::Video)
-            .expect("register video codec");
-    }
 
     media_engine
 }
@@ -373,6 +373,14 @@ pub async fn webrtc_post(
 
     info!("created server webrtc peer");
 
+    // Set remote description
+    if let Err(err) = peer.set_remote_description(offer.clone()).await {
+        error!(error = %err, description = %offer, "failed to set remote description");
+
+        peer.close().await?;
+        return Err(err.into());
+    }
+
     info!("querying client for supported video and audio codecs");
 
     // Video Formats
@@ -512,14 +520,6 @@ pub async fn webrtc_post(
         }
         Ok(value) => value,
     };
-
-    // Set remote description
-    if let Err(err) = peer.set_remote_description(offer.clone()).await {
-        error!(error = %err, description = %offer, "failed to set remote description");
-
-        peer.close().await?;
-        return Err(err.into());
-    }
 
     info!("configured server webrtc peer, waiting for ice gathering to complete");
 

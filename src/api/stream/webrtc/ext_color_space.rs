@@ -1,8 +1,6 @@
 use bytes::BufMut;
-use webrtc::{
-    rtp::Error,
-    util::{self, Marshal, MarshalSize},
-};
+use rtc::shared::marshal::{Marshal, MarshalSize};
+use webrtc::error::Error;
 
 pub const COLOR_SPACE_URI: &str = "http://www.webrtc.org/experiments/rtp-hdrext/color-space";
 
@@ -42,10 +40,10 @@ impl MarshalSize for ColorSpaceExtension {
 }
 
 impl Marshal for ColorSpaceExtension {
-    fn marshal_to(&self, mut buf: &mut [u8]) -> util::Result<usize> {
+    fn marshal_to(&self, mut buf: &mut [u8]) -> webrtc::error::Result<usize> {
         let needed = self.marshal_size();
         if buf.remaining_mut() < needed {
-            return Err(Error::ErrBufferTooSmall.into());
+            return Err(Error::ErrBufferTooSmall);
         }
 
         // 1. Basis-Daten schreiben (Big Endian implizit über Byte-Reihenfolge)

@@ -1,4 +1,8 @@
-use std::{future::pending, sync::Arc};
+use std::{
+    future::pending,
+    net::{IpAddr, Ipv4Addr},
+    sync::Arc,
+};
 
 use moonlight_common::stream::{
     control::{
@@ -15,12 +19,13 @@ use moonlight_common::stream::{
 use tokio::{select, sync::mpsc};
 use tracing::{debug, info, warn};
 use webrtc::{
-    data_channel::RTCDataChannel,
-    peer_connection::{RTCPeerConnection, peer_connection_state::RTCPeerConnectionState},
+    data_channel::DataChannel,
+    peer_connection::{PeerConnection, RTCPeerConnectionState},
 };
 
 use crate::{
     api::stream::webrtc::{
+        WebRtcHandler,
         audio::AudioChannel,
         control::{ControlChannel, ControlChannelEvent},
         video::{VideoChannel, VideoChannelEvent},
@@ -28,46 +33,70 @@ use crate::{
     app::AppError,
 };
 
+pub async fn discover_local_ips() -> Vec<IpAddr> {
+    // See https://github.com/webrtc-rs/rtc/blob/83c542e3f1a8e32c4f4f1409a3f4d1f598bc1f93/examples/signal/src/lib.rs#L133-L148
+    let ip = if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0")
+        && socket.connect("8.8.8.8:80").is_ok()
+        && let Ok(addr) = socket.local_addr()
+        && let IpAddr::V4(ip) = addr.ip()
+    {
+        ip.into()
+    } else {
+        Ipv4Addr::new(127, 0, 0, 1).into()
+    };
+
+    vec![ip]
+}
+
 pub async fn webrtc_loop(
     mut stream: MoonlightStream,
-    peer: &RTCPeerConnection,
+    _peer: &dyn PeerConnection,
     mut audio_channel: AudioChannel,
     mut video_channel: VideoChannel,
     mut control_channel: ControlChannel,
-    mut on_data_channel: mpsc::UnboundedReceiver<Arc<RTCDataChannel>>,
+    mut on_data_channel: mpsc::UnboundedReceiver<Arc<dyn DataChannel>>,
+    handler: &WebRtcHandler,
 ) -> Result<(), AppError> {
     info!("started main webrtc loop");
-
-    // Sunshine can begin encoding before the WebRTC peer has completed ICE.
-    // Ask for an IDR immediately so the first relayable frame is independently decodable.
-    if let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
-        warn!(error = %err, "failed to request initial idr");
-    }
 
     let mut last_key_states_sequence_number = 0;
     let mut last_key_states = CompactKeyStates::default();
 
     let mut moonlight_disconnected = false;
+    let mut peer_was_disconnected = true;
     loop {
         if !stream.is_alive() {
             info!("stopping stream because the moonlight stream is dead");
             break;
         }
 
-        if matches!(
-            peer.connection_state(),
-            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
-        ) && !moonlight_disconnected
-        {
-            let _ = stream.disconnect();
-            moonlight_disconnected = true;
+        let peer_state = { *handler.peer_state.lock().expect("lock peer state") };
+
+        match peer_state {
+            RTCPeerConnectionState::Connected => {
+                if peer_was_disconnected {
+                    // request idr after connecting
+                    if let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
+                        warn!(error = %err, "failed to request initial idr");
+                    }
+                }
+                peer_was_disconnected = false;
+            }
+            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
+                let _ = stream.disconnect();
+                moonlight_disconnected = true;
+            }
+            _ => {
+                peer_was_disconnected = true;
+            }
         }
 
         select! {
             Some(data_channel) = async { if on_data_channel.is_closed() { pending().await } else { on_data_channel.recv().await } } => {
-                debug!(data_channel = ?data_channel.label(), "got data channel");
+                let label = data_channel.label().await?;
+                debug!(data_channel = ?label, "got data channel");
 
-                if control_channel.try_add_channel(&data_channel) {
+                if control_channel.try_add_channel(&label, &data_channel) {
                     continue;
                 }
             }
@@ -80,6 +109,10 @@ pub async fn webrtc_loop(
 
                 match event {
                     MoonlightStreamEvent::Audio(AudioStreamEvent::OnFrame(frame)) => {
+                        if !matches!(peer_state, RTCPeerConnectionState::Connected) {
+                            continue;
+                        }
+
                         audio_channel.on_frame(frame);
                     }
                     MoonlightStreamEvent::Video(VideoStreamEvent::SignalIdr) => {
@@ -88,6 +121,10 @@ pub async fn webrtc_loop(
                         }
                     }
                     MoonlightStreamEvent::Video(VideoStreamEvent::OnFrame(frame)) => {
+                        if !matches!(peer_state, RTCPeerConnectionState::Connected) {
+                            continue;
+                        }
+
                         video_channel.on_frame(frame);
                     }
                     MoonlightStreamEvent::Control(ControlStreamEvent::Packet(packet)) => {

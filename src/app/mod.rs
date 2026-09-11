@@ -115,7 +115,7 @@ pub enum AppError {
     #[error("moonlight error: {0}")]
     MoonlightStream(#[from] MoonlightStreamError),
     #[error("webrtc: {0}")]
-    WebRTC(#[from] webrtc::Error),
+    WebRTC(#[from] webrtc::error::Error),
 }
 
 impl ResponseError for AppError {

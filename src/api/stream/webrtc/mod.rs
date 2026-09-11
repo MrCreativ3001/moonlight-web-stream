@@ -1,7 +1,7 @@
 use crate::api::stream::webrtc::audio::AudioChannel;
 use crate::api::stream::webrtc::control::ControlChannel;
 use crate::api::stream::webrtc::ext_color_space::COLOR_SPACE_URI;
-use crate::api::stream::webrtc::stream::webrtc_loop;
+use crate::api::stream::webrtc::stream::{discover_local_ips, webrtc_loop};
 use crate::api::stream::webrtc::video::VideoChannel;
 use crate::config::PortRange;
 use actix_web::HttpRequest;
@@ -13,6 +13,7 @@ use actix_web::{
     HttpResponse, HttpResponseBuilder, delete, get, http::StatusCode, http::header, options, patch,
     post,
 };
+use async_trait::async_trait;
 use moonlight_common::AppId;
 use moonlight_common::crypto::rustcrypto::RustCryptoBackend;
 use moonlight_common::stream::audio::AudioConfig;
@@ -30,29 +31,27 @@ use moonlight_common::webrtc::answer::WebRTCSessionAnswer;
 use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
+use rtc::ice::network_type::NetworkType;
+use rtc::interceptor::Registry;
+use rtc::peer_connection::configuration::media_engine::MIME_TYPE_OPUS;
+use rtc::rtp_transceiver::rtp_sender::{
+    RTCPFeedback, RTCRtpCodec, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RtpCodecKind,
+};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::net::UdpSocket;
+use tokio::sync::Notify;
 use tokio::sync::mpsc::{self};
 use tokio::time::sleep;
 use tokio::{select, spawn};
 use tracing::{Instrument, debug, debug_span, error, info, instrument, warn};
-use webrtc::api::APIBuilder;
-use webrtc::api::interceptor_registry::register_default_interceptors;
-use webrtc::api::media_engine::{MIME_TYPE_OPUS, MediaEngine};
-use webrtc::api::setting_engine::SettingEngine;
-use webrtc::data_channel::RTCDataChannel;
-use webrtc::ice::network_type::NetworkType;
-use webrtc::ice::udp_network::{EphemeralUDP, UDPNetwork};
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
-use webrtc::ice_transport::ice_server::RTCIceServer;
-use webrtc::interceptor::registry::Registry;
-use webrtc::peer_connection::configuration::RTCConfiguration;
-use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
-use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use webrtc::rtp_transceiver::RTCPFeedback;
-use webrtc::rtp_transceiver::rtp_codec::{
-    RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RTPCodecType,
+use webrtc::data_channel::DataChannel;
+use webrtc::peer_connection::{
+    MediaEngine, PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler,
+    RTCConfigurationBuilder, RTCIceCandidateInit, RTCIceGatheringState, RTCIceServer,
+    RTCPeerConnectionState, RTCSessionDescription, SettingEngine, register_default_interceptors,
 };
 
 use crate::api::stream::apply_role_restrictions;
@@ -131,8 +130,8 @@ pub async fn webrtc_get(_user: AuthenticatedUser) -> Result<HttpResponse, AppErr
     Ok(HttpResponse::MethodNotAllowed().finish())
 }
 
-fn opus_codec() -> RTCRtpCodecCapability {
-    RTCRtpCodecCapability {
+fn opus_codec() -> RTCRtpCodec {
+    RTCRtpCodec {
         mime_type: MIME_TYPE_OPUS.to_owned(),
         clock_rate: 48000,
         channels: 2,
@@ -157,7 +156,7 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
             RTCRtpHeaderExtensionCapability {
                 uri: PLAYOUT_DELAY_URI.to_string(),
             },
-            RTPCodecType::Video,
+            RtpCodecKind::Video,
             None,
         )
         .expect("register playout delay extension");
@@ -166,7 +165,7 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
             RTCRtpHeaderExtensionCapability {
                 uri: COLOR_SPACE_URI.to_string(),
             },
-            RTPCodecType::Video,
+            RtpCodecKind::Video,
             None,
         )
         .expect("register color space extension");
@@ -175,7 +174,7 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
             RTCRtpHeaderExtensionCapability {
                 uri: PLAYOUT_DELAY_URI.to_string(),
             },
-            RTPCodecType::Audio,
+            RtpCodecKind::Audio,
             None,
         )
         .expect("register playout delay extension");
@@ -184,22 +183,48 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
     media_engine
         .register_codec(
             RTCRtpCodecParameters {
-                capability: opus_codec(),
+                rtp_codec: opus_codec(),
                 payload_type: 111,
-                ..Default::default()
             },
-            RTPCodecType::Audio,
+            RtpCodecKind::Audio,
         )
         .expect("register audio opus codec");
 
     // register video
     for codec in video_formats.values() {
         media_engine
-            .register_codec(codec.clone(), RTPCodecType::Video)
+            .register_codec(codec.clone(), RtpCodecKind::Video)
             .expect("register video codec");
     }
 
     media_engine
+}
+
+struct WebRtcHandler {
+    on_ice_gathering_finished: Notify,
+    on_data_channel_sender: mpsc::UnboundedSender<Arc<dyn DataChannel>>,
+    peer_state: Mutex<RTCPeerConnectionState>,
+}
+
+#[async_trait]
+impl PeerConnectionEventHandler for WebRtcHandler {
+    async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {
+        *self.peer_state.lock().expect("lock peer state") = state;
+
+        info!(state = %state, "webrtc peer state changed");
+    }
+
+    async fn on_ice_gathering_state_change(&self, state: RTCIceGatheringState) {
+        info!(state = %state, "ice gathering state changed");
+
+        if matches!(state, RTCIceGatheringState::Complete) {
+            self.on_ice_gathering_finished.notify_one();
+        }
+    }
+
+    async fn on_data_channel(&self, data_channel: Arc<dyn DataChannel>) {
+        let _ = self.on_data_channel_sender.send(data_channel);
+    }
 }
 
 #[post("")]
@@ -249,16 +274,6 @@ pub async fn webrtc_post(
     // -- Create WebRtc peer
     // Create settings
     let mut setting_engine = SettingEngine::default();
-    if let Some(PortRange { min, max }) = app.config().webrtc.port_range {
-        match EphemeralUDP::new(min, max) {
-            Ok(udp) => {
-                setting_engine.set_udp_network(UDPNetwork::Ephemeral(udp));
-            }
-            Err(err) => {
-                warn!("[Stream]: Invalid port range in config: {err:?}");
-            }
-        }
-    }
     if let Some(mapping) = app.config().webrtc.nat_1to1.as_ref() {
         setting_engine.set_nat_1to1_ips(
             mapping.ips.clone(),
@@ -268,9 +283,13 @@ pub async fn webrtc_post(
 
     setting_engine.set_include_loopback_candidate(app.config().webrtc.include_loopback_candidates);
 
-    setting_engine.set_ice_timeouts(None, Some(Duration::from_secs(10)), None);
+    setting_engine.set_ice_timeouts(
+        Some(Duration::from_secs(5)),
+        Some(Duration::from_secs(15)),
+        Some(Duration::from_secs(2)),
+    );
 
-    setting_engine.set_network_types(vec![NetworkType::Udp4, NetworkType::Udp6]);
+    setting_engine.set_network_types(vec![NetworkType::Udp4]);
 
     // Create video
     let mut video_channel = VideoChannel::new(
@@ -287,36 +306,72 @@ pub async fn webrtc_post(
     let interceptor_registry = register_default_interceptors(Registry::new(), &mut media_engine)
         .expect("register default interceptors");
 
-    let api = APIBuilder::new()
-        .with_interceptor_registry(interceptor_registry)
-        .with_media_engine(media_engine)
-        .with_setting_engine(setting_engine)
-        .build();
+    // Find available port
+    let port = if let Some(PortRange { min, max }) = app.config().webrtc.port_range {
+        let mut valid_port = None;
 
-    // Configure peer
-    let peer = api
-        .new_peer_connection(RTCConfiguration {
-            ice_servers: ice_servers
-                .iter()
-                .map(|x| RTCIceServer {
-                    username: x.username.clone(),
-                    credential: x.credential.clone(),
-                    urls: x.urls.clone(),
-                })
-                .collect(),
-            ..Default::default()
-        })
-        .await?;
-    let peer = Arc::new(peer);
+        // Try to bind a udp socket to see if the port is available
+        for port in min..=max {
+            let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
-    // Add data channel listener
+            if UdpSocket::bind(addr).await.is_ok() {
+                valid_port = Some(port);
+                break;
+            }
+        }
+
+        match valid_port {
+            Some(port) => port,
+            None => {
+                error!(port_min = %min, port_max = %max, "No available udp port found in given port range. Cannot create webrtc peer!");
+                return Err(AppError::WebRTC(
+                    webrtc::error::Error::ErrAddressAlreadyInUse,
+                ));
+            }
+        }
+    } else {
+        0
+    };
+    let local_addrs = discover_local_ips()
+        .await
+        .into_iter()
+        .map(|ip| SocketAddr::new(ip, port))
+        .collect::<Vec<_>>();
+
+    // Initialize senders and receivers for events
     let (on_data_channel_sender, on_data_channel) =
-        mpsc::unbounded_channel::<Arc<RTCDataChannel>>();
-    peer.on_data_channel(Box::new(move |channel| {
-        let _ = on_data_channel_sender.send(channel);
+        mpsc::unbounded_channel::<Arc<dyn DataChannel>>();
 
-        Box::pin(async move {})
-    }));
+    let handler = Arc::new(WebRtcHandler {
+        peer_state: Mutex::new(RTCPeerConnectionState::New),
+        on_ice_gathering_finished: Notify::new(),
+        on_data_channel_sender,
+    });
+
+    // Create new peer
+    let peer = PeerConnectionBuilder::default()
+        .with_media_engine(media_engine)
+        .with_interceptor_registry(interceptor_registry)
+        .with_setting_engine(setting_engine)
+        .with_udp_addrs(local_addrs)
+        .with_handler(handler.clone())
+        .with_configuration(
+            RTCConfigurationBuilder::default()
+                .with_ice_servers(
+                    ice_servers
+                        .iter()
+                        .map(|x| RTCIceServer {
+                            username: x.username.clone(),
+                            credential: x.credential.clone(),
+                            urls: x.urls.clone(),
+                        })
+                        .collect(),
+                )
+                .build(),
+        )
+        .build()
+        .await?;
+    let peer = Arc::new(peer) as Arc<dyn PeerConnection>;
 
     info!("created server webrtc peer");
 
@@ -427,7 +482,7 @@ pub async fn webrtc_post(
     };
 
     // Add audio and video track forwarding
-    let audio_channel = match AudioChannel::new_track(&moonlight_stream, &peer).await {
+    let audio_channel = match AudioChannel::new_track(&moonlight_stream, &*peer).await {
         Ok(value) => value,
         Err(err) => {
             error!(error = %err, "failed to add audio track to webrtc peer");
@@ -437,7 +492,7 @@ pub async fn webrtc_post(
         }
     };
     if let Err(err) = video_channel
-        .on_video_format_selected(moonlight_stream.video_setup(), &peer)
+        .on_video_format_selected(moonlight_stream.video_setup(), &*peer)
         .await
     {
         error!(error = %err, "failed to add video track to webrtc peer");
@@ -448,8 +503,8 @@ pub async fn webrtc_post(
 
     info!("started moonlight stream");
 
-    // -- Create control channel based on support
-    let result = ControlChannel::new(&peer).await;
+    // -- Create control channel
+    let result = ControlChannel::new(&*peer).await;
     let control_channel = match result {
         Err(err) => {
             error!("failed to add control stream to webrtc peer");
@@ -470,9 +525,6 @@ pub async fn webrtc_post(
 
     info!("configured server webrtc peer, waiting for ice gathering to complete");
 
-    // Get ice gathering receiver
-    let mut ice_complete = peer.gathering_complete_promise().await;
-
     // Complete negotiation
     let answer = peer.create_answer(None).await?;
 
@@ -487,15 +539,17 @@ pub async fn webrtc_post(
     // take several seconds when a configured STUN server is unreachable.
     spawn({
         let peer = peer.clone();
+        let handler = handler.clone();
 
         async move {
             if let Err(err) = webrtc_loop(
                 moonlight_stream,
-                &peer,
+                &*peer,
                 audio_channel,
                 video_channel,
                 control_channel,
                 on_data_channel,
+                &handler,
             )
             .await
             {
@@ -512,7 +566,7 @@ pub async fn webrtc_post(
     });
 
     // Wait for ice gathering to complete
-    let _ = ice_complete.recv().await;
+    handler.on_ice_gathering_finished.notified().await;
 
     // Use the local description with video and audio tracks, control channel and all ice candidates included
     let answer = peer
@@ -552,13 +606,18 @@ pub async fn webrtc_post(
 
     spawn({
         let peer = peer.clone();
+        let handler = handler.clone();
 
         async move {
             loop {
                 let event = select! {
                     _ = sleep(Duration::from_secs(10)) => {
+                        let state = {
+                            *handler.peer_state.lock().expect("lock peer state")
+                        };
+
                         // Check if the connection was closed
-                        if matches!(peer.connection_state(), RTCPeerConnectionState::Closed) {
+                        if matches!(state, RTCPeerConnectionState::Closed) {
                             // Close this thread -> drops receiver -> the stream will be cleaned up on the app
                             return;
                         }
@@ -580,9 +639,7 @@ pub async fn webrtc_post(
                             if let Some(candidate) = line.strip_prefix("a=") {
                                 if let Err(err) = peer.add_ice_candidate(RTCIceCandidateInit {
                                     candidate: candidate.to_string(),
-                                    sdp_mid: None,
-                                    sdp_mline_index: None,
-                                    username_fragment: None,
+                                    ..Default::default()
                                 })
                                 .await {
                                     warn!(error = %err, candidate = ?candidate, "failed to add trickle ice candidate");

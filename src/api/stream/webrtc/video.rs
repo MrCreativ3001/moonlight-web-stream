@@ -2,37 +2,43 @@ use std::{collections::HashMap, mem::swap, sync::Arc};
 
 use bytes::{Bytes, BytesMut};
 use moonlight_common::{
+    crypto::rustcrypto::RustCryptoBackend,
+    http::pair::PairingCryptoBackend,
     stream::{
         proto::video::frame::OwnedVideoFrame,
         video::{SunshineHdrMetadata, VideoFormat, VideoFormats, VideoSetup},
     },
     webrtc::sdp::Session,
 };
-use tokio::{
-    select, spawn,
-    sync::mpsc::{UnboundedSender, unbounded_channel},
-};
-use tracing::{Instrument, debug, debug_span, info, trace, warn};
-use webrtc::{
-    api::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC},
-    peer_connection::RTCPeerConnection,
+use rtc::{
+    media_stream::MediaStreamTrack,
+    peer_connection::configuration::media_engine::{MIME_TYPE_AV1, MIME_TYPE_H264, MIME_TYPE_HEVC},
     rtcp::payload_feedbacks::{
         picture_loss_indication::PictureLossIndication,
         receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
     },
     rtp::{
-        codecs::{av1::Av1Payloader, h264::H264Payloader, h265::RTP_OUTBOUND_MTU},
+        Header, Packet,
+        codec::{av1::Av1Payloader, h264::H264Payloader, h265::RTP_OUTBOUND_MTU},
         extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
-        header::Header,
-        packet::Packet,
         packetizer::Payloader,
     },
     rtp_transceiver::{
-        RTCPFeedback,
-        rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters},
-        rtp_sender::RTCRtpSender,
+        SSRC,
+        rtp_sender::{
+            RTCPFeedback, RTCRtpCodec, RTCRtpCodecParameters, RTCRtpCodingParameters,
+            RTCRtpEncodingParameters, RtpCodecKind,
+        },
     },
-    track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
+};
+use tokio::{
+    select, spawn,
+    sync::mpsc::{UnboundedSender, unbounded_channel},
+};
+use tracing::{Instrument, debug, debug_span, info, warn};
+use webrtc::{
+    media_stream::track_local::{TrackLocal, TrackLocalEvent, static_rtp::TrackLocalStaticRTP},
+    peer_connection::PeerConnection,
 };
 
 use crate::{
@@ -55,8 +61,7 @@ enum State {
     SelectVideoFormat,
     Panic,
     Sending {
-        rtcp_buffer: Vec<u8>,
-        rtcp_receiver: Arc<RTCRtpSender>,
+        track: Arc<TrackLocalStaticRTP>,
         frame_sender: UnboundedSender<Message>,
     },
 }
@@ -92,7 +97,7 @@ impl VideoChannel {
     pub async fn on_video_format_selected(
         &mut self,
         setup: VideoSetup,
-        peer: &RTCPeerConnection,
+        peer: &dyn PeerConnection,
     ) -> Result<(), AppError> {
         let mut new_state = State::Panic;
         swap(&mut new_state, &mut self.state);
@@ -104,14 +109,30 @@ impl VideoChannel {
         };
 
         // Create video track
-        let clock_rate = codec.capability.clock_rate;
-        let track = Arc::new(TrackLocalStaticRTP::new(
-            codec.capability.clone(),
+        let mut ssrc = [0; 4];
+        RustCryptoBackend.random_bytes(&mut ssrc)?;
+        let ssrc = SSRC::from_ne_bytes(ssrc);
+
+        let payload_type = codec.payload_type;
+        let clock_rate = codec.rtp_codec.clock_rate;
+
+        let track = Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
             "video".to_string(),
             "moonlight".to_string(),
-        ));
+            "video".to_string(),
+            RtpCodecKind::Video,
+            vec![RTCRtpEncodingParameters {
+                rtp_coding_parameters: RTCRtpCodingParameters {
+                    ssrc: Some(ssrc),
+                    ..Default::default()
+                },
+                codec: codec.rtp_codec.clone(),
+                ..Default::default()
+            }],
+        )));
 
-        let video_sender = peer.add_track(track.clone()).await?;
+        peer.add_track(Arc::clone(&track) as Arc<dyn TrackLocal>)
+            .await?;
 
         let mut payloader = if format.contained_in(VideoFormats::MASK_H264) {
             Box::new(H264Payloader::default()) as Box<dyn Payloader + Send + Sync>
@@ -126,8 +147,7 @@ impl VideoChannel {
         let (frame_sender, mut frame_receiver) = unbounded_channel();
 
         self.state = State::Sending {
-            rtcp_buffer: vec![0u8; 1500],
-            rtcp_receiver: video_sender,
+            track: track.clone(),
             frame_sender,
         };
 
@@ -149,13 +169,6 @@ impl VideoChannel {
 
                     let timestamp =
                         (frame.metadata.timestamp.as_millis() * clock_rate as u128 / 1000) as u32;
-
-                    if track.all_binding_paused().await {
-                        trace!("video track all binding paused");
-                        // The peer may still be negotiating when Sunshine sends its first
-                        // frame. Drop that frame, but keep the relay alive for the bound track.
-                        continue;
-                    }
 
                     let mut payloads = Vec::with_capacity(10);
 
@@ -241,19 +254,16 @@ impl VideoChannel {
                                 })]
                             };
 
-                        if let Err(err) = track
-                            .write_rtp_with_extensions(
-                                &Packet {
+                        if let Err(err) = track.write_rtp_with_extensions(
+                                Packet {
                                     header: Header {
                                         version: 2,
-                                        padding: false,
-                                        extension: false,
                                         // Marker needs to mark the end of one frame
                                         marker: is_last,
                                         sequence_number,
                                         timestamp,
-                                        payload_type: 0, // This is set in the write fn
-                                        ssrc: 0,         // This is set in the write fn
+                                        payload_type,
+                                        ssrc,
                                         ..Default::default()
                                     },
                                     payload,
@@ -299,32 +309,31 @@ impl VideoChannel {
 
     pub async fn drive(&mut self) -> Result<VideoChannelEvent, AppError> {
         loop {
-            let State::Sending {
-                rtcp_buffer,
-                rtcp_receiver,
-                ..
-            } = &mut self.state
-            else {
+            let State::Sending { track, .. } = &mut self.state else {
                 panic!("VideoChannel is in an invalid state");
             };
 
             select! {
                 // This function seems cancel safe
-                result = rtcp_receiver.read(rtcp_buffer) => {
-                    let Ok((packets, _)) = result else {
+                result = track.poll() => {
+                    let Some(event) = result else {
                         continue;
                     };
 
-                    for packet in packets {
-                        let packet = packet.as_any();
+                    match event {
+                        TrackLocalEvent::OnRtcpPacket(packets) => {
+                            for packet in packets {
+                                let packet = packet.as_any();
 
-                        if packet.downcast_ref::<PictureLossIndication>().is_some() {
-                            debug!("got picture loss indication, set need idr flag");
-                            return Ok(VideoChannelEvent::SignalIdr);
-                        } else if let Some(ReceiverEstimatedMaximumBitrate { bitrate: _, .. }) =
-                            packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
-                        {
-                            // TODO
+                                if packet.downcast_ref::<PictureLossIndication>().is_some() {
+                                    debug!("got picture loss indication, set need idr flag");
+                                    return Ok(VideoChannelEvent::SignalIdr);
+                                } else if let Some(ReceiverEstimatedMaximumBitrate { bitrate: _, .. }) =
+                                    packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
+                                {
+                                    // TODO
+                                }
+                            }
                         }
                     }
                 }
@@ -398,7 +407,7 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
             formats.insert(
                 format,
                 RTCRtpCodecParameters {
-                    capability: RTCRtpCodecCapability {
+                    rtp_codec: RTCRtpCodec {
                         mime_type: MIME_TYPE_H264.to_string(),
                         sdp_fmtp_line: sdp_fmtp_line.to_string(),
                         clock_rate: *clock_rate,
@@ -406,7 +415,6 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
                         ..Default::default()
                     },
                     payload_type: *pt,
-                    ..Default::default()
                 },
             );
         } else if codec.eq_ignore_ascii_case("H265") {
@@ -427,7 +435,7 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
             formats.insert(
                 format,
                 RTCRtpCodecParameters {
-                    capability: RTCRtpCodecCapability {
+                    rtp_codec: RTCRtpCodec {
                         mime_type: MIME_TYPE_HEVC.to_string(),
                         sdp_fmtp_line: sdp_fmtp_line.to_string(),
                         clock_rate: *clock_rate,
@@ -435,7 +443,6 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
                         ..Default::default()
                     },
                     payload_type: *pt,
-                    ..Default::default()
                 },
             );
         } else if codec.eq_ignore_ascii_case("AV1") {
@@ -460,7 +467,7 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
             formats.insert(
                 format,
                 RTCRtpCodecParameters {
-                    capability: RTCRtpCodecCapability {
+                    rtp_codec: RTCRtpCodec {
                         mime_type: MIME_TYPE_AV1.to_string(),
                         sdp_fmtp_line: sdp_fmtp_line.to_string(),
                         clock_rate: *clock_rate,
@@ -468,7 +475,6 @@ fn get_video_formats(sdp: &Session) -> HashMap<VideoFormat, RTCRtpCodecParameter
                         ..Default::default()
                     },
                     payload_type: *pt,
-                    ..Default::default()
                 },
             );
         }

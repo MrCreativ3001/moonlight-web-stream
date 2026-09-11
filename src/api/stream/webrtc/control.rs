@@ -1,20 +1,20 @@
-use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::web::Bytes;
-use futures::future::{Either, pending};
+use bytes::BytesMut;
+use futures::future::pending;
 use moonlight_common::stream::proto::control::packet::{
     ControlPacket, ControlPacketConfig, PacketDirection,
 };
-use tokio::select;
+use rtc::data_channel::RTCDataChannelState;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::oneshot;
-use tracing::{debug, info, warn};
-use webrtc::data_channel::RTCDataChannel;
-use webrtc::{
-    data_channel::data_channel_state::RTCDataChannelState, peer_connection::RTCPeerConnection,
-};
+use tokio::time::sleep;
+use tokio::{select, spawn};
+use tracing::{Instrument, debug, debug_span, info, trace, warn};
+use webrtc::data_channel::{DataChannel, DataChannelEvent};
+use webrtc::peer_connection::PeerConnection;
 
 use crate::api::stream::create_control_packet_config;
 use crate::app::AppError;
@@ -25,65 +25,95 @@ pub enum ControlChannelEvent {
 }
 
 pub struct ControlChannel {
-    channel: Arc<RTCDataChannel>,
-    on_open: oneshot::Receiver<()>,
+    #[allow(unused)]
+    channel: Arc<dyn DataChannel>,
+    channel_state: RTCDataChannelState,
+    on_main_channel_event: mpsc::UnboundedReceiver<DataChannelEvent>,
     on_receive: mpsc::UnboundedReceiver<Bytes>,
     on_receive_sender: mpsc::UnboundedSender<Bytes>,
+    on_send: mpsc::UnboundedSender<BytesMut>,
     config: ControlPacketConfig,
-    send_queue: VecDeque<Bytes>,
 }
 
 impl ControlChannel {
-    pub async fn new(peer: &RTCPeerConnection) -> Result<Self, AppError> {
+    pub async fn new(peer: &dyn PeerConnection) -> Result<Self, AppError> {
         let channel = peer.create_data_channel("moonlight.control", None).await?;
 
-        let (send_open, on_open) = oneshot::channel();
-
-        channel.on_open(Box::new(move || {
-            Box::pin(async move {
-                debug!("webrtc control channel opened");
-                let _ = send_open.send(());
-            })
-        }));
-
         let (on_receive_sender, on_receive) = unbounded_channel();
+        let (on_send, mut on_send_receiver) = unbounded_channel();
+        let (on_event_sender, on_event) = unbounded_channel();
 
-        // The browser uses the primary control channel for reliable packets such
-        // as mouse wheel input. Subchannels are only used for latency-sensitive
-        // input, so the primary channel must receive messages too.
-        let on_receive_sender_clone = on_receive_sender.clone();
-        channel.on_message(Box::new(move |message| {
-            let on_receive_sender = on_receive_sender_clone.clone();
+        spawn({
+            let channel = channel.clone();
+            async move {
+                let ready_state = async || match channel.ready_state().await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        warn!(error = %err, "failed to query data channel state");
+                        RTCDataChannelState::Closed
+                    }
+                };
+                let mut connected = false;
 
-            Box::pin(async move {
-                let _ = on_receive_sender.send(message.data);
-            })
-        }));
+                while let Some(message) = on_send_receiver.recv().await {
+                    while !connected
+                        && matches!(ready_state().await, RTCDataChannelState::Connecting)
+                    {
+                        sleep(Duration::from_millis(100)).await;
+                    }
+                    connected = true;
+
+                    trace!(message = ?message, "sending control message to webrtc peer over data channel");
+                    if let Err(err) = channel.send(message).await {
+                        warn!(error = %err, "failed to send message over data channel");
+                    }
+                }
+            }
+            .instrument(debug_span!("main data channel sender"))
+        });
+        spawn({
+            let channel = channel.clone();
+            async move {
+                while let Some(event) = channel.poll().await {
+                    let _ = on_event_sender.send(event);
+                }
+            }
+            .instrument(debug_span!("main data channel event receiver"))
+        });
 
         Ok(Self {
             channel,
-            on_open,
+            channel_state: RTCDataChannelState::Connecting,
+            on_main_channel_event: on_event,
             on_receive,
             on_receive_sender,
+            on_send,
             config: create_control_packet_config(),
-            send_queue: Default::default(),
         })
     }
 
-    pub fn try_add_channel(&mut self, channel: &RTCDataChannel) -> bool {
-        if !channel.label().starts_with("moonlight.control.") {
+    pub fn try_add_channel(&mut self, label: &str, channel: &Arc<dyn DataChannel>) -> bool {
+        if !label.starts_with("moonlight.control.") {
             return false;
         }
-        info!(label = %channel.label(), "adding control channel");
+        info!(label = %label, "adding control channel");
 
+        let channel = channel.clone();
         let on_receive_sender = self.on_receive_sender.clone();
-        channel.on_message(Box::new(move |message| {
-            let send_receive = on_receive_sender.clone();
+        spawn(
+            async move {
+                while let Some(event) = channel.poll().await {
+                    if let DataChannelEvent::OnMessage(message) = event {
+                        if message.is_string {
+                            warn!("received text message on data channel");
+                        }
 
-            Box::pin(async move {
-                let _ = send_receive.send(message.data);
-            })
-        }));
+                        let _ = on_receive_sender.send(message.data.freeze());
+                    }
+                }
+            }
+            .instrument(debug_span!("data channel", label = %label)),
+        );
 
         true
     }
@@ -100,12 +130,14 @@ impl ControlChannel {
         };
         let buffer = &buffer[0..len];
 
-        self.send_queue.push_front(Bytes::copy_from_slice(buffer));
+        let mut bytes = BytesMut::with_capacity(buffer.len());
+        bytes.extend_from_slice(buffer);
+
+        let _ = self.on_send.send(bytes);
     }
 
     pub fn is_alive(&self) -> bool {
-        !matches!(self.channel.ready_state(), RTCDataChannelState::Closed)
-            && !self.on_receive.is_closed()
+        !matches!(self.channel_state, RTCDataChannelState::Closed) && !self.on_receive.is_closed()
     }
 
     /// # Cancel Safety
@@ -117,15 +149,6 @@ impl ControlChannel {
                 // There's nothing to do
                 return pending().await;
             }
-
-            let send_future = if let Some(transmit) = self.send_queue.front()
-                && matches!(self.channel.ready_state(), RTCDataChannelState::Open)
-            {
-                // This send function implementation seems cancel safe
-                Either::Left(self.channel.send(transmit))
-            } else {
-                Either::Right(pending::<_>())
-            };
 
             select! {
                 result = self.on_receive.recv() => {
@@ -141,15 +164,31 @@ impl ControlChannel {
 
                     return Ok(ControlChannelEvent::Packet(packet));
                 },
-                result = send_future => {
-                    self.send_queue.pop_front();
+                result = self.on_main_channel_event.recv() => {
+                    let Some(event) = result else {
+                        debug!("closed because of main channel being closed");
+                        return Ok(ControlChannelEvent::Closed);
+                    };
 
-                    if let Err(err) = result {
-                        warn!(error = %err, "failed to send packet on data channel");
+                    match event {
+                        DataChannelEvent::OnMessage(message) => {
+                            if message.is_string {
+                                warn!("received text message on main data channel");
+                            }
+                            let _ = self.on_receive_sender.send(message.data.into());
+                        }
+                        DataChannelEvent::OnOpen => {
+                            self.channel_state = RTCDataChannelState::Open;
+                        }
+                        DataChannelEvent::OnClosing => {
+                            self.channel_state = RTCDataChannelState::Closing;
+                        }
+                        DataChannelEvent::OnClose => {
+                            self.channel_state = RTCDataChannelState::Closed;
+                        }
+                        _ => {}
                     }
-                },
-                // Wake up on channel open
-                _ = &mut self.on_open, if !self.on_open.is_terminated() => {}
+                }
             }
         }
     }

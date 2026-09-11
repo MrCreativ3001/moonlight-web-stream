@@ -1,5 +1,5 @@
 use bytes::{Bytes, BytesMut};
-use webrtc::rtp::{self, packetizer::Payloader};
+use rtc::rtp::packetizer::Payloader;
 
 #[derive(Debug, Clone, Copy)]
 pub struct NalHeader {
@@ -325,9 +325,9 @@ impl H265Payloader {
 }
 
 impl Payloader for H265Payloader {
-    fn payload(&mut self, mtu: usize, b: &Bytes) -> Result<Vec<Bytes>, rtp::Error> {
+    fn payload(&mut self, mtu: usize, b: &Bytes) -> Result<Vec<Bytes>, webrtc::error::Error> {
         if b.len() < 2 {
-            return Err(rtp::Error::ErrBufferTooSmall);
+            return Err(webrtc::error::Error::ErrBufferTooSmall);
         }
 
         // Parse header
@@ -381,7 +381,7 @@ impl Payloader for H265Payloader {
         }
     }
 
-    fn clone_to(&self) -> Box<dyn Payloader + Send + Sync> {
+    fn clone_to(&self) -> Box<dyn Payloader> {
         Box::new(self.clone())
     }
 }

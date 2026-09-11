@@ -76,6 +76,7 @@ pub async fn webrtc_loop(
             RTCPeerConnectionState::Connected => {
                 if peer_was_disconnected {
                     // request idr after connecting
+                    debug!("requesting idr after webrtc peers connected");
                     if let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
                         warn!(error = %err, "failed to request initial idr");
                     }
@@ -200,8 +201,6 @@ fn send_key_change(
     key_code: KeyCode,
     action: KeyAction,
 ) {
-    info!(action = ?action, key_code = ?key_code, "test");
-
     let mouse_button = match key_code {
         KeyCode::VK_LBUTTON => Some(MouseButton::Left),
         KeyCode::VK_MBUTTON => Some(MouseButton::Middle),

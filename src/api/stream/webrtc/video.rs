@@ -254,7 +254,7 @@ impl VideoChannel {
                                 })]
                             };
 
-                        if let Err(err) = track.write_rtp_with_extensions(
+                        if let Err(err) = track.write_rtp(
                                 Packet {
                                     header: Header {
                                         version: 2,
@@ -268,7 +268,7 @@ impl VideoChannel {
                                     },
                                     payload,
                                 },
-                                extensions,
+                                // extensions,
                             )
                             .await
                         {

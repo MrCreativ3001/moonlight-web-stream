@@ -561,6 +561,11 @@ pub async fn webrtc_post(
             if let Err(err) = peer.close().await {
                 warn!(error = %err, "failed to close webrtc peer");
             }
+
+            // IMPORTANT: we need to manually trigger the close event because the peer doesn't do it
+            handler
+                .on_connection_state_change(RTCPeerConnectionState::Closed)
+                .await;
         }
         .instrument(debug_span!("moonlight stream"))
     });
@@ -651,6 +656,9 @@ pub async fn webrtc_post(
                     }
                     ExternalStreamEvent::Stop => {
                         info!("closing the stream");
+
+                        // IMPORTANT: we need to manually trigger the close event because the peer doesn't do it
+                        handler.on_connection_state_change(RTCPeerConnectionState::Closed).await;
 
                         if let Err(err) = peer.close().await {
                             warn!(error = %err, "error whilst closing the webrtc peer");

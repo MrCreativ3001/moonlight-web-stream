@@ -568,8 +568,13 @@ pub async fn webrtc_post(
         .instrument(debug_span!("moonlight stream"))
     });
 
-    // Wait for ice gathering to complete
-    handler.on_ice_gathering_finished.notified().await;
+    // Wait for ice gathering to complete or 10 seconds to pass
+    select! {
+        _ = handler.on_ice_gathering_finished.notified() => {},
+        _ = sleep(Duration::from_secs(10)) => {
+            warn!("Couldn't fully gather ice candidates after 10 seconds! Sending response regardless of uncomplete ice gathering state.");
+        }
+    }
 
     // Use the local description with video and audio tracks, control channel and all ice candidates included
     let answer = peer

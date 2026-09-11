@@ -597,7 +597,7 @@ pub async fn webrtc_post(
         .expect("failed to write sdp answer");
     let answer = String::from_utf8_lossy(&answer).to_string();
 
-    info!("ice gathering completed, sending answer to client");
+    info!("sending answer to client");
 
     // Add stream to the list of streams
     let (event_sender, mut event_receiver) = mpsc::channel(20);

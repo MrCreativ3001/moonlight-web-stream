@@ -124,22 +124,33 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
         .from_env_lossy()
         // Add default directives
         .add_directive(
-            "actix_http::h1=off"
+            "actix_http::h1=debug"
                 .parse()
                 .expect("failed to add actix-web tracing directive"),
         )
         .add_directive(
-            "h2=off"
+            "h2=debug"
                 .parse()
                 .expect("failed to add h2 tracing directive"),
         )
         .add_directive(
-            "mio::poll=off"
+            "mio::poll=debug"
                 .parse()
                 .expect("failed to add mio tracing directive"),
         )
+        // Filter out webrtc specific modules, because they just debug log everything
         .add_directive(
-            "webrtc_sctp=off"
+            "rtc::peer_connection::handler::sctp=info"
+                .parse()
+                .expect("failed to add rtc tracing directive"),
+        )
+        .add_directive(
+            "rtc::peer_connection::handler=info"
+                .parse()
+                .expect("failed to add rtc tracing directive"),
+        )
+        .add_directive(
+            "rtc_sctp::association=info"
                 .parse()
                 .expect("failed to add rtc tracing directive"),
         );

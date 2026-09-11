@@ -51,7 +51,8 @@ use webrtc::data_channel::DataChannel;
 use webrtc::peer_connection::{
     MediaEngine, PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler,
     RTCConfigurationBuilder, RTCIceCandidateInit, RTCIceGatheringState, RTCIceServer,
-    RTCPeerConnectionState, RTCSessionDescription, SettingEngine, register_default_interceptors,
+    RTCPeerConnectionState, RTCSessionDescription, SettingEngine, SettingEngineBuilder,
+    register_default_interceptors,
 };
 
 use crate::api::stream::apply_role_restrictions;
@@ -273,23 +274,24 @@ pub async fn webrtc_post(
 
     // -- Create WebRtc peer
     // Create settings
-    let mut setting_engine = SettingEngine::default();
+    let mut setting_engine = SettingEngineBuilder::new();
     if let Some(mapping) = app.config().webrtc.nat_1to1.as_ref() {
-        setting_engine.set_nat_1to1_ips(
+        setting_engine = setting_engine.with_nat_1to1_ips(
             mapping.ips.clone(),
             into_webrtc_ice_candidate(mapping.ice_candidate_type),
         );
     }
 
-    setting_engine.set_include_loopback_candidate(app.config().webrtc.include_loopback_candidates);
+    setting_engine = setting_engine
+        .with_include_loopback_candidate(app.config().webrtc.include_loopback_candidates);
 
-    setting_engine.set_ice_timeouts(
+    setting_engine = setting_engine.with_ice_timeouts(
         Some(Duration::from_secs(5)),
         Some(Duration::from_secs(15)),
         Some(Duration::from_secs(2)),
     );
 
-    setting_engine.set_network_types(vec![NetworkType::Udp4]);
+    setting_engine = setting_engine.with_network_types(vec![NetworkType::Udp4]);
 
     // Create video
     let mut video_channel = VideoChannel::new(
@@ -348,7 +350,7 @@ pub async fn webrtc_post(
     let peer = PeerConnectionBuilder::default()
         .with_media_engine(media_engine)
         .with_interceptor_registry(interceptor_registry)
-        .with_setting_engine(setting_engine)
+        .with_setting_engine(setting_engine.build())
         .with_udp_addrs(local_addrs)
         .with_handler(handler.clone())
         .with_configuration(

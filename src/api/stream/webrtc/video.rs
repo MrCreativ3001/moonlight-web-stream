@@ -335,6 +335,7 @@ impl VideoChannel {
                                 }
                             }
                         }
+                        _ => {}
                     }
                 }
             }

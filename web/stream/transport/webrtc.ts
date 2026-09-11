@@ -827,6 +827,9 @@ class WebRtcControlStream implements IControlStream {
         if (!this.config) {
             return
         }
+        if (channel.readyState != "open") {
+            return
+        }
 
         if (channel.bufferedAmount > this.maxBufferedAmount(channel)) {
             // Cannot send more packets because of buffered amount

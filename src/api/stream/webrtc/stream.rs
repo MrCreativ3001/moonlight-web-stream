@@ -1,8 +1,4 @@
-use std::{
-    future::pending,
-    net::{IpAddr, Ipv4Addr},
-    sync::Arc,
-};
+use std::{future::pending, sync::Arc};
 
 use moonlight_common::stream::{
     control::{
@@ -32,21 +28,6 @@ use crate::{
     },
     app::AppError,
 };
-
-pub async fn discover_local_ips() -> Vec<IpAddr> {
-    // See https://github.com/webrtc-rs/rtc/blob/83c542e3f1a8e32c4f4f1409a3f4d1f598bc1f93/examples/signal/src/lib.rs#L133-L148
-    let ip = if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0")
-        && socket.connect("8.8.8.8:80").is_ok()
-        && let Ok(addr) = socket.local_addr()
-        && let IpAddr::V4(ip) = addr.ip()
-    {
-        ip.into()
-    } else {
-        Ipv4Addr::new(127, 0, 0, 1).into()
-    };
-
-    vec![ip]
-}
 
 pub async fn webrtc_loop(
     mut stream: MoonlightStream,

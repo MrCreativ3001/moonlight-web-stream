@@ -1,7 +1,7 @@
 use crate::api::stream::webrtc::audio::AudioChannel;
 use crate::api::stream::webrtc::control::ControlChannel;
 use crate::api::stream::webrtc::ext_color_space::COLOR_SPACE_URI;
-use crate::api::stream::webrtc::stream::{discover_local_ips, webrtc_loop};
+use crate::api::stream::webrtc::stream::webrtc_loop;
 use crate::api::stream::webrtc::video::VideoChannel;
 use crate::config::PortRange;
 use actix_web::HttpRequest;
@@ -332,11 +332,7 @@ pub async fn webrtc_post(
     } else {
         0
     };
-    let local_addrs = discover_local_ips()
-        .await
-        .into_iter()
-        .map(|ip| SocketAddr::new(ip, port))
-        .collect::<Vec<_>>();
+    let local_addrs = vec![SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port)];
 
     // Initialize senders and receivers for events
     let (on_data_channel_sender, on_data_channel) =

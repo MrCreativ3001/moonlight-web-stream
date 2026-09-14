@@ -3,11 +3,15 @@
 
 Run with
 ```sh
-docker run -d -p 8080:8080 -p 40000-40100:40000-40100/udp -e WEBRTC_PORT_RANGE=40000:40100 -e WEBRTC_NAT_1TO1_HOST=YOUR_LAN_IP mrcreativ3001/moonlight-web-stream:latest
+docker run -d -p 8080:8080 -p 40000-40100:40000-40100/udp -e WEBRTC_PORT_RANGE=40000:40100 -e WEBRTC_NAT_1TO1_HOST=YOUR_LAN_IP ghcr.io/spacedouut/moonlight-web-stream-simplified:latest
 ```
 and replace `YOUR_LAN_IP` with the device ip address of the local network.
 
 `WEBRTC_PORT_RANGE` must match the udp port mapping.
+
+Images are published to GHCR on every push to `master` (`:latest`, `:master`) and on `v*` tags.
+
+The container has no authentication; put a reverse proxy with authentication in front of it (see [Authentication](../README.md#authentication)).
 
 # Running with a TURN server
 

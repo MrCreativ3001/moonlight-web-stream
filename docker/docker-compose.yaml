@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   moonlight-web:
-    image: mrcreativ3001/moonlight-web-stream:latest
+    image: ghcr.io/spacedouut/moonlight-web-stream-simplified:latest
     container_name: moonlight-web
     restart: unless-stopped
     ports:

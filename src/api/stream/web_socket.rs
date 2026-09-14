@@ -1,11 +1,8 @@
 use std::{pin::pin, sync::Arc, time::Duration};
 
-use crate::api::{
-    bindings::{
-        StreamStatsClientboundMessage, StreamStatsServerboundMessage, WebSocketChannel,
-        WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse,
-    },
-    stream::apply_role_restrictions,
+use crate::api::bindings::{
+    StreamStatsClientboundMessage, StreamStatsServerboundMessage, WebSocketChannel,
+    WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse,
 };
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
@@ -39,7 +36,7 @@ use tracing::{Instrument, debug, debug_span, error, info, instrument, trace, war
 
 use crate::{
     api::stream::create_control_packet_config,
-    app::{AppError, host::HostId, user::AuthenticatedUser},
+    app::{App, AppError, host::HostId},
 };
 
 enum WsData {
@@ -48,28 +45,18 @@ enum WsData {
 }
 
 #[get("/host/stream/web_socket")]
-#[instrument(skip(user, req, body_stream), fields(user = %user.id()))]
+#[instrument(skip(app, req, body_stream))]
 pub async fn web_socket_stream(
-    mut user: AuthenticatedUser,
+    app: actix_web::web::Data<App>,
     req: HttpRequest,
     body_stream: Payload,
 ) -> Result<HttpResponse, Error> {
-    if !user
-        .role()
-        .await?
-        .permissions()
-        .await?
-        .allow_transport_websockets
-    {
-        return Err(AppError::Forbidden.into());
-    }
-
     // upgrade connection to web socket connection
     let (res, ws_sender, ws_receiver) = actix_ws::handle(&req, body_stream)?;
 
     spawn(
         async move {
-            match handle_ws(user, ws_sender, ws_receiver).await {
+            match handle_ws(app, ws_sender, ws_receiver).await {
                 Ok(_) => {}
                 Err(err) => {
                     error!(error = %err, "stream failed");
@@ -83,17 +70,11 @@ pub async fn web_socket_stream(
 }
 
 async fn handle_ws(
-    mut user: AuthenticatedUser,
+    app: actix_web::web::Data<App>,
     mut ws_sender: Session,
     mut ws_receiver: MessageStream,
 ) -> Result<(), AppError> {
     let control_config = create_control_packet_config();
-
-    // See if the user is allowed to use web sockets
-    let permissions = user.role().await?.permissions().await?;
-    if !permissions.allow_transport_websockets {
-        return Err(AppError::Forbidden);
-    }
 
     // Wait for stream request
     let stream_request = select! {
@@ -130,9 +111,8 @@ async fn handle_ws(
 
     // -- Get host
     let host_id = HostId(stream_request.host_id);
-    let mut host = user.host(host_id).await?;
-
-    let host = host.use_host(&mut user).await?;
+    let mut host = app.host(host_id).await?;
+    let host = host.use_host().await?;
 
     if !host.is_paired().await.map_err(AppError::from)? {
         return Err(AppError::HostNotPaired);
@@ -170,9 +150,6 @@ async fn handle_ws(
         // TODO: mic?
         enable_mic: false,
     };
-
-    // apply permissions
-    apply_role_restrictions(&permissions, &mut settings);
 
     // adjust settings
     let server_version = host.version().await?;

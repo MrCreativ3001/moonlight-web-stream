@@ -2,7 +2,6 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     num::ParseIntError,
     str::FromStr,
-    time::Duration,
 };
 
 use log::LevelFilter;
@@ -58,23 +57,15 @@ fn default_dev_venator() -> bool {
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum StorageConfig {
-    Json {
-        path: String,
-        session_expiration_check_interval: Duration,
-    },
+    Json { path: String },
 }
 
 impl Default for StorageConfig {
     fn default() -> Self {
         StorageConfig::Json {
             path: "server/data.json".to_string(),
-            session_expiration_check_interval: default_session_expiration_check_interval(),
         }
     }
-}
-
-fn default_session_expiration_check_interval() -> Duration {
-    Duration::from_mins(5)
 }
 
 // -- WebRTC Config
@@ -168,13 +159,6 @@ pub struct WebServerConfig {
     pub certificate: Option<ConfigSsl>,
     #[serde(default)]
     pub url_path_prefix: String,
-    #[serde(default = "default_session_cookie_secure")]
-    pub session_cookie_secure: bool,
-    #[serde(default = "default_session_cookie_expiration")]
-    pub session_cookie_expiration: Duration,
-    pub first_login_create_admin: bool,
-    pub first_login_assign_global_hosts: bool,
-    pub forwarded_header: Option<ForwardedHeaders>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,11 +173,6 @@ impl Default for WebServerConfig {
             bind_address: default_bind_address(),
             certificate: None,
             url_path_prefix: "".to_string(),
-            session_cookie_secure: default_session_cookie_secure(),
-            session_cookie_expiration: default_session_cookie_expiration(),
-            first_login_create_admin: true,
-            first_login_assign_global_hosts: true,
-            forwarded_header: None,
         }
     }
 }
@@ -201,42 +180,6 @@ impl Default for WebServerConfig {
 fn default_bind_address() -> SocketAddr {
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8080))
 }
-fn default_session_cookie_secure() -> bool {
-    false
-}
-fn default_session_cookie_expiration() -> Duration {
-    const DAY_SECONDS: u64 = 24 * 60 * 60;
-
-    Duration::from_secs(DAY_SECONDS)
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ForwardedHeaders {
-    pub username_header: String,
-    #[serde(default = "default_forwarded_headers_auto_create_user")]
-    pub auto_create_missing_user: bool,
-    #[serde(default = "default_forwarded_headers_ignore_case")]
-    pub ignore_case: bool,
-}
-
-impl Default for ForwardedHeaders {
-    fn default() -> Self {
-        Self {
-            username_header: "X-Forwarded-User".to_string(),
-            auto_create_missing_user: default_forwarded_headers_auto_create_user(),
-            ignore_case: default_forwarded_headers_ignore_case(),
-        }
-    }
-}
-
-fn default_forwarded_headers_auto_create_user() -> bool {
-    true
-}
-
-fn default_forwarded_headers_ignore_case() -> bool {
-    false
-}
-
 // -- Moonlight
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

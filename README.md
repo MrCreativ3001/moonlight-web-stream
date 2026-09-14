@@ -218,26 +218,6 @@ sudo a2enconf moonlight-web
 
 5. Use https with a certificate (Optional)
 
-### Authentication using a Reverse Proxy
-Authentication with a reverse proxy works by the proxy adding custom headers to the request of the user. In this example the username header is named `X-Forwarded-User`.
-
-<b>Make sure that the header is not changeable by any external request and only the proxy can set this header.</b>
-
-Enable proxy authentication by setting the [forwarded header username](#forwarded-header-username) option.
-By default the [auto create missing user](#forwarded-header-auto-create-missing-user) option is turned on even if it's not specified in the config.
-```json
-{
-    "web_server": {
-        "forwarded_header": {
-            "username_header": "X-Forwarded-User",
-            "auto_create_missing_user": true
-        }
-    }
-}
-```
-
-If `auto_create_missing_user` is enabled, newly created users will be assigned the role configured as the default in the Admin Panel.
-
 ### Using WebSocket Transport
 
 In some networks (for example, corporate or highly restricted environments), establishing a WebRTC connection can be difficult or may not work at all.
@@ -474,46 +454,6 @@ Environment Variable: `PATH_PREFIX=/moonlight`
 {
     "web_server": {
         "url_path_prefix": "/moonlight"
-    }
-}
-```
-
-### Forwarded Header Username
-The header that will give the authenticated username to this web server.
-
-```json
-{
-    "web_server": {
-        "forwarded_header": {
-            "username_header": "X-Forwarded-User"
-        }
-    }
-}
-```
-
-### Forwarded Header Auto Create Missing User
-Automatically create a new user when the requested user specified in the [username_header](#forwarded-header-username) is not found.
-
-```json
-{
-    "web_server": {
-        "forwarded_header": {
-            "auto_create_missing_user": true
-        }
-    }
-}
-```
-
-### Forwarded Header Ignore Case
-Perform a case-insensitive lookup for the user in the in the [username_header](#forwarded-header-username).
-If multiple users match the given name, the request will fail.
-
-```json
-{
-    "web_server": {
-        "forwarded_header": {
-            "ignore_case": true
-        }
     }
 }
 ```

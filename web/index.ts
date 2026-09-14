@@ -51,8 +51,6 @@ async function startApp() {
     }
 }
 
-startApp()
-
 type DisplayStates = "hosts" | "games" | "settings"
 
 type AppState = { display: DisplayStates, hostId?: number }
@@ -346,3 +344,5 @@ class MainApp implements Component {
         parent.removeChild(this.divElement)
     }
 }
+
+startApp()

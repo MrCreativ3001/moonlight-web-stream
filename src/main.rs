@@ -15,7 +15,7 @@ use tracing_actix_web::{RootSpanBuilder, TracingLogger};
 use tracing_appender::non_blocking;
 use tracing_subscriber::{
     EnvFilter, Registry,
-    fmt::{self, format::FmtSpan},
+    fmt::{self},
     layer::SubscriberExt,
     util::SubscriberInitExt,
 };
@@ -158,9 +158,7 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
     #[cfg(windows)]
     enable_ansi_windows();
 
-    let stdout_layer = fmt::layer()
-        .with_span_events(FmtSpan::CLOSE)
-        .with_ansi(io::stdout().is_terminal());
+    let stdout_layer = fmt::layer().with_ansi(io::stdout().is_terminal());
 
     let (file_layer, guard) = if let Some(log_file) = &config.log.file_path {
         let file = OpenOptions::new()
@@ -172,10 +170,7 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
 
         let (writer, guard) = non_blocking(file);
 
-        let fmt_layer = fmt::layer()
-            .with_span_events(FmtSpan::CLOSE)
-            .with_writer(writer)
-            .with_ansi(false);
+        let fmt_layer = fmt::layer().with_writer(writer).with_ansi(false);
 
         (Some(fmt_layer), Some(guard))
     } else {

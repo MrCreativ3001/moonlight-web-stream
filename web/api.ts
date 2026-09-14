@@ -75,7 +75,7 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
         method: method,
         headers,
         body,
-        credentials: "omit"
+        credentials: "include"
     }
 
     if (init?.keepalive) {

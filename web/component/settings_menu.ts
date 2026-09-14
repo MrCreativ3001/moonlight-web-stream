@@ -5,7 +5,6 @@ import { getLanguageOptions, getTranslations, Language, normalizeLanguage } from
 import { Component, ComponentEvent } from "./index"
 import { InputComponent, SelectComponent } from "./input"
 import { SidebarEdge } from "./sidebar/index"
-import { StreamPermissions } from "../api_bindings";
 
 export type Settings = {
     sidebarEdge: SidebarEdge,
@@ -41,7 +40,6 @@ export type TransportType = "auto" | "webrtc" | "websocket"
 
 import DEFAULT_SETTINGS from "../default_settings"
 
-/// You should use the role default settings instead!
 export function globalDefaultSettings(): Settings {
     // We are deep cloning this
     return deepClone(DEFAULT_SETTINGS)
@@ -107,40 +105,13 @@ export function setLocalStreamSettings(settings?: Settings) {
 
 export type StreamSettingsChangeListener = (event: ComponentEvent<StreamSettingsComponent>) => void
 
-function makeSettingsValid(permissions: StreamPermissions, settings: Settings) {
-    if (permissions.maximum_bitrate_kbps != null && permissions.maximum_bitrate_kbps < settings.bitrate) {
-        settings.bitrate = permissions.maximum_bitrate_kbps
-    }
-
-    if (!permissions.allow_codec_av1 && settings.videoCodec == "av1") {
-        settings.videoCodec = "h265"
-    }
-    if (!permissions.allow_codec_h265 && settings.videoCodec == "h265") {
-        settings.videoCodec = "h264"
-    }
-    if (!permissions.allow_codec_h264 && settings.videoCodec == "h264") {
-        settings.videoCodec = "auto"
-    }
-
-    if (!permissions.allow_hdr && settings.hdr) {
-        settings.hdr = false
-    }
-
-    if (!permissions.allow_transport_webrtc && settings.dataTransport == "webrtc") {
-        settings.dataTransport = "auto"
-    }
-    if (!permissions.allow_transport_websockets && settings.dataTransport == "websocket") {
-        settings.dataTransport = "auto"
-    }
-
+function makeSettingsValid(settings: Settings) {
     if (!Number.isFinite(settings.localCursorSensitivity) || settings.localCursorSensitivity <= 0) {
         settings.localCursorSensitivity = globalDefaultSettings().localCursorSensitivity
     }
 }
 
 export class StreamSettingsComponent implements Component {
-
-    private permissions: StreamPermissions
 
     private divElement: HTMLDivElement = document.createElement("div")
 
@@ -185,15 +156,13 @@ export class StreamSettingsComponent implements Component {
 
     private useSelectElementPolyfill: InputComponent
 
-    constructor(permissions: StreamPermissions, settings: Settings) {
+    constructor(settings: Settings) {
         // Sometimes the normal settings object doesn't have some values, because they change between versions.
         // Use those as fallback
         const defaultSettings_ = globalDefaultSettings()
 
-        makeSettingsValid(permissions, defaultSettings_)
-        makeSettingsValid(permissions, settings)
-
-        this.permissions = permissions
+        makeSettingsValid(defaultSettings_)
+        makeSettingsValid(settings)
         const language = normalizeLanguage(settings?.language ?? defaultSettings_.language)
         const translations = getTranslations(language)
         const i = translations.settings
@@ -234,8 +203,8 @@ export class StreamSettingsComponent implements Component {
             value: settings?.bitrate?.toString(),
             step: "100",
             numberSlider: {
-                range_min: Math.min(this.permissions.maximum_bitrate_kbps ?? 1000, 1000),
-                range_max: this.permissions.maximum_bitrate_kbps ?? 10000,
+                range_min: 1000,
+                range_max: 10000,
             }
         })
         this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
@@ -286,21 +255,11 @@ export class StreamSettingsComponent implements Component {
         const allowedVideoCodecs = [
             { value: "auto", name: i.autoExperimental },
         ]
-        if (this.permissions.allow_codec_h264) {
-            allowedVideoCodecs.push(
-                { value: "h264", name: "H264" },
-            )
-        }
-        if (this.permissions.allow_codec_h265) {
-            allowedVideoCodecs.push(
-                { value: "h265", name: "H265" },
-            )
-        }
-        if (this.permissions.allow_codec_av1) {
-            allowedVideoCodecs.push(
-                { value: "av1", name: i.av1Experimental }
-            )
-        }
+        allowedVideoCodecs.push(
+            { value: "h264", name: "H264" },
+            { value: "h265", name: "H265" },
+            { value: "av1", name: i.av1Experimental },
+        )
 
         this.videoCodec = new SelectComponent("videoCodec", allowedVideoCodecs, {
             displayName: i.videoCodec,
@@ -337,11 +296,6 @@ export class StreamSettingsComponent implements Component {
         })
         this.hdr.addChangeListener(this.onSettingsChange.bind(this))
         this.hdr.mount(this.divElement)
-
-        if (!this.permissions.allow_hdr) {
-            this.hdr.setChecked(false)
-            this.hdr.setEnabled(false)
-        }
 
         // Audio local
         this.audioHeader.innerText = i.audio
@@ -459,16 +413,10 @@ export class StreamSettingsComponent implements Component {
         const allowedDataTransport = [
             { value: "auto", name: i.auto },
         ]
-        if (this.permissions.allow_transport_webrtc) {
-            allowedDataTransport.push(
-                { value: "webrtc", name: "WebRTC" },
-            )
-        }
-        if (this.permissions.allow_transport_websockets) {
-            allowedDataTransport.push(
-                { value: "websocket", name: i.webSocket },
-            )
-        }
+        allowedDataTransport.push(
+            { value: "webrtc", name: "WebRTC" },
+            { value: "websocket", name: i.webSocket },
+        )
 
         this.language = new SelectComponent("language", getLanguageOptions(), {
             displayName: i.language,
@@ -581,7 +529,7 @@ export class StreamSettingsComponent implements Component {
 
         settings.useSelectElementPolyfill = this.useSelectElementPolyfill.isChecked()
 
-        makeSettingsValid(this.permissions, settings)
+        makeSettingsValid(settings)
 
         return settings
     }

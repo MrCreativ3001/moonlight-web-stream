@@ -1,89 +1,23 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, PutDefaultUserRequest, PutDefaultRoleRequest, GetDefaultRoleResponse, GetDefaultUserResponse, } from "./api_bindings"
-import { showNotification } from "./component/notification"
-import { showMessage, showModal } from "./component/modal/index"
-import { ApiUserPasswordPrompt } from "./component/modal/login"
+import { App, DeleteHostQuery, DetailedHost, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, PostCancelRequest, PostCancelResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, } from "./api_bindings"
 import { buildUrl } from "./config_"
 import { WebRtcLinkHeader_Tags, webrtcLinkHeaderParse } from "./uniffi/moonlight_common_bindings"
 
 // IMPORTANT: this should be a bit bigger than the moonlight-common reqwest backend timeout if some hosts are offline!
 const API_TIMEOUT = 12000
 
-// -- Any errors related to auth will reload page -> show the auth modal
-function handleError(event: ErrorEvent) {
-    onError(event.error)
-}
-function handleRejection(event: PromiseRejectionEvent) {
-    onError(event.reason)
-}
-function onError(error: any) {
-    if (error instanceof FetchError) {
-        const response = error.getResponse()
-        // 401 = Unauthorized
-        if (response?.status == 401) {
-            window.location.reload()
-        }
-    }
-}
-
-window.addEventListener("error", handleError)
-window.addEventListener("unhandledrejection", handleRejection)
-
-export async function getApi(): Promise<Api> {
-    const host_url = buildUrl("/api")
-
-    let api = { host_url, bearer: null, user: null, role: null }
-
-    if (await apiAuthenticate(api)) {
-        return api
-    }
-
-    let newApi: Api
-    while (true) {
-        const api = await tryLogin()
-        if (api) {
-            newApi = api
-            break
-        }
-    }
-
-    return newApi
-}
-export async function tryLogin(): Promise<Api | null> {
-    const host_url = buildUrl("/api")
-
-    let api = { host_url, bearer: null, user: null, role: null }
-
-    const prompt = new ApiUserPasswordPrompt()
-    const userAuth = await showModal(prompt)
-
-    if (userAuth == null) {
-        return null
-    }
-
-    if (await apiLogin(api, userAuth)) {
-        if (!await apiAuthenticate(api)) {
-            showNotification("Login was successful but authentication doesn't work!")
-        }
-        return api
-    } else {
-        await showMessage("Credentials are not Valid")
-        return null
+export function getApi(): Api {
+    return {
+        host_url: buildUrl("/api"),
     }
 }
 
 const OPTIONS = "OPTIONS"
 const GET = "GET"
-const PUT = "PUT"
 const POST = "POST"
 const PATCH = "PATCH"
-const DELETE = "DELETE"
 
 export type Api = {
     host_url: string
-    bearer: string | null,
-    // User cache
-    user: DetailedUser | null,
-    role: DetailedRole | null,
 }
 
 export type ApiFetchInit = {
@@ -123,10 +57,6 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
 
     const headers: any = {};
 
-    if (api.bearer) {
-        headers["Authorization"] = `Bearer ${api.bearer}`;
-    }
-
     let body = null
     if (init) {
         if ("json" in init) {
@@ -145,7 +75,7 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
         method: method,
         headers,
         body,
-        credentials: "include"
+        credentials: "omit"
     }
 
     if (init?.keepalive) {
@@ -258,166 +188,6 @@ export async function fetchApi(api: Api, endpoint: string, method: string = GET,
 
         return stream
     }
-}
-
-export async function apiLogin(api: Api, request: PostLoginRequest): Promise<boolean> {
-    let response
-
-    try {
-        response = await fetchApi(api, "/login", "post", {
-            json: request,
-            response: "ignore"
-        })
-    } catch (e) {
-        if (e instanceof FetchError) {
-            const response = e.getResponse()
-
-            if (response && (response.status == 401 || response.status == 404)) {
-                return false
-            } else {
-                showNotification(e.message)
-                return false
-            }
-        }
-    }
-
-    return true
-}
-
-export async function apiLogout(api: Api): Promise<boolean> {
-    let response
-    try {
-        response = await fetchApi(api, "/logout", "post", { response: "ignore" })
-    } catch (e) {
-        throw e
-    }
-
-    return true
-}
-
-export async function apiAuthenticate(api: Api, retryOnFail?: boolean): Promise<boolean> {
-    const retryOnFail_ = retryOnFail === undefined ? true : retryOnFail
-
-    let response
-    try {
-        response = await fetchApi(api, "/authenticate", GET, { response: "ignore" })
-    } catch (e) {
-        if (e instanceof FetchError) {
-            const response = e.getResponse()
-            if (response?.status == 401) {
-                return false
-            } else if (response?.status == 409 && retryOnFail_) {
-                // 409 = Conflict, SessionTokenNotFound -> requires a new request
-                return await apiAuthenticate(api, false)
-            } else {
-                throw e
-            }
-        }
-        throw e
-    }
-
-    return response != null
-}
-
-export async function apiGetUser(api: Api, query?: GetUserQuery): Promise<DetailedUser> {
-    if (!query || (query.name == null && query.user_id == null)) {
-        if (api.user) {
-            return api.user
-        }
-    }
-
-    const response = await fetchApi(api, "/user", GET, {
-        query: query ?? { name: null, user_id: null }
-    })
-
-    return response as DetailedUser
-}
-export async function apiGetUsers(api: Api): Promise<GetUsersResponse> {
-    const response = await fetchApi(api, "/users", GET)
-
-    return response as GetUsersResponse
-}
-export async function apiPostUser(api: Api, data: PostUserRequest): Promise<DetailedUser> {
-    const response = await fetchApi(api, "/user", POST, { json: data })
-
-    return response as DetailedUser
-}
-export async function apiPatchUser(api: Api, data: PatchUserRequest): Promise<void> {
-    await fetchApi(api, "/user", PATCH, {
-        json: data,
-        response: "ignore"
-    })
-}
-export async function apiDeleteUser(api: Api, data: DeleteUserRequest): Promise<void> {
-    await fetchApi(api, "/user", DELETE, {
-        json: data,
-        response: "ignore"
-    })
-}
-
-export async function apiPutDefaultUser(api: Api, data: PutDefaultUserRequest): Promise<void> {
-    await fetchApi(api, "/user/default", PUT, {
-        json: data,
-        response: "ignore"
-    })
-}
-export async function apiDeleteDefaultUser(api: Api): Promise<void> {
-    await fetchApi(api, "/user/default", DELETE, {
-        response: "ignore"
-    })
-}
-export async function apiGetDefaultUser(api: Api): Promise<GetDefaultUserResponse> {
-    return await fetchApi(api, "/user/default", GET)
-}
-
-export async function apiGetRoles(api: Api): Promise<GetRolesResponse> {
-    const response = await fetchApi(api, "/roles", GET, {
-        response: "json"
-    })
-
-    return response as GetRolesResponse
-}
-export async function apiGetRole(api: Api, query: GetRoleQuery): Promise<GetRoleResponse> {
-    const response = await fetchApi(api, "/role", GET, {
-        query,
-        response: "json"
-    })
-    return response as GetRoleResponse
-}
-export async function apiPostRole(api: Api, request: PostRoleRequest): Promise<PostRoleResponse> {
-    const response = await fetchApi(api, "/role", POST, {
-        json: request,
-        response: "json"
-    });
-
-    return response as PostRoleResponse
-}
-export async function apiPatchRole(api: Api, request: PatchRoleRequest): Promise<void> {
-    await fetchApi(api, "/role", PATCH, {
-        json: request,
-        response: "ignore",
-    })
-}
-export async function apiDeleteRole(api: Api, query: DeleteRoleQuery): Promise<void> {
-    await fetchApi(api, "/role", DELETE, {
-        query,
-        response: "ignore",
-    })
-}
-
-export async function apiPutDefaultRole(api: Api, data: PutDefaultRoleRequest): Promise<void> {
-    await fetchApi(api, "/role/default", PUT, {
-        json: data,
-        response: "ignore"
-    })
-}
-export async function apiDeleteDefaultRole(api: Api): Promise<void> {
-    await fetchApi(api, "/role/default", DELETE, {
-        response: "ignore"
-    })
-}
-export async function apiGetDefaultRole(api: Api): Promise<GetDefaultRoleResponse> {
-    return await fetchApi(api, "/role/default", GET)
 }
 
 export async function apiGetHosts(api: Api): Promise<StreamedJsonResponse<GetHostsResponse, UndetailedHost>> {

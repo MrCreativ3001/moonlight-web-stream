@@ -964,6 +964,11 @@ input[type=number] {
     flex-wrap: wrap;
 }
 
+.host-empty-hint {
+    width: 100%;
+    text-align: center;
+}
+
 .host-element {
     cursor: pointer;
     margin: var(--space-sm);

@@ -49,31 +49,6 @@ export function getCurrentLanguage(): Language {
     return normalizeLanguage(getStoredSettings()?.language)
 }
 
-export function hasStoredLanguage(): boolean {
-    return getStoredSettings()?.language != null
-}
-
-export function adoptRoleDefaultLanguage(roleDefaultSettings: { language?: unknown } | null | undefined): boolean {
-    if (hasStoredLanguage()) {
-        return false
-    }
-
-    const roleLanguage = normalizeLanguage(roleDefaultSettings?.language)
-    if (roleLanguage === getCurrentLanguage()) {
-        return false
-    }
-
-    try {
-        const settings = getStoredSettings() ?? {}
-        settings.language = roleLanguage
-        localStorage.setItem("mlSettings", JSON.stringify(settings))
-        return true
-    } catch {
-        localStorage.setItem("mlSettings", JSON.stringify({ language: roleLanguage }))
-        return true
-    }
-}
-
 export function getLanguageOptions(): Array<{ value: Language, name: string }> {
     return [
         { value: "en", name: "English" },

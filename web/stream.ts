@@ -1,13 +1,13 @@
-import { Api, apiGetRole, getApi } from "./api"
-import { DetailedRole, StreamKeys } from "./api_bindings"
+import { Api, getApi } from "./api"
+import { StreamKeys } from "./api_bindings"
 import { Component } from "./component/index"
 import { SelectComponent } from "./component/input"
 import { FormModal } from "./component/modal/form"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index"
 import { showNotification } from "./component/notification"
-import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu"
+import { getLocalStreamSettings, globalDefaultSettings, Settings, TransportType } from "./component/settings_menu"
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index"
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n"
+import { getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n"
 import { requestKeyboardLock } from "./iframe"
 import "./polyfill/index"
 import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard"
@@ -28,9 +28,7 @@ async function startApp() {
 
     const queryParams = new URLSearchParams(location.search)
     let lang = parseLanguageFromQuery(queryParams)
-    const bootstrapRole = await apiGetRole(api, { id: null })
     if (!lang) {
-        adoptRoleDefaultLanguage(bootstrapRole.role.default_settings)
         lang = getCurrentLanguage()
     }
     I = getTranslations(lang)
@@ -91,7 +89,7 @@ async function startApp() {
     uniffiSetLogger(new CustomUniffiLogger(), LogLevel.Debug)
 
     // Start and Mount App
-    const app = new ViewerApp(api, hostId, appId, bootstrapRole.role, parseSettingsFromQuery(queryParams))
+    const app = new ViewerApp(api, hostId, appId, parseSettingsFromQuery(queryParams))
     app.mount(rootElement);
 
     (window as any)["app"] = app
@@ -179,10 +177,10 @@ class ViewerApp implements Component {
 
     private hasShownFullscreenEscapeWarning = false
 
-    constructor(api: Api, hostId: number, appId: number, bootstrapRole: DetailedRole, options?: Partial<Settings>) {
+    constructor(api: Api, hostId: number, appId: number, options?: Partial<Settings>) {
         this.api = api
 
-        const defaultSettings = getLocalStreamSettings(bootstrapRole.default_settings)
+        const defaultSettings = getLocalStreamSettings(globalDefaultSettings())
         const settings = {
             ...defaultSettings,
             ...options,
@@ -233,7 +231,7 @@ class ViewerApp implements Component {
         this.autoEnterFullscreenOnStart = settings.enterFullscreenOnStreamStart
         this.toggleFullscreenWithKeybind = settings.toggleFullscreenWithKeybind
 
-        this.stream = new Stream(this.api, hostId, appId, settings, [browserWidth, browserHeight], bootstrapRole.permissions)
+        this.stream = new Stream(this.api, hostId, appId, settings, [browserWidth, browserHeight])
         this.startStream(settings)
 
         // Configure input

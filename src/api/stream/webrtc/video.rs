@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem::swap, sync::Arc};
+use std::{collections::HashMap, future::pending, mem::swap, sync::Arc};
 
 use bytes::{Bytes, BytesMut};
 use moonlight_common::{
@@ -33,7 +33,7 @@ use rtc::{
 };
 use tokio::{
     select, spawn,
-    sync::mpsc::{UnboundedSender, unbounded_channel},
+    sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
 };
 use tracing::{Instrument, debug, debug_span, info, warn};
 use webrtc::{
@@ -61,8 +61,8 @@ enum State {
     SelectVideoFormat,
     Panic,
     Sending {
-        track: Arc<TrackLocalStaticRTP>,
         frame_sender: UnboundedSender<Message>,
+        event_receiver: UnboundedReceiver<TrackLocalEvent>,
     },
 }
 
@@ -145,11 +145,26 @@ impl VideoChannel {
         debug!(codec = ?format, webrtc_codec = ?codec, "webrtc video channel codec selected");
 
         let (frame_sender, mut frame_receiver) = unbounded_channel();
+        let (event_sender, event_receiver) = unbounded_channel();
 
         self.state = State::Sending {
-            track: track.clone(),
             frame_sender,
+            event_receiver,
         };
+
+        spawn({
+            let track = track.clone();
+
+            async move {
+                while let Some(event) = track.poll().await {
+                    if let Err(err) = event_sender.send(event) {
+                        debug!(error = %err, "stopping event poller");
+                        break;
+                    }
+                }
+            }
+            .instrument(debug_span!("video track event poller"))
+        });
 
         spawn(
             async move {
@@ -309,19 +324,21 @@ impl VideoChannel {
 
     pub async fn drive(&mut self) -> Result<VideoChannelEvent, AppError> {
         loop {
-            let State::Sending { track, .. } = &mut self.state else {
+            let State::Sending { event_receiver, .. } = &mut self.state else {
                 panic!("VideoChannel is in an invalid state");
             };
 
             select! {
                 // This function seems cancel safe
-                result = track.poll() => {
+                result = event_receiver.recv(), if !event_receiver.is_closed() => {
                     let Some(event) = result else {
                         continue;
                     };
 
                     if let TrackLocalEvent::OnRtcpPacket(packets) = event {
                         for packet in packets {
+                            debug!(packet = %packet, "got rtcp packet");
+
                             let packet = packet.as_any();
 
                             if packet.downcast_ref::<PictureLossIndication>().is_some() {
@@ -334,7 +351,8 @@ impl VideoChannel {
                             }
                         }
                     }
-                }
+                },
+                _ = pending::<()>() => unreachable!(),
             }
         }
     }

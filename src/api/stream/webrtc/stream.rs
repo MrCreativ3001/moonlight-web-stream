@@ -98,6 +98,7 @@ pub async fn webrtc_loop(
                         audio_channel.on_frame(frame);
                     }
                     MoonlightStreamEvent::Video(VideoStreamEvent::SignalIdr) => {
+                        debug!("requesting idr on behalf of the video stream (packet loss likely)");
                         if let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
                             warn!(error = %err, "failed to send idr");
                         }
@@ -124,6 +125,7 @@ pub async fn webrtc_loop(
 
                 match event {
                     VideoChannelEvent::SignalIdr => {
+                        debug!("requesting idr because the webrtc client requested it");
                         if let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
                             warn!(error = %err, "failed to send idr");
                         }

@@ -22,10 +22,16 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
         this.emptyHint.innerText = getTranslations(getCurrentLanguage()).host.empty
     }
 
+    // The initial /hosts response only carries cached state; until each host's
+    // fresh server_info arrives via the stream, its state is "unknown", not offline.
+    private cachedStateBatch = false
+
     async forceFetch() {
         const hosts = await apiGetHosts(this.api)
 
+        this.cachedStateBatch = true
         this.updateCache(hosts.response.hosts)
+        this.cachedStateBatch = false
         this.updateEmptyHint()
 
         let update
@@ -43,7 +49,7 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
     }
 
     protected updateComponentData(component: Host, data: DetailedHost | UndetailedHost): void {
-        component.updateCache(data)
+        component.updateCache(data, !this.cachedStateBatch)
     }
     protected getComponentDataId(component: Host): number {
         return component.getHostId()
@@ -53,7 +59,7 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
     }
 
     public insertList(dataId: number, data: DetailedHost | UndetailedHost | null): void {
-        const newHost = new Host(this.api, dataId, data)
+        const newHost = new Host(this.api, dataId, data, !this.cachedStateBatch)
 
         this.list.append(newHost)
         this.updateEmptyHint()

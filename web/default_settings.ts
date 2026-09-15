@@ -43,7 +43,13 @@ const trueDefaultSettings: Settings =
     // possible values: "standard", "old"
     "pageStyle": "standard",
     "hdr": false,
-    "useSelectElementPolyfill": false
+    "useSelectElementPolyfill": false,
+    "swapMouseButtons": false,
+    "reverseScrollDirection": false,
+    "quitAppOnExit": false,
+    "keepDisplayAwake": true,
+    "showConnectionWarnings": true,
+    "yuv444": false
 }
 
 export default trueDefaultSettings as Settings

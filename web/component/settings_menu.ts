@@ -33,6 +33,12 @@ export type Settings = {
     pageStyle: PageStyle
     hdr: boolean
     useSelectElementPolyfill: boolean
+    swapMouseButtons: boolean
+    reverseScrollDirection: boolean
+    quitAppOnExit: boolean
+    keepDisplayAwake: boolean
+    showConnectionWarnings: boolean
+    yuv444: boolean
 }
 
 export type StreamCodec = "h264" | "auto" | "h265" | "av1"
@@ -119,7 +125,9 @@ export class StreamSettingsComponent implements Component {
     private hideSidebarButton: InputComponent
 
     private bitrate: InputComponent
-    private fps: InputComponent
+    private fps: SelectComponent
+    private fpsCustom: InputComponent
+    private displayMode: SelectComponent
     private videoCodec: SelectComponent
     private forceVideoElementRenderer: InputComponent
     private canvasRenderer: InputComponent
@@ -143,12 +151,18 @@ export class StreamSettingsComponent implements Component {
 
     private dataTransport: SelectComponent
     private language: SelectComponent
-    private enterFullscreenOnStreamStart: InputComponent
     private toggleFullscreenWithKeybind: InputComponent
 
     private pageStyle: SelectComponent
 
     private useSelectElementPolyfill: InputComponent
+
+    private swapMouseButtons: InputComponent
+    private reverseScrollDirection: InputComponent
+    private quitAppOnExit: InputComponent
+    private keepDisplayAwake: InputComponent
+    private showConnectionWarnings: InputComponent
+    private yuv444: InputComponent
 
     constructor(settings: Settings) {
         // Sometimes the normal settings object doesn't have some values, because they change between versions.
@@ -213,23 +227,40 @@ export class StreamSettingsComponent implements Component {
         this.videoSize.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSize.mount(resFpsRow)
 
-        // Fps
-        this.fps = new InputComponent("fps", "number", i.fps, {
-            defaultValue: defaultSettings_.fps.toString(),
-            value: settings?.fps?.toString(),
-            step: "100"
-        })
+        // Fps (Moonlight-style dropdown with presets + custom)
+        const fpsPresets = ["30", "60", "90", "120", "144", "240"]
+        const fpsValue = settings?.fps ?? defaultSettings_.fps
+        const isPresetFps = fpsPresets.includes(fpsValue.toString())
+
+        this.fps = new SelectComponent("fps",
+            [
+                ...fpsPresets.map(value => ({ value, name: value })),
+                { value: "custom", name: i.custom }
+            ],
+            {
+                displayName: i.fps,
+                preSelectedOption: isPresetFps ? fpsValue.toString() : "custom"
+            }
+        )
         this.fps.addChangeListener(this.onSettingsChange.bind(this))
         this.fps.mount(resFpsRow)
 
-        // Bitrate
+        this.fpsCustom = new InputComponent("fpsCustom", "number", i.customFps, {
+            defaultValue: "60",
+            value: isPresetFps ? undefined : fpsValue.toString(),
+            step: "1"
+        })
+        this.fpsCustom.addChangeListener(this.onSettingsChange.bind(this))
+        this.fpsCustom.mount(basicSection)
+
+        // Bitrate (Mbps in the UI, stored as Kbps internally)
         this.bitrate = new InputComponent("bitrate", "number", i.bitrate, {
-            defaultValue: defaultSettings_.bitrate.toString(),
-            value: settings?.bitrate?.toString(),
-            step: "100",
+            defaultValue: (defaultSettings_.bitrate / 1000).toString(),
+            value: settings?.bitrate != null ? (settings.bitrate / 1000).toString() : undefined,
+            step: "1",
             numberSlider: {
-                range_min: 1000,
-                range_max: 10000,
+                range_min: 1,
+                range_max: 150,
             }
         })
         this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
@@ -249,11 +280,25 @@ export class StreamSettingsComponent implements Component {
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeHeight.mount(basicSection)
 
-        this.enterFullscreenOnStreamStart = new InputComponent("enterFullscreenOnStreamStart", "checkbox", i.enterFullscreenOnStreamStart, {
-            checked: settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart
+        // Display Mode (Moonlight-style select instead of a bare checkbox)
+        this.displayMode = new SelectComponent("displayMode",
+            [
+                { value: "fullscreen", name: i.displayModeFullscreen },
+                { value: "windowed", name: i.displayModeWindowed }
+            ],
+            {
+                displayName: i.displayMode,
+                preSelectedOption: (settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart) ? "fullscreen" : "windowed"
+            }
+        )
+        this.displayMode.addChangeListener(this.onSettingsChange.bind(this))
+        this.displayMode.mount(basicSection)
+
+        this.quitAppOnExit = new InputComponent("quitAppOnExit", "checkbox", i.quitAppOnExit, {
+            checked: settings?.quitAppOnExit ?? defaultSettings_.quitAppOnExit
         })
-        this.enterFullscreenOnStreamStart.addChangeListener(this.onSettingsChange.bind(this))
-        this.enterFullscreenOnStreamStart.mount(basicSection)
+        this.quitAppOnExit.addChangeListener(this.onSettingsChange.bind(this))
+        this.quitAppOnExit.mount(basicSection)
 
         // Codec
         const allowedVideoCodecs = [
@@ -300,6 +345,13 @@ export class StreamSettingsComponent implements Component {
         })
         this.hdr.addChangeListener(this.onSettingsChange.bind(this))
         this.hdr.mount(advancedSection)
+
+        // YUV 4:4:4
+        this.yuv444 = new InputComponent("yuv444", "checkbox", i.yuv444, {
+            checked: settings?.yuv444 ?? defaultSettings_.yuv444
+        })
+        this.yuv444.addChangeListener(this.onSettingsChange.bind(this))
+        this.yuv444.mount(advancedSection)
 
         // Audio local
         this.playAudioLocal = new InputComponent("playAudioLocal", "checkbox", i.playAudioLocal, {
@@ -362,6 +414,18 @@ export class StreamSettingsComponent implements Component {
         })
         this.localCursorSensitivity.addChangeListener(this.onSettingsChange.bind(this))
         this.localCursorSensitivity.mount(inputSection)
+
+        this.swapMouseButtons = new InputComponent("swapMouseButtons", "checkbox", i.swapMouseButtons, {
+            checked: settings?.swapMouseButtons ?? defaultSettings_.swapMouseButtons
+        })
+        this.swapMouseButtons.addChangeListener(this.onSettingsChange.bind(this))
+        this.swapMouseButtons.mount(inputSection)
+
+        this.reverseScrollDirection = new InputComponent("reverseScrollDirection", "checkbox", i.reverseScrollDirection, {
+            checked: settings?.reverseScrollDirection ?? defaultSettings_.reverseScrollDirection
+        })
+        this.reverseScrollDirection.addChangeListener(this.onSettingsChange.bind(this))
+        this.reverseScrollDirection.mount(inputSection)
 
         this.controllerInvertAB = new InputComponent("controllerInvertAB", "checkbox", i.invertAB, {
             checked: settings?.controllerConfig?.invertAB
@@ -460,6 +524,18 @@ export class StreamSettingsComponent implements Component {
         this.useSelectElementPolyfill.addChangeListener(this.onSettingsChange.bind(this))
         this.useSelectElementPolyfill.mount(uiSection)
 
+        this.keepDisplayAwake = new InputComponent("keepDisplayAwake", "checkbox", i.keepDisplayAwake, {
+            checked: settings?.keepDisplayAwake ?? defaultSettings_.keepDisplayAwake
+        })
+        this.keepDisplayAwake.addChangeListener(this.onSettingsChange.bind(this))
+        this.keepDisplayAwake.mount(uiSection)
+
+        this.showConnectionWarnings = new InputComponent("showConnectionWarnings", "checkbox", i.showConnectionWarnings, {
+            checked: settings?.showConnectionWarnings ?? defaultSettings_.showConnectionWarnings
+        })
+        this.showConnectionWarnings.addChangeListener(this.onSettingsChange.bind(this))
+        this.showConnectionWarnings.mount(uiSection)
+
         this.onSettingsChange()
     }
 
@@ -471,6 +547,8 @@ export class StreamSettingsComponent implements Component {
             this.videoSizeWidth.setEnabled(false)
             this.videoSizeHeight.setEnabled(false)
         }
+
+        this.fpsCustom.setEnabled(this.fps.getValue() == "custom")
 
         this.divElement.dispatchEvent(new ComponentEvent("ml-settingschange", this))
     }
@@ -487,8 +565,13 @@ export class StreamSettingsComponent implements Component {
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
         settings.hideSidebarButton = this.hideSidebarButton.isChecked()
-        settings.bitrate = parseInt(this.bitrate.getValue())
-        settings.fps = parseInt(this.fps.getValue())
+        const bitrateMbps = parseFloat(this.bitrate.getValue())
+        settings.bitrate = Number.isFinite(bitrateMbps)
+            ? Math.min(Math.max(Math.round(bitrateMbps * 1000), 1000), 150000)
+            : globalDefaultSettings().bitrate
+        const fpsValue = this.fps.getValue() ?? "60"
+        const fps = fpsValue == "custom" ? parseInt(this.fpsCustom.getValue()) : parseInt(fpsValue)
+        settings.fps = Number.isFinite(fps) && fps > 0 ? fps : globalDefaultSettings().fps
         settings.videoSize = this.videoSize.getValue() as any
         settings.videoSizeCustom = {
             width: parseInt(this.videoSizeWidth.getValue()),
@@ -517,7 +600,7 @@ export class StreamSettingsComponent implements Component {
         settings.dataTransport = this.dataTransport.getValue() as any
         settings.language = this.language.getValue() as Language
 
-        settings.enterFullscreenOnStreamStart = this.enterFullscreenOnStreamStart.isChecked()
+        settings.enterFullscreenOnStreamStart = this.displayMode.getValue() == "fullscreen"
         settings.toggleFullscreenWithKeybind = this.toggleFullscreenWithKeybind.isChecked()
 
         settings.pageStyle = this.pageStyle.getValue() as any
@@ -525,6 +608,13 @@ export class StreamSettingsComponent implements Component {
         settings.hdr = this.hdr.isChecked()
 
         settings.useSelectElementPolyfill = this.useSelectElementPolyfill.isChecked()
+
+        settings.swapMouseButtons = this.swapMouseButtons.isChecked()
+        settings.reverseScrollDirection = this.reverseScrollDirection.isChecked()
+        settings.quitAppOnExit = this.quitAppOnExit.isChecked()
+        settings.keepDisplayAwake = this.keepDisplayAwake.isChecked()
+        settings.showConnectionWarnings = this.showConnectionWarnings.isChecked()
+        settings.yuv444 = this.yuv444.isChecked()
 
         makeSettingsValid(settings)
 

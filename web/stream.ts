@@ -194,7 +194,9 @@ class ViewerApp implements Component {
             mouseScrollMode: settings.mouseScrollMode,
             touchMode: settings.touchMode,
             localCursorSensitivity: settings.localCursorSensitivity,
-            controllerConfig: settings.controllerConfig
+            controllerConfig: settings.controllerConfig,
+            swapMouseButtons: settings.swapMouseButtons,
+            reverseScrollDirection: settings.reverseScrollDirection
         })
 
         // Configure sidebar
@@ -242,9 +244,11 @@ class ViewerApp implements Component {
             this.stream.getInput().raiseAllKeys()
         })
         document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState !== "visible") {
+            const visible = document.visibilityState === "visible"
+            if (!visible) {
                 this.stream.getInput().raiseAllKeys()
             }
+            this.stream.onVisibilityChanged(visible)
         })
 
         // When the page gets destroyed

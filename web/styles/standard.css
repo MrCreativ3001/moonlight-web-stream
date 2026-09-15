@@ -798,8 +798,10 @@ input[type=number] {
 .actions-list {
     display: flex;
     flex-direction: row;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
+    gap: var(--space-sm);
+    padding-left: var(--space-md);
 }
 
 /** Settings */

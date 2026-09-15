@@ -1,8 +1,8 @@
-import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api"
+import { Api, apiHostCancel, apiWebRTCConfiguration, apiWebRTCOffer } from "../api"
 import { Component } from "../component/index"
 import { Settings, TransportType } from "../component/settings_menu"
 import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings"
-import { wait } from "../util"
+import { globalObject, wait } from "../util"
 import { AudioPlayer, AudioPlayerSetup } from "./audio/index"
 import { buildAudioPipeline } from "./audio/pipeline"
 import { defaultStreamInputConfig, StreamInput } from "./input"
@@ -59,21 +59,29 @@ export function getStreamerSize(settings: Settings, viewerScreenSize: [number, n
 
 function getVideoCodecHint(settings: Settings): VideoFormats {
     let videoCodecHint = emptyVideoCodecs()
+    const chroma444 = settings.yuv444 ?? false
     if (settings.videoCodec == "h264") {
         videoCodecHint.h264 = true
-        videoCodecHint.h264High8444 = true
+        videoCodecHint.h264High8444 = chroma444
     } else if (settings.videoCodec == "h265") {
         videoCodecHint.h265 = true
         videoCodecHint.h265Main10 = true
-        videoCodecHint.h265Rext8444 = true
-        videoCodecHint.h265Rext10444 = true
+        videoCodecHint.h265Rext8444 = chroma444
+        videoCodecHint.h265Rext10444 = chroma444
     } else if (settings.videoCodec == "av1") {
         videoCodecHint.av1Main8 = true
         videoCodecHint.av1Main10 = true
-        videoCodecHint.av1High8444 = true
-        videoCodecHint.av1High10444 = true
+        videoCodecHint.av1High8444 = chroma444
+        videoCodecHint.av1High10444 = chroma444
     } else if (settings.videoCodec == "auto") {
         videoCodecHint = allVideoCodecs()
+        if (!chroma444) {
+            videoCodecHint.h264High8444 = false
+            videoCodecHint.h265Rext8444 = false
+            videoCodecHint.h265Rext10444 = false
+            videoCodecHint.av1High8444 = false
+            videoCodecHint.av1High10444 = false
+        }
     }
 
     if (isFirefox()) {
@@ -135,7 +143,9 @@ export class Stream implements Component {
             mouseScrollMode: this.settings.mouseScrollMode,
             touchMode: this.settings.touchMode,
             localCursorSensitivity: this.settings.localCursorSensitivity,
-            controllerConfig: this.settings.controllerConfig
+            controllerConfig: this.settings.controllerConfig,
+            swapMouseButtons: this.settings.swapMouseButtons,
+            reverseScrollDirection: this.settings.reverseScrollDirection
         })
         this.input = new StreamInput(streamInputConfig)
 
@@ -377,6 +387,126 @@ export class Stream implements Component {
             }
         })
         this.eventTarget.dispatchEvent(event)
+
+        this.startConnectionWarnings()
+        this.updateWakeLock()
+    }
+
+    // -- Connection quality warnings
+
+    private connectionWarningIntervalId: number | null = null
+    private lastWarningStats: { packetsLost: number | null, packetsReceived: number | null, framesDropped: number | null } | null = null
+    private lastWarningTime = 0
+
+    private startConnectionWarnings() {
+        if (this.connectionWarningIntervalId != null) {
+            clearInterval(this.connectionWarningIntervalId)
+            this.connectionWarningIntervalId = null
+        }
+        this.lastWarningStats = null
+        this.lastWarningTime = 0
+
+        if (!this.settings.showConnectionWarnings) {
+            return
+        }
+
+        this.connectionWarningIntervalId = globalObject().setInterval(this.checkConnectionQuality.bind(this), 2000)
+    }
+    private async checkConnectionQuality() {
+        if (this.isStopped || !this.transport) {
+            return
+        }
+
+        let stats: Record<string, string | number>
+        try {
+            stats = await this.transport.getStats()
+        } catch (e) {
+            return
+        }
+
+        const packetsLost = typeof stats.packetsLost == "number" ? stats.packetsLost : null
+        const packetsReceived = typeof stats.packetsReceived == "number" ? stats.packetsReceived : null
+        const framesDropped = typeof stats.framesDropped == "number" ? stats.framesDropped : null
+
+        const last = this.lastWarningStats
+        this.lastWarningStats = { packetsLost, packetsReceived, framesDropped }
+        if (last == null) {
+            return
+        }
+
+        const now = Date.now()
+        if (now - this.lastWarningTime < 15000) {
+            return
+        }
+
+        const lostDelta = packetsLost != null && last.packetsLost != null ? packetsLost - last.packetsLost : 0
+        const receivedDelta = packetsReceived != null && last.packetsReceived != null ? packetsReceived - last.packetsReceived : 0
+        const droppedDelta = framesDropped != null && last.framesDropped != null ? framesDropped - last.framesDropped : 0
+
+        if (lostDelta > 0 && (receivedDelta == 0 || lostDelta / Math.max(receivedDelta, 1) > 0.02)) {
+            this.debugLog(`Connection quality warning: ${lostDelta} packets lost in the last 2 seconds`, { type: "ifErrorDescription" })
+            this.lastWarningTime = now
+        } else if (droppedDelta > 30) {
+            this.debugLog(`Connection quality warning: ${droppedDelta} frames dropped in the last 2 seconds`, { type: "ifErrorDescription" })
+            this.lastWarningTime = now
+        }
+    }
+
+    // -- Keep display awake (Wake Lock)
+
+    private wakeLock: { release: () => Promise<void> } | null = null
+    private wakeLockRequest: Promise<void> | null = null
+
+    private async updateWakeLock() {
+        if (this.isStopped || !this.settings.keepDisplayAwake) {
+            await this.releaseWakeLock()
+            return
+        }
+        if (this.wakeLock != null || this.wakeLockRequest != null || document.visibilityState != "visible") {
+            return
+        }
+
+        this.wakeLockRequest = (async () => {
+            try {
+                const wakeLock = await (navigator as any).wakeLock?.request("screen")
+                if (!wakeLock) {
+                    return
+                }
+                // Revalidate: the stream may have stopped or the tab hidden while the request was pending
+                if (this.isStopped || !this.settings.keepDisplayAwake || document.visibilityState != "visible") {
+                    await wakeLock.release()
+                    return
+                }
+                this.wakeLock = wakeLock
+                wakeLock.addEventListener("release", () => {
+                    if (this.wakeLock === wakeLock) {
+                        this.wakeLock = null
+                    }
+                })
+            } catch (e) {
+                console.debug("failed to acquire wake lock", e)
+            }
+        })()
+        try {
+            await this.wakeLockRequest
+        } finally {
+            this.wakeLockRequest = null
+        }
+    }
+    private async releaseWakeLock() {
+        const wakeLock = this.wakeLock
+        this.wakeLock = null
+        try {
+            await wakeLock?.release()
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    onVisibilityChanged(visible: boolean) {
+        if (visible) {
+            this.updateWakeLock()
+        }
     }
 
     private async createPipelines(connectData: TransportConnectData): Promise<void> {
@@ -563,6 +693,23 @@ export class Stream implements Component {
 
     async stop(): Promise<boolean> {
         this.isStopped = true
+
+        if (this.connectionWarningIntervalId != null) {
+            clearInterval(this.connectionWarningIntervalId)
+            this.connectionWarningIntervalId = null
+        }
+
+        // keepalive so the request still completes when the page is unloading;
+        // start it before the first await so it isn't skipped during teardown
+        const quitAppPromise = this.settings.quitAppOnExit
+            ? apiHostCancel(this.api, { host_id: this.hostId }, true).catch(e => {
+                this.debugLog(`Failed to quit app on host: ${e}`)
+            })
+            : null
+
+        await this.releaseWakeLock()
+        await quitAppPromise
+
         // Stop transport
         await this.transport?.close()
 

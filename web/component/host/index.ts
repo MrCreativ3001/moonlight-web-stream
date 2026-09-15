@@ -14,6 +14,9 @@ export class Host implements Component {
 
     private hostId: number
     private cache: UndetailedHost | DetailedHost | null = null
+    // True once a fresh server_info response (or confirmed offline result) has been received.
+    // While false, server_state == null means "still checking" rather than "offline".
+    private stateKnown = false
 
     private divElement: HTMLDivElement = document.createElement("div")
 
@@ -21,11 +24,12 @@ export class Host implements Component {
     private imageOverlayElement: HTMLImageElement = document.createElement("img")
     private nameElement: HTMLElement = document.createElement("p")
 
-    constructor(api: Api, hostId: number, host: UndetailedHost | DetailedHost | null) {
+    constructor(api: Api, hostId: number, host: UndetailedHost | DetailedHost | null, stateKnown: boolean = false) {
         this.api = api
 
         this.hostId = hostId
         this.cache = host
+        this.stateKnown = stateKnown
 
         // Configure image
         this.imageElement.classList.add("host-image")
@@ -52,6 +56,9 @@ export class Host implements Component {
         } else {
             this.forceFetch()
         }
+
+        // Render the initial overlay (unknown state shows no offline badge)
+        this.updateOverlay()
     }
 
     async forceFetch() {
@@ -59,7 +66,7 @@ export class Host implements Component {
             host_id: this.hostId,
         })
 
-        this.updateCache(newCache)
+        this.updateCache(newCache, true)
     }
     async getCurrentGame(): Promise<number | null> {
         await this.forceFetch()
@@ -136,7 +143,7 @@ export class Host implements Component {
             showNotification(i.failedToGetDetails(this.hostId))
             return;
         }
-        this.updateCache(host)
+        this.updateCache(host, true)
 
         await showMessage(i.details(host))
     }
@@ -201,7 +208,7 @@ export class Host implements Component {
             throw `failed to pair (stage 2): ${resultResponse}`
         }
 
-        this.updateCache(resultResponse.Paired)
+        this.updateCache(resultResponse.Paired, true)
     }
 
     getHostId(): number {
@@ -212,11 +219,15 @@ export class Host implements Component {
         return this.cache
     }
 
-    updateCache(host: UndetailedHost | DetailedHost) {
+    updateCache(host: UndetailedHost | DetailedHost, stateKnown?: boolean) {
         const i = getTranslations(getCurrentLanguage()).host
         if (this.getHostId() != host.host_id) {
             showNotification(i.overwriteMismatch(this.getHostId(), host.host_id))
             return
+        }
+
+        if (stateKnown !== undefined) {
+            this.stateKnown = stateKnown
         }
 
         if (this.cache == null) {
@@ -233,9 +244,15 @@ export class Host implements Component {
 
         // Update Elements
         this.nameElement.innerText = this.cache.name
+        this.updateOverlay()
+    }
 
-        if (this.cache.server_state == null) {
+    private updateOverlay() {
+        if (this.cache == null || (this.cache.server_state == null && this.stateKnown)) {
             this.imageOverlayElement.src = HOST_OVERLAY_OFFLINE
+        } else if (this.cache.server_state == null) {
+            // State is still being checked - show no overlay instead of a stale offline badge
+            this.imageOverlayElement.src = HOST_OVERLAY_NONE
         } else if (this.cache.paired != "Paired") {
             this.imageOverlayElement.src = HOST_OVERLAY_LOCK
         } else {

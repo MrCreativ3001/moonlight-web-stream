@@ -565,9 +565,13 @@ export class StreamSettingsComponent implements Component {
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
         settings.hideSidebarButton = this.hideSidebarButton.isChecked()
-        settings.bitrate = Math.round(parseFloat(this.bitrate.getValue()) * 1000)
+        const bitrateMbps = parseFloat(this.bitrate.getValue())
+        settings.bitrate = Number.isFinite(bitrateMbps)
+            ? Math.min(Math.max(Math.round(bitrateMbps * 1000), 1000), 150000)
+            : globalDefaultSettings().bitrate
         const fpsValue = this.fps.getValue() ?? "60"
-        settings.fps = fpsValue == "custom" ? parseInt(this.fpsCustom.getValue()) : parseInt(fpsValue)
+        const fps = fpsValue == "custom" ? parseInt(this.fpsCustom.getValue()) : parseInt(fpsValue)
+        settings.fps = Number.isFinite(fps) && fps > 0 ? fps : globalDefaultSettings().fps
         settings.videoSize = this.videoSize.getValue() as any
         settings.videoSizeCustom = {
             width: parseInt(this.videoSizeWidth.getValue()),

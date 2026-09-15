@@ -194,7 +194,9 @@ class ViewerApp implements Component {
             mouseScrollMode: settings.mouseScrollMode,
             touchMode: settings.touchMode,
             localCursorSensitivity: settings.localCursorSensitivity,
-            controllerConfig: settings.controllerConfig
+            controllerConfig: settings.controllerConfig,
+            swapMouseButtons: settings.swapMouseButtons,
+            reverseScrollDirection: settings.reverseScrollDirection
         })
 
         // Configure sidebar

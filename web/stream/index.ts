@@ -455,28 +455,42 @@ export class Stream implements Component {
     // -- Keep display awake (Wake Lock)
 
     private wakeLock: { release: () => Promise<void> } | null = null
+    private wakeLockRequest: Promise<void> | null = null
 
     private async updateWakeLock() {
         if (this.isStopped || !this.settings.keepDisplayAwake) {
             await this.releaseWakeLock()
             return
         }
-        if (this.wakeLock != null || document.visibilityState != "visible") {
+        if (this.wakeLock != null || this.wakeLockRequest != null || document.visibilityState != "visible") {
             return
         }
 
-        try {
-            const wakeLock = await (navigator as any).wakeLock?.request("screen")
-            if (wakeLock) {
+        this.wakeLockRequest = (async () => {
+            try {
+                const wakeLock = await (navigator as any).wakeLock?.request("screen")
+                if (!wakeLock) {
+                    return
+                }
+                // Revalidate: the stream may have stopped or the tab hidden while the request was pending
+                if (this.isStopped || !this.settings.keepDisplayAwake || document.visibilityState != "visible") {
+                    await wakeLock.release()
+                    return
+                }
                 this.wakeLock = wakeLock
                 wakeLock.addEventListener("release", () => {
                     if (this.wakeLock === wakeLock) {
                         this.wakeLock = null
                     }
                 })
+            } catch (e) {
+                console.debug("failed to acquire wake lock", e)
             }
-        } catch (e) {
-            console.debug("failed to acquire wake lock", e)
+        })()
+        try {
+            await this.wakeLockRequest
+        } finally {
+            this.wakeLockRequest = null
         }
     }
     private async releaseWakeLock() {
@@ -685,16 +699,16 @@ export class Stream implements Component {
             this.connectionWarningIntervalId = null
         }
 
-        await this.releaseWakeLock()
-
-        if (this.settings.quitAppOnExit) {
-            try {
-                // keepalive so the request still completes when the page is unloading
-                await apiHostCancel(this.api, { host_id: this.hostId }, true)
-            } catch (e) {
+        // keepalive so the request still completes when the page is unloading;
+        // start it before the first await so it isn't skipped during teardown
+        const quitAppPromise = this.settings.quitAppOnExit
+            ? apiHostCancel(this.api, { host_id: this.hostId }, true).catch(e => {
                 this.debugLog(`Failed to quit app on host: ${e}`)
-            }
-        }
+            })
+            : null
+
+        await this.releaseWakeLock()
+        await quitAppPromise
 
         // Stop transport
         await this.transport?.close()

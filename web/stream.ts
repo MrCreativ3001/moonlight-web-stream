@@ -242,9 +242,11 @@ class ViewerApp implements Component {
             this.stream.getInput().raiseAllKeys()
         })
         document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState !== "visible") {
+            const visible = document.visibilityState === "visible"
+            if (!visible) {
                 this.stream.getInput().raiseAllKeys()
             }
+            this.stream.onVisibilityChanged(visible)
         })
 
         // When the page gets destroyed

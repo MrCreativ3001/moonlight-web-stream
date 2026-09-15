@@ -244,9 +244,10 @@ export async function apiGetAppImage(api: Api, query: GetAppImageQuery): Promise
     return await response.blob()
 }
 
-export async function apiHostCancel(api: Api, request: PostCancelRequest): Promise<PostCancelResponse> {
+export async function apiHostCancel(api: Api, request: PostCancelRequest, keepalive?: boolean): Promise<PostCancelResponse> {
     const response = await fetchApi(api, "/host/cancel", POST, {
-        json: request
+        json: request,
+        keepalive
     })
 
     return response as PostCancelResponse

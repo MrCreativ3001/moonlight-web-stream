@@ -92,6 +92,12 @@ export const koKR: Translations = {
         toggleFullscreenWithKeybind: "Ctrl + Shift + I로 전체 화면 및 마우스 가두기 전환",
         style: "스타일",
         useCustomDropdown: "사용자 정의 드롭다운 구현 사용",
+        swapMouseButtons: "마우스 좌/우 버튼 교체",
+        reverseScrollDirection: "스크롤 방향 반전",
+        quitAppOnExit: "스트림 종료 시 호스트 앱 종료",
+        keepDisplayAwake: "스트리밍 중 화면 꺼짐 방지",
+        showConnectionWarnings: "연결 품질 경고 표시",
+        yuv444: "YUV 4:4:4 (고화질, 대역폭 증가)",
     },
     addHost: {
         header: "호스트 추가",

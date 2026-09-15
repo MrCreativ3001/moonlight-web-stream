@@ -92,6 +92,12 @@ export const zhCN: Translations = {
         toggleFullscreenWithKeybind: "按 Ctrl + Shift + I 切换全屏和鼠标锁定",
         style: "样式",
         useCustomDropdown: "使用自定义下拉框实现",
+        swapMouseButtons: "交换鼠标左右键",
+        reverseScrollDirection: "反转滚动方向",
+        quitAppOnExit: "串流结束后退出主机应用",
+        keepDisplayAwake: "串流时保持屏幕常亮",
+        showConnectionWarnings: "显示连接质量警告",
+        yuv444: "YUV 4:4:4（更高画质，占用更多带宽）",
     },
     addHost: {
         header: "主机",

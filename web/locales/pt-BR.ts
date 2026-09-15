@@ -92,6 +92,12 @@ export const ptBR: Translations = {
         toggleFullscreenWithKeybind: "Alternar Tela Cheia e Bloqueio do Mouse com Ctrl + Shift + I",
         style: "Estilo",
         useCustomDropdown: "Usar Implementação de Dropdown Personalizada",
+        swapMouseButtons: "Trocar Botões Esquerdo e Direito do Mouse",
+        reverseScrollDirection: "Inverter Direção da Rolagem",
+        quitAppOnExit: "Encerrar App no Host ao Terminar a Transmissão",
+        keepDisplayAwake: "Manter Tela Ativa Durante a Transmissão",
+        showConnectionWarnings: "Mostrar Avisos de Qualidade de Conexão",
+        yuv444: "YUV 4:4:4 (maior qualidade, mais banda)",
     },
     addHost: {
         header: "Host",

@@ -36,6 +36,8 @@ export type StreamInputConfig = {
     touchMode: TouchMode
     localCursorSensitivity: number
     controllerConfig: ControllerConfig
+    swapMouseButtons: boolean
+    reverseScrollDirection: boolean
 }
 
 export function defaultStreamInputConfig(): StreamInputConfig {
@@ -44,6 +46,8 @@ export function defaultStreamInputConfig(): StreamInputConfig {
         mouseScrollMode: "highres",
         touchMode: "mouseRelative",
         localCursorSensitivity: 1,
+        swapMouseButtons: false,
+        reverseScrollDirection: false,
         controllerConfig: {
             invertAB: false,
             invertXY: false,
@@ -224,7 +228,7 @@ export class StreamInput {
 
     // -- Mouse
     onMouseDown(event: MouseEvent, rect: DOMRect) {
-        const button = convertToButton(event)
+        const button = convertToButton(event, this.config.swapMouseButtons)
         if (button == null) {
             return
         }
@@ -240,7 +244,7 @@ export class StreamInput {
         }
     }
     onMouseUp(event: MouseEvent) {
-        const button = convertToButton(event)
+        const button = convertToButton(event, this.config.swapMouseButtons)
         if (button == null) {
             return
         }
@@ -267,7 +271,11 @@ export class StreamInput {
         }
     }
     onMouseWheel(event: WheelEvent) {
-        this.sendAccumulatedScroll(event.deltaX, -event.deltaY)
+        if (this.config.reverseScrollDirection) {
+            this.sendAccumulatedScroll(-event.deltaX, event.deltaY)
+        } else {
+            this.sendAccumulatedScroll(event.deltaX, -event.deltaY)
+        }
     }
 
     sendMouseMove(movementX: number, movementY: number) {

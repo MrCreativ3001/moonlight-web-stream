@@ -92,6 +92,12 @@ export const frFr: Translations = {
         toggleFullscreenWithKeybind: "Basculer entre le mode plein écran et le verrouillage de la souris avec Ctrl + Shift + I",
         style: "Style",
         useCustomDropdown: "Utiliser l'implémentation personnalisée du déroulement",
+        swapMouseButtons: "Inverser Boutons Gauche/Droit de la Souris",
+        reverseScrollDirection: "Inverser le Sens de Défilement",
+        quitAppOnExit: "Quitter l'App sur l'Hôte à la Fin du Stream",
+        keepDisplayAwake: "Garder l'Écran Actif Pendant le Stream",
+        showConnectionWarnings: "Afficher les Avertissements de Qualité de Connexion",
+        yuv444: "YUV 4:4:4 (haute qualité, plus de bande passante)",
     },
     addHost: {
         header: "Hôte",

@@ -90,6 +90,12 @@ export const en = {
         toggleFullscreenWithKeybind: "Toggle Fullscreen and Mouse Lock with Ctrl + Shift + I",
         style: "Style",
         useCustomDropdown: "Use Custom Dropdown Implementation",
+        swapMouseButtons: "Swap Left and Right Mouse Buttons",
+        reverseScrollDirection: "Reverse Scroll Direction",
+        quitAppOnExit: "Quit App On Host After Ending Stream",
+        keepDisplayAwake: "Keep Display Awake While Streaming",
+        showConnectionWarnings: "Show Connection Quality Warnings",
+        yuv444: "YUV 4:4:4 (higher quality, more bandwidth)",
     },
     addHost: {
         header: "Host",

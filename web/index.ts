@@ -46,6 +46,13 @@ async function startApp() {
 
     app.forceFetch()
 
+    // Refresh host state when the tab becomes visible again so statuses don't go stale
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState == "visible") {
+            app.forceFetch()
+        }
+    })
+
     if (lastAppState) {
         app.setAppState(lastAppState)
     }

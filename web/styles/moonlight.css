@@ -650,11 +650,11 @@ input[type=number] {
 .actions-list {
     display: flex;
     flex-direction: row;
-    justify-content: flex-end;
+    justify-content: flex-start;
     align-items: center;
     position: fixed;
     top: 0;
-    right: calc(var(--ml-topbar-padding-x) + var(--ml-topbar-actions-offset));
+    left: var(--ml-topbar-padding-x);
     height: var(--ml-topbar-height);
     z-index: 1001;
     gap: 10px;

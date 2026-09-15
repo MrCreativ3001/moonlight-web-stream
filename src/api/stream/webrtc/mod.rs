@@ -5,9 +5,7 @@ use crate::api::stream::webrtc::stream::webrtc_loop;
 use crate::api::stream::webrtc::video::VideoChannel;
 use crate::config::PortRange;
 use actix_web::HttpRequest;
-use actix_web::body::{BoxBody, MessageBody};
-use actix_web::dev::{ServiceRequest, ServiceResponse};
-use actix_web::middleware::Next;
+use actix_web::body::BoxBody;
 use actix_web::web::{Data, Path};
 use actix_web::{
     HttpResponse, HttpResponseBuilder, delete, get, http::StatusCode, http::header, options, patch,
@@ -55,13 +53,12 @@ use webrtc::peer_connection::{
     register_default_interceptors,
 };
 
-use crate::api::stream::apply_role_restrictions;
 use crate::api::stream::webrtc::convert::into_webrtc_ice_candidate;
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
 use crate::app::App;
+use crate::app::AppError;
 use crate::app::host::HostId;
 use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
-use crate::app::{AppError, user::AuthenticatedUser};
 
 mod audio;
 mod control;
@@ -71,30 +68,8 @@ mod ice_servers;
 mod stream;
 mod video;
 
-pub async fn webrtc_middleware(
-    mut req: ServiceRequest,
-    next: Next<impl MessageBody>,
-) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
-    let mut user = req.extract::<AuthenticatedUser>().await?;
-
-    if !user
-        .role()
-        .await?
-        .permissions()
-        .await?
-        .allow_transport_webrtc
-    {
-        return Err(AppError::Forbidden.into());
-    }
-
-    next.call(req).await
-}
-
 #[options("")]
-pub async fn webrtc_options(
-    app: Data<App>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, AppError> {
+pub async fn webrtc_options(app: Data<App>) -> Result<HttpResponse, AppError> {
     let mut response = HttpResponseBuilder::new(StatusCode::OK);
     response.append_header(("Accept-Post", "application/sdp"));
 
@@ -127,7 +102,7 @@ pub async fn webrtc_options(
 }
 
 #[get("")]
-pub async fn webrtc_get(_user: AuthenticatedUser) -> Result<HttpResponse, AppError> {
+pub async fn webrtc_get() -> Result<HttpResponse, AppError> {
     Ok(HttpResponse::MethodNotAllowed().finish())
 }
 
@@ -229,23 +204,12 @@ impl PeerConnectionEventHandler for WebRtcHandler {
 }
 
 #[post("")]
-#[instrument(skip(app, user, req, session_description), fields(user = %user.id()))]
+#[instrument(skip(app, req, session_description))]
 pub async fn webrtc_post(
     app: Data<App>,
-    mut user: AuthenticatedUser,
     req: HttpRequest,
     session_description: String,
 ) -> Result<HttpResponse, AppError> {
-    if !user
-        .role()
-        .await?
-        .permissions()
-        .await?
-        .allow_transport_webrtc
-    {
-        return Err(AppError::Forbidden);
-    }
-
     debug!(req = ?req, session_description = ?session_description, "webrtc request");
 
     let offer_sdp =
@@ -259,8 +223,8 @@ pub async fn webrtc_post(
     let host_id = HostId(host_id);
 
     // Get host
-    let mut host = user.host(host_id).await?;
-    let host = host.use_host(&mut user).await?;
+    let mut host = app.host(host_id).await?;
+    let host = host.use_host().await?;
 
     if !host.is_paired().await? {
         return Err(AppError::HostNotPaired);
@@ -438,10 +402,6 @@ pub async fn webrtc_post(
         enable_mic: microphone_enabled,
     };
 
-    // -- Get and Apply Permissions
-    let permissions = user.role().await?.permissions().await?;
-    apply_role_restrictions(&permissions, &mut settings);
-
     // Adjust settings
     let server_version = host.version().await?;
     let gfe_version = host.gfe_version().await?;
@@ -601,7 +561,7 @@ pub async fn webrtc_post(
 
     // Add stream to the list of streams
     let (event_sender, mut event_receiver) = mpsc::channel(20);
-    let stream = match Stream::new(&app, &user, event_sender).await {
+    let stream = match Stream::new(&app, event_sender).await {
         Ok(value) => value,
         Err(err) => {
             // TODO: cleanup the stream
@@ -690,7 +650,6 @@ pub async fn webrtc_post(
 #[patch("/{stream_id}")]
 pub async fn webrtc_patch(
     app: Data<App>,
-    mut user: AuthenticatedUser,
     stream_id: Path<u32>,
     request: HttpRequest,
     body: String,
@@ -715,10 +674,7 @@ pub async fn webrtc_patch(
                 Ok(HttpResponse::UnprocessableEntity().finish())
             } else {
                 stream
-                    .send_event(
-                        &mut user,
-                        ExternalStreamEvent::WebRTCAddIceCandidate { ice_sdp_frag: body },
-                    )
+                    .send_event(ExternalStreamEvent::WebRTCAddIceCandidate { ice_sdp_frag: body })
                     .await?;
 
                 Ok(HttpResponse::NoContent().finish())
@@ -729,19 +685,13 @@ pub async fn webrtc_patch(
 }
 
 #[delete("/{stream_id}")]
-#[instrument(skip(app, user), fields(user = %user.id()))]
-pub async fn webrtc_delete(
-    app: Data<App>,
-    mut user: AuthenticatedUser,
-    stream_id: Path<u32>,
-) -> Result<HttpResponse, AppError> {
+#[instrument(skip(app))]
+pub async fn webrtc_delete(app: Data<App>, stream_id: Path<u32>) -> Result<HttpResponse, AppError> {
     let stream_id = StreamId(stream_id.into_inner());
 
     let stream = app.stream_by_id(stream_id).await?;
 
-    stream
-        .send_event(&mut user, ExternalStreamEvent::Stop)
-        .await?;
+    stream.send_event(ExternalStreamEvent::Stop).await?;
 
     Ok(HttpResponse::Ok()
         .finish()

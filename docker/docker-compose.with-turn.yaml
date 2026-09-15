@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   moonlight-web:
-    image: mrcreativ3001/moonlight-web-stream:${ML_WEB_VERSION}
+    image: ghcr.io/spacedouut/moonlight-web-stream-simplified:${ML_WEB_VERSION}
     container_name: moonlight-web
     restart: unless-stopped
     depends_on:

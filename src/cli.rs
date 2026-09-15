@@ -5,10 +5,7 @@ use std::{
 
 use crate::{
     api::bindings::RtcIceServer,
-    config::{
-        Config, ConfigSsl, ForwardedHeaders, PortRange, WebRtcNat1To1IceCandidateType,
-        WebRtcNat1To1Mapping,
-    },
+    config::{Config, ConfigSsl, PortRange, WebRtcNat1To1IceCandidateType, WebRtcNat1To1Mapping},
 };
 use clap::{Args, Parser, Subcommand};
 use log::LevelFilter;
@@ -103,9 +100,6 @@ pub struct CliConfig {
     /// Overwrites `web_server.url_path_prefix`.
     #[arg(long, env = "PATH_PREFIX")]
     pub path_prefix: Option<String>,
-    /// Overwrites `web_server.forwarded_header.username_header`.
-    #[arg(long, env = "FORWARDED_HEADER")]
-    pub forwarded_header: Option<String>,
     /// Overwrites `log.level_filter`.
     #[arg(long, env = "LOG_LEVEL")]
     pub log_level_filter: Option<LevelFilter>,
@@ -159,23 +153,6 @@ impl CliConfig {
         }
         if let Some(url_path_prefix) = self.path_prefix {
             config.web_server.url_path_prefix = url_path_prefix;
-        }
-        if let Some(forwarded_header) = self.forwarded_header {
-            config.web_server.forwarded_header = Some(ForwardedHeaders {
-                username_header: forwarded_header,
-                auto_create_missing_user: config
-                    .web_server
-                    .forwarded_header
-                    .clone()
-                    .unwrap_or_default()
-                    .auto_create_missing_user,
-                ignore_case: config
-                    .web_server
-                    .forwarded_header
-                    .clone()
-                    .unwrap_or_default()
-                    .ignore_case,
-            });
         }
         if let Some(log_level_filter) = self.log_level_filter {
             config.log.level_filter = log_level_filter;

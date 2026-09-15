@@ -711,6 +711,11 @@ input[type=number] {
     padding: 24px 32px;
 }
 
+.host-empty-hint {
+    width: 100%;
+    text-align: center;
+}
+
 .host-element {
     cursor: pointer;
     margin: 0;

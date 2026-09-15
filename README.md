@@ -1,7 +1,15 @@
 
-# Moonlight Web
-An unofficial [Moonlight Client](https://moonlight-stream.org/) allowing you to stream your pc to the Web.
+# Moonlight Web (simplified)
+A simplified fork of [moonlight-web-stream](https://github.com/MrCreativ3001/moonlight-web-stream): an unofficial [Moonlight Client](https://moonlight-stream.org/) allowing you to stream your pc to the Web.
 It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/) traffic to a Browser using the [WebRTC Api](https://webrtc.org/).
+
+This fork focuses on one thing: desktop streaming.
+- **No built-in user system.** There are no accounts, logins, roles or admin panel. Everyone who can reach the web server sees the same hosts and can stream.
+- **You provide authentication.** Put the server behind a reverse proxy that handles auth (basic auth, Authelia, Authentik, Cloudflare Access, a VPN, ...). See [Authentication](#authentication).
+- **Stream settings are per browser** (stored in `localStorage`), not per user.
+
+> **Warning**
+> Never expose the web server directly to the internet without an authenticating reverse proxy in front of it. Anyone reaching it can add, pair and stream your PCs.
 
 ![An image displaying: PC with sunshine and moonlight web installed, a browser making requests to it](/readme/structure.png)
 
@@ -18,11 +26,10 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
   - [Streaming over the Internet](#streaming-over-the-internet)
   - [Configuring https](#configuring-https)
   - [Proxying via Apache 2](#proxying-via-apache-2)
-  - [Authentication with a Reverse Proxy](#authentication-using-a-reverse-proxy)
+  - [Authentication](#authentication)
   - [Using Web Socket Transport](#using-websocket-transport)
 - [Config](#config)
-- [Migrating to v2](#migrating-to-v2)
-- [Migrating to v3](#migrating-to-v3)
+- [Migrating from upstream moonlight-web-stream](#migrating-from-upstream-moonlight-web-stream)
 - [Contributors](#contributors)
 - [Building](#building)
 
@@ -52,9 +59,7 @@ You can install it [manually](#install-manually) or with [docker](docker/README.
 
 ## Setup
 
-1. Add a new user by typing in your name and password. The first user to login will be created and will be the admin.
-
-2. Add a new pc (<img src="web/resources/ic_add_to_queue_white_48px.svg" alt="icon" style="height:1em; vertical-align:middle;">) with the address as `localhost` and leave the port empty (if you've got the default port)
+1. Add a new pc (<img src="web/resources/ic_add_to_queue_white_48px.svg" alt="icon" style="height:1em; vertical-align:middle;">) with the address as `localhost` and leave the port empty (if you've got the default port)
 
 2. Pair your pc by clicking on the host (<img src="web/resources/desktop_windows-48px.svg" alt="icon" style="height:1em; vertical-align:middle;">). Then enter the code in sunshine
 
@@ -218,25 +223,20 @@ sudo a2enconf moonlight-web
 
 5. Use https with a certificate (Optional)
 
-### Authentication using a Reverse Proxy
-Authentication with a reverse proxy works by the proxy adding custom headers to the request of the user. In this example the username header is named `X-Forwarded-User`.
+### Authentication
+The web server has no authentication of its own. Bind it to `127.0.0.1` (or keep it on a private network) and put an authenticating reverse proxy in front of it. Any proxy that protects **all** paths under the prefix (including `/api/host/stream/web_socket` and the WebRTC endpoints under `/api/host/stream/webrtc`) works, e.g. Apache/nginx basic auth, Caddy, Authelia, Authentik, Cloudflare Access or a VPN/Tailscale-only bind.
 
-<b>Make sure that the header is not changeable by any external request and only the proxy can set this header.</b>
+The browser sends cookies with every API call (`credentials: "include"`), so cookie/session based proxies work out of the box.
 
-Enable proxy authentication by setting the [forwarded header username](#forwarded-header-username) option.
-By default the [auto create missing user](#forwarded-header-auto-create-missing-user) option is turned on even if it's not specified in the config.
-```json
-{
-    "web_server": {
-        "forwarded_header": {
-            "username_header": "X-Forwarded-User",
-            "auto_create_missing_user": true
-        }
-    }
-}
+Example, adding basic auth to the Apache config above:
 ```
-
-If `auto_create_missing_user` is enabled, newly created users will be assigned the role configured as the default in the Admin Panel.
+<Location ${MOONLIGHT_SUBPATH}/>
+        AuthType Basic
+        AuthName "Moonlight Web"
+        AuthUserFile /etc/apache2/.htpasswd
+        Require valid-user
+</Location>
+```
 
 ### Using WebSocket Transport
 
@@ -285,18 +285,6 @@ Environment Variable: `BIND_ADDRESS=0.0.0.0:8080`
 {
     "web_server": {
         "bind_address": "0.0.0.0:8080"
-    }
-}
-```
-
-### Default User
-The user id which is selected by default when providing no login.
-Go into the Admin Panel and look for the user id of the user you want to make the default.
-
-```json
-{
-    "web_server": {
-        "default_user_id": 1284358932
     }
 }
 ```
@@ -478,75 +466,12 @@ Environment Variable: `PATH_PREFIX=/moonlight`
 }
 ```
 
-### Forwarded Header Username
-The header that will give the authenticated username to this web server.
-
-```json
-{
-    "web_server": {
-        "forwarded_header": {
-            "username_header": "X-Forwarded-User"
-        }
-    }
-}
-```
-
-### Forwarded Header Auto Create Missing User
-Automatically create a new user when the requested user specified in the [username_header](#forwarded-header-username) is not found.
-
-```json
-{
-    "web_server": {
-        "forwarded_header": {
-            "auto_create_missing_user": true
-        }
-    }
-}
-```
-
-### Forwarded Header Ignore Case
-Perform a case-insensitive lookup for the user in the in the [username_header](#forwarded-header-username).
-If multiple users match the given name, the request will fail.
-
-```json
-{
-    "web_server": {
-        "forwarded_header": {
-            "ignore_case": true
-        }
-    }
-}
-```
-
-## Migrating to v2
-1. Some config options have changed so backup your old config by renaming it to something like `old_config.json`.
-
-2. Start the web server which will generate the new config.
-
-3. Move your configurations to the new config
-
-4. The first user to login will be created and will be an admin. All previously stored hosts will be moved to this user.
-
-Other changes:
-- Proxy path changed:
-  - change all instances of `ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}/`<br> to `ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/`
-  - [Proxying via Apache 2](https://github.com/MrCreativ3001/moonlight-web-stream/tree/v2?tab=readme-ov-file#proxying-via-apache-2)
-
-## Migrating to v3
-Changes:
-- replaced openssl by rustls
-  - This makes older v1 and v2 server certificates incompatible
-  - When using a self signed certificate, regenerate it using the updated [generate_certificate.py](./generate_certificate.py)
-- replaced moonlight-common-c by moonlight-common-rust
-  - This could make older Nvidia GameStream and Sunshine Servers unsupported
-- moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`
-  - Change the Web Socket Endpoint when using a Reserve Proxy: See [Proxying via Apache2](#proxying-via-apache-2)
-- `config.json` is not generated at first startup and can optionally be used for more granular control
-  - you can generate a config with `./web-server config generate`, if required
-- moved `default_user_id` and `default_role_id` from the `config.json` into the `data.json` file
-  - go into the admin panel and set the user or role you that you want to be the default to the default at the bottom of the page
-- removed old unused `default_settings` value in the config
-- removed `webrtc.network_types` setting in the config
+## Migrating from upstream moonlight-web-stream
+An existing `server/data.json` (v1, v2 or v3) is migrated automatically on first start:
+- All hosts (including their pairing) are kept and become visible to everyone.
+- Users, roles, passwords and sessions are dropped. The Moonlight client identity of the first admin user is kept so already paired hosts keep working.
+- The following `config.json` keys were removed and must be deleted: `web_server.session_cookie_secure`, `web_server.session_cookie_expiration`, `web_server.first_login_create_admin`, `web_server.first_login_assign_global_hosts`, `web_server.forwarded_header`.
+- Removed API routes: `/api/login`, `/api/logout`, `/api/authenticate`, `/api/user*`, `/api/role*`, `/api/settings/*`, and the `admin.html` page.
 
 ## Contributors
 Thanks to everyone who contributed to make this software better :).

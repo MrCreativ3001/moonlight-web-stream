@@ -15,7 +15,6 @@ import { WebRTCTransport } from "./transport/webrtc"
 import { allVideoCodecs, andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video"
 import { VideoRenderer, VideoRendererSetup } from "./video/index"
 import { buildVideoPipeline, queryVideoPipelineInfo, VideoPipelineOptions } from "./video/pipeline"
-import { StreamPermissions } from "../api_bindings"
 
 export type ExecutionEnvironment = {
     main: boolean
@@ -100,7 +99,6 @@ export class Stream implements Component {
     private hostId: number
     private appId: number
 
-    private permissions: StreamPermissions
     private settings: Settings
 
     private divElement = document.createElement("div")
@@ -116,7 +114,7 @@ export class Stream implements Component {
 
     private streamerSize: [number, number]
 
-    constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number], permissions: StreamPermissions) {
+    constructor(api: Api, hostId: number, appId: number, settings: Settings, viewerScreenSize: [number, number]) {
         this.logger.addInfoListener((info, type) => {
             this.debugLog(info, { type: type ?? undefined })
         })
@@ -126,7 +124,6 @@ export class Stream implements Component {
         this.hostId = hostId
         this.appId = appId
 
-        this.permissions = permissions
         this.settings = settings
 
         this.streamerSize = getStreamerSize(settings, viewerScreenSize)
@@ -159,8 +156,6 @@ export class Stream implements Component {
     }
 
     async startConnection() {
-        this.debugLog(`Permissions: ${JSON.stringify(this.permissions)}`)
-
         const desiredTransport = this.transportOverride ?? this.settings.dataTransport
         this.debugLog(`Using transport: ${desiredTransport}`)
 
@@ -220,11 +215,6 @@ export class Stream implements Component {
     }
 
     private async tryWebRTCTransport(): Promise<TransportShutdown> {
-        if (!this.permissions.allow_transport_webrtc) {
-            this.debugLog("Not trying WebRTC transport because permissions disallow it")
-            return "failednoconnect"
-        }
-
         this.debugLog("Trying WebRTC transport")
 
         // Get configuration
@@ -298,11 +288,6 @@ export class Stream implements Component {
         return await onClose
     }
     private async tryWebSocketTransport() {
-        if (!this.permissions.allow_transport_websockets) {
-            this.debugLog("Not trying WebSocket transport becaues permissions disallow it")
-            return
-        }
-
         this.debugLog("Trying Web Socket transport")
 
         const options = await this.createTransportOptions()

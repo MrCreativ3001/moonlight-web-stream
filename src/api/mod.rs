@@ -1,57 +1,26 @@
-use actix_web::{
-    dev::HttpServiceFactory,
-    middleware::from_fn,
-    services,
-    web::{self},
-};
+use actix_web::{dev::HttpServiceFactory, services, web};
 
 use crate::api::{
     app::{get_app_image, get_apps},
-    auth::auth_middleware,
     host::{
         cancel_host, delete_host, get_host, list_hosts, pair_host, patch_host, post_host, wake_host,
     },
-    role::{
-        add_role, delete_default_role, delete_role, get_default_role, get_role, list_roles,
-        patch_role, put_default_role,
-    },
-    settings::{get_default_settings, get_permissions},
     stream::{
         web_socket::web_socket_stream,
-        webrtc::{
-            webrtc_delete, webrtc_get, webrtc_middleware, webrtc_options, webrtc_patch, webrtc_post,
-        },
-    },
-    user::{
-        add_user, delete_default_user, delete_user, get_default_user, get_user, list_users,
-        patch_user, put_default_user,
+        webrtc::{webrtc_delete, webrtc_get, webrtc_options, webrtc_patch, webrtc_post},
     },
 };
 
+pub mod app;
 pub mod bindings;
 pub(super) mod bindings_ext;
-
-pub mod app;
-pub mod auth;
 pub mod host;
-pub mod role;
-pub mod settings;
-pub mod stream;
-pub mod user;
-
 pub mod response_streaming;
+pub mod stream;
 
 pub fn api_service() -> impl HttpServiceFactory {
     web::scope("/api")
-        .wrap(from_fn(auth_middleware))
         .service(services![
-            // -- Auth
-            auth::login,
-            auth::logout,
-            auth::authenticate
-        ])
-        .service(services![
-            // -- Host
             list_hosts,
             get_host,
             post_host,
@@ -60,51 +29,15 @@ pub fn api_service() -> impl HttpServiceFactory {
             delete_host,
             pair_host,
             cancel_host,
-        ])
-        .service(services![
-            // -- Apps
             get_apps,
             get_app_image,
-        ])
-        .service(services![
-            // -- Users
-            get_user,
-            add_user,
-            patch_user,
-            delete_user,
-            list_users,
-            put_default_user,
-            delete_default_user,
-            get_default_user,
-        ])
-        .service(services![
-            // -- Roles
-            get_role,
-            add_role,
-            patch_role,
-            delete_role,
-            list_roles,
-            put_default_role,
-            delete_default_role,
-            get_default_role,
-        ])
-        .service(services![
-            // -- Settings
-            get_default_settings,
-            get_permissions
-        ])
-        .service(services![
-            // -- Web Socket Stream
             web_socket_stream,
         ])
-        .service(
-            // -- WebRTC Stream
-            web::scope("/host/stream/webrtc")
-                .wrap(from_fn(webrtc_middleware))
-                .service(webrtc_options)
-                .service(webrtc_get)
-                .service(webrtc_post)
-                .service(webrtc_patch)
-                .service(webrtc_delete),
-        )
+        .service(web::scope("/host/stream/webrtc").service(services![
+            webrtc_options,
+            webrtc_get,
+            webrtc_post,
+            webrtc_patch,
+            webrtc_delete,
+        ]))
 }

@@ -1,5 +1,5 @@
 import "./polyfill/index"
-import { Api, getApi, apiPostHost, FetchError, apiLogout, apiGetUser, tryLogin, apiGetHost, apiGetRole, apiPatchRole } from "./api"
+import { Api, getApi, apiPostHost, FetchError, apiGetHost } from "./api"
 import { AddHostModal } from "./component/host/add_modal"
 import { HostList } from "./component/host/list"
 import { Component, ComponentEvent } from "./component/index"
@@ -8,11 +8,10 @@ import { showMessage, showModal } from "./component/modal/index"
 import { setContextMenu } from "./component/context_menu"
 import { GameList } from "./component/game/list"
 import { Host } from "./component/host/index"
-import { App, DetailedRole, DetailedUser } from "./api_bindings"
+import { App } from "./api_bindings"
 import { getLocalStreamSettings, globalDefaultSettings, setLocalStreamSettings, StreamSettingsComponent } from "./component/settings_menu"
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n"
+import { getCurrentLanguage, getTranslations } from "./i18n"
 import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click"
-import { buildUrl } from "./config_"
 import { setStyle as setPageStyle } from "./styles/index"
 
 // TODO: look at this? https://developer.mozilla.org/en-US/docs/Web/API/Web_components
@@ -22,11 +21,7 @@ let I = getTranslations(getCurrentLanguage())
 async function startApp() {
     setTouchContextMenuEnabled(true)
 
-    const api = await getApi()
-
-    const bootstrapRole = await apiGetRole(api, { id: null })
-    adoptRoleDefaultLanguage(bootstrapRole.role.default_settings)
-    I = getTranslations(getCurrentLanguage())
+    const api = getApi()
 
     const rootElement = document.getElementById("root");
     if (rootElement == null) {
@@ -42,7 +37,7 @@ async function startApp() {
         }
     }
 
-    const app = new MainApp(api, bootstrapRole.role)
+    const app = new MainApp(api)
     app.mount(rootElement)
 
     window.addEventListener("popstate", event => {
@@ -55,8 +50,6 @@ async function startApp() {
         app.setAppState(lastAppState)
     }
 }
-
-startApp()
 
 type DisplayStates = "hosts" | "games" | "settings"
 
@@ -76,9 +69,6 @@ function backAppState() {
 
 class MainApp implements Component {
     private api: Api
-    private user: DetailedUser | null = null
-    private role: DetailedRole | null = null
-
     private divElement = document.createElement("div")
 
     // Top Line
@@ -87,11 +77,6 @@ class MainApp implements Component {
     private moonlightTextElement = document.createElement("h1")
 
     private topLineActions = document.createElement("div")
-    private logoutButton = document.createElement("button")
-    // This is for the default user
-    private loginButton = document.createElement("button")
-    private adminButton = document.createElement("button")
-
     // Actions
     private actionElement = document.createElement("div")
 
@@ -99,7 +84,6 @@ class MainApp implements Component {
 
     private hostAddButton: HTMLButtonElement = document.createElement("button")
     private settingsButton: HTMLButtonElement = document.createElement("button")
-    private saveRoleDefaultsButton: HTMLButtonElement = document.createElement("button")
 
     // Different submenus
     private currentDisplay: DisplayStates | null = null
@@ -108,9 +92,8 @@ class MainApp implements Component {
     private gameList: GameList | null = null
     private settings: StreamSettingsComponent | null = null
 
-    constructor(api: Api, bootstrapRole: DetailedRole) {
+    constructor(api: Api) {
         this.api = api
-        this.role = bootstrapRole
 
         // Top Line
         this.topLine.classList.add("top-line")
@@ -120,25 +103,7 @@ class MainApp implements Component {
 
         this.topLine.appendChild(this.topLineActions)
         this.topLineActions.classList.add("top-line-actions")
-
-        this.logoutButton.addEventListener("click", async () => {
-            await apiLogout(this.api)
-            window.location.reload()
-        })
-        this.logoutButton.classList.add("logout-button")
-
-        this.loginButton.addEventListener("click", async () => {
-            const success = await tryLogin()
-            if (success) {
-                window.location.reload()
-            }
-        })
-        this.loginButton.classList.add("login-button")
-
-        this.adminButton.addEventListener("click", async () => {
-            window.location.href = buildUrl("/admin.html")
-        })
-        this.adminButton.classList.add("admin-button")
+        this.topLineActions.appendChild(this.settingsButton)
 
         // Actions
         this.actionElement.classList.add("actions-list")
@@ -161,16 +126,8 @@ class MainApp implements Component {
         this.settingsButton.classList.add("open-settings")
         this.settingsButton.addEventListener("click", () => this.setCurrentDisplay("settings"))
 
-        this.saveRoleDefaultsButton.innerText = I.settings.saveRoleDefaults
-        this.saveRoleDefaultsButton.classList.add("button-fit-content")
-        this.saveRoleDefaultsButton.addEventListener("click", this.onSaveRoleDefaults.bind(this))
-        this.saveRoleDefaultsButton.dataset.variant = "save-button"
-
         // Settings
-        this.settings = new StreamSettingsComponent(
-            bootstrapRole.permissions,
-            getLocalStreamSettings(bootstrapRole.default_settings)
-        )
+        this.settings = new StreamSettingsComponent(getLocalStreamSettings(globalDefaultSettings()))
         this.settings.addChangeListener(this.onSettingsChange.bind(this))
 
         // Append default elements
@@ -257,37 +214,6 @@ class MainApp implements Component {
         }
     }
 
-    private async onSaveRoleDefaults() {
-        if (!this.settings || !this.role || this.user?.role !== "Admin") {
-            showNotification(I.settings.saveRoleDefaultsFailed)
-            return
-        }
-
-        this.saveRoleDefaultsButton.disabled = true
-
-        try {
-            const newSettings = this.settings.getStreamSettings()
-            await apiPatchRole(this.api, {
-                id: this.role.id,
-                name: null,
-                ty: this.role.ty,
-                default_settings: newSettings,
-                permissions: null,
-            })
-
-            this.role = {
-                ...this.role,
-                default_settings: newSettings,
-            }
-
-            await showMessage(I.settings.saveRoleDefaultsSuccess)
-        } catch {
-            showNotification(I.settings.saveRoleDefaultsFailed)
-        } finally {
-            this.saveRoleDefaultsButton.disabled = false
-        }
-    }
-
     private setCurrentDisplay(display: "hosts",
         extraInfo?: null,
         pushIntoHistory?: boolean
@@ -329,34 +255,26 @@ class MainApp implements Component {
         // Unmount the current display
         if (this.currentDisplay == "hosts") {
             this.actionElement.removeChild(this.hostAddButton)
-            this.actionElement.removeChild(this.settingsButton)
 
             this.hostList.unmount(this.divElement)
         } else if (this.currentDisplay == "games") {
             this.actionElement.removeChild(this.backButton)
-            this.actionElement.removeChild(this.settingsButton)
 
             this.gameList?.unmount(this.divElement)
         } else if (this.currentDisplay == "settings") {
             this.actionElement.removeChild(this.backButton)
-            if (this.actionElement.contains(this.saveRoleDefaultsButton)) {
-                this.actionElement.removeChild(this.saveRoleDefaultsButton)
-            }
-
             this.settings?.unmount(this.divElement)
         }
 
         // Mount the new display
         if (display == "hosts") {
             this.actionElement.appendChild(this.hostAddButton)
-            this.actionElement.appendChild(this.settingsButton)
 
             this.hostList.mount(this.divElement)
 
             setAppState({ display: "hosts" }, pushIntoHistory)
         } else if (display == "games" && extraInfo?.hostId != null) {
             this.actionElement.appendChild(this.backButton)
-            this.actionElement.appendChild(this.settingsButton)
 
             if (this.gameList?.getHostId() != extraInfo?.hostId) {
                 this.gameList = new GameList(this.api, extraInfo?.hostId, extraInfo?.hostCache ?? null)
@@ -370,10 +288,6 @@ class MainApp implements Component {
             setAppState({ display: "games", hostId: this.gameList?.getHostId() }, pushIntoHistory)
         } else if (display == "settings") {
             this.actionElement.appendChild(this.backButton)
-            if (this.user?.role == "Admin") {
-                this.actionElement.appendChild(this.saveRoleDefaultsButton)
-            }
-
             this.settings?.mount(this.divElement)
 
             setAppState({ display: "settings" }, pushIntoHistory)
@@ -383,9 +297,6 @@ class MainApp implements Component {
     }
 
     async forceFetch() {
-        const promiseUser = this.refreshUserRole()
-        const promiseRoles = this.refreshUserPermissions()
-
         await Promise.all([
             this.hostList.forceFetch(),
             this.gameList?.forceFetch()
@@ -398,49 +309,7 @@ class MainApp implements Component {
             this.setCurrentDisplay("hosts")
         }
 
-        await Promise.all([
-            promiseUser,
-            promiseRoles,
-            this.refreshGameListActiveGame()
-        ])
-    }
-    private async refreshUserRole() {
-        this.user = await apiGetUser(this.api)
-
-        if (this.topLineActions.contains(this.logoutButton)) {
-            this.topLineActions.removeChild(this.logoutButton)
-        }
-        if (this.topLineActions.contains(this.loginButton)) {
-            this.topLineActions.removeChild(this.loginButton)
-        }
-        if (this.topLineActions.contains(this.adminButton)) {
-            this.topLineActions.removeChild(this.adminButton)
-        }
-
-        if (this.user.is_default_user) {
-            this.topLineActions.appendChild(this.loginButton)
-        } else {
-            this.topLineActions.appendChild(this.logoutButton)
-        }
-
-        if (this.user.role == "Admin") {
-            this.topLineActions.appendChild(this.adminButton)
-            if (this.currentDisplay == "settings" && !this.actionElement.contains(this.saveRoleDefaultsButton)) {
-                this.actionElement.appendChild(this.saveRoleDefaultsButton)
-            }
-        } else if (this.actionElement.contains(this.saveRoleDefaultsButton)) {
-            this.actionElement.removeChild(this.saveRoleDefaultsButton)
-        }
-    }
-    private async refreshUserPermissions() {
-        const response = await apiGetRole(this.api, { id: null })
-        this.role = response.role
-
-        if (this.role.permissions.allow_add_hosts) {
-            this.hostAddButton.disabled = false
-        } else {
-            this.hostAddButton.disabled = true
-        }
+        await this.refreshGameListActiveGame()
     }
     private async refreshGameListActiveGame() {
         const gameList = this.gameList
@@ -475,3 +344,5 @@ class MainApp implements Component {
         parent.removeChild(this.divElement)
     }
 }
+
+startApp()

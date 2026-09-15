@@ -1,5 +1,5 @@
-import { DetailedHost, DetailedUser, UndetailedHost } from "../../api_bindings"
-import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp, apiGetUser, apiPatchHost } from "../../api"
+import { DetailedHost, UndetailedHost } from "../../api_bindings"
+import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiWakeUp, apiPatchHost } from "../../api"
 import { Component, ComponentEvent } from "../index"
 import { getCurrentLanguage, getTranslations } from "../../i18n"
 import { setContextMenu } from "../context_menu"
@@ -13,7 +13,6 @@ export class Host implements Component {
     private api: Api
 
     private hostId: number
-    private userCache: DetailedUser | null = null
     private cache: UndetailedHost | DetailedHost | null = null
 
     private divElement: HTMLDivElement = document.createElement("div")
@@ -48,23 +47,19 @@ export class Host implements Component {
 
         // Update cache
         if (host != null) {
-            this.updateCache(host, null)
+            this.updateCache(host)
 
-            apiGetUser(api).then((user) => this.userCache = user)
         } else {
             this.forceFetch()
         }
     }
 
     async forceFetch() {
-        const [newCache, user] = await Promise.all([
-            apiGetHost(this.api, {
-                host_id: this.hostId,
-            }),
-            apiGetUser(this.api)
-        ])
+        const newCache = await apiGetHost(this.api, {
+            host_id: this.hostId,
+        })
 
-        this.updateCache(newCache, user)
+        this.updateCache(newCache)
     }
     async getCurrentGame(): Promise<number | null> {
         await this.forceFetch()
@@ -119,29 +114,10 @@ export class Host implements Component {
             })
         }
 
-        // Make private / global
-        if (this.userCache?.role == "Admin") {
-            if (this.cache?.owner == "Global") {
-                elements.push({
-                    name: i.makePrivate,
-                    callback: this.makePrivate.bind(this),
-                    classes: ["context-menu-element-red"]
-                })
-            } else if (this.cache?.owner == "ThisUser") {
-                elements.push({
-                    name: i.makeGlobal,
-                    callback: this.makeGlobal.bind(this),
-                    classes: ["context-menu-element-red"]
-                })
-            }
-        }
-
-        if (this.cache?.owner == "ThisUser" || this.userCache?.role == "Admin") {
-            elements.push({
-                name: i.removeHost,
-                callback: this.remove.bind(this)
-            })
-        }
+        elements.push({
+            name: i.removeHost,
+            callback: this.remove.bind(this)
+        })
 
         setContextMenu(event, {
             elements
@@ -160,7 +136,7 @@ export class Host implements Component {
             showNotification(i.failedToGetDetails(this.hostId))
             return;
         }
-        this.updateCache(host, this.userCache)
+        this.updateCache(host)
 
         await showMessage(i.details(host))
     }
@@ -177,31 +153,6 @@ export class Host implements Component {
     }
     removeHostOpenListener(listener: HostEventListener, options?: EventListenerOptions) {
         this.divElement.removeEventListener("ml-hostopen", listener as any, options)
-    }
-
-    private async makeGlobal() {
-        await apiPatchHost(this.api, {
-            host_id: this.hostId,
-            change_owner: true,
-            owner: null,
-        })
-
-        if (this.cache) {
-            this.cache.owner = "Global"
-        }
-    }
-    private async makePrivate() {
-        const user = this.userCache ?? await apiGetUser(this.api)
-
-        await apiPatchHost(this.api, {
-            host_id: this.hostId,
-            change_owner: true,
-            owner: user.id,
-        })
-
-        if (this.cache) {
-            this.cache.owner = "ThisUser"
-        }
     }
 
     private async remove() {
@@ -250,7 +201,7 @@ export class Host implements Component {
             throw `failed to pair (stage 2): ${resultResponse}`
         }
 
-        this.updateCache(resultResponse.Paired, null)
+        this.updateCache(resultResponse.Paired)
     }
 
     getHostId(): number {
@@ -261,7 +212,7 @@ export class Host implements Component {
         return this.cache
     }
 
-    updateCache(host: UndetailedHost | DetailedHost, user: DetailedUser | null) {
+    updateCache(host: UndetailedHost | DetailedHost) {
         const i = getTranslations(getCurrentLanguage()).host
         if (this.getHostId() != host.host_id) {
             showNotification(i.overwriteMismatch(this.getHostId(), host.host_id))
@@ -278,10 +229,6 @@ export class Host implements Component {
             } else {
                 this.cache = host
             }
-        }
-
-        if (user) {
-            this.userCache = user
         }
 
         // Update Elements

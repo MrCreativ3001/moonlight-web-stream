@@ -3,11 +3,13 @@ import { Api, apiGetHosts } from "../../api"
 import { ComponentEvent } from "../index"
 import { Host, HostEventListener } from "./index"
 import { FetchListComponent } from "../fetch_list"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
 
 export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, Host> {
     private api: Api
 
     private eventTarget = new EventTarget()
+    private emptyHint = document.createElement("p")
 
     constructor(api: Api) {
         super({
@@ -16,12 +18,15 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
         })
 
         this.api = api
+        this.emptyHint.classList.add("host-empty-hint")
+        this.emptyHint.innerText = getTranslations(getCurrentLanguage()).host.empty
     }
 
     async forceFetch() {
         const hosts = await apiGetHosts(this.api)
 
         this.updateCache(hosts.response.hosts)
+        this.updateEmptyHint()
 
         let update
         while (update = await hosts.next()) {
@@ -30,10 +35,15 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
                 this.updateComponentData(host, update)
             }
         }
+        this.updateEmptyHint()
+    }
+
+    private updateEmptyHint() {
+        this.emptyHint.hidden = this.list.get().length != 0
     }
 
     protected updateComponentData(component: Host, data: DetailedHost | UndetailedHost): void {
-        component.updateCache(data, null)
+        component.updateCache(data)
     }
     protected getComponentDataId(component: Host): number {
         return component.getHostId()
@@ -46,12 +56,14 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
         const newHost = new Host(this.api, dataId, data)
 
         this.list.append(newHost)
+        this.updateEmptyHint()
 
         newHost.addHostRemoveListener(this.removeHostListener.bind(this))
         newHost.addHostOpenListener(this.onHostOpenEvent.bind(this))
     }
     public removeList(listIndex: number): void {
         const hostComponent = this.list.remove(listIndex)
+        this.updateEmptyHint()
 
         hostComponent?.addHostOpenListener(this.onHostOpenEvent.bind(this))
         hostComponent?.removeHostRemoveListener(this.removeHostListener.bind(this))
@@ -79,9 +91,12 @@ export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, 
     }
 
     mount(parent: Element): void {
+        parent.appendChild(this.emptyHint)
         this.list.mount(parent)
+        this.updateEmptyHint()
     }
     unmount(parent: Element): void {
         this.list.unmount(parent)
+        parent.removeChild(this.emptyHint)
     }
 }

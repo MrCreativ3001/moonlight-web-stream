@@ -14,8 +14,7 @@ export default {
         // TODO: also include i18n
         common: ["./web/styles/index.ts"],
         index: "./web/index.ts",
-        stream: "./web/stream.ts",
-        admin: "./web/admin.ts"
+        stream: "./web/stream.ts"
     },
     module: {
         rules: [
@@ -58,13 +57,6 @@ export default {
             filename: 'stream.html',
             template: './web/stream.html',
             chunks: ['stream'],
-            scriptLoading: 'blocking',
-            favicon: "./web/resources/moonlight.svg"
-        }),
-        new HtmlWebpackPlugin({
-            filename: 'admin.html',
-            template: './web/admin.html',
-            chunks: ['admin'],
             scriptLoading: 'blocking',
             favicon: "./web/resources/moonlight.svg"
         }),

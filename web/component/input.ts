@@ -460,10 +460,11 @@ export class SelectComponent extends ElementWithLabel {
 
     setOptionEnabled(value: string, enabled: boolean) {
         if (this.strategy.name == "datalist" || this.strategy.name == "select") {
-            const optionRoot = this.strategy.optionRoot
+            const isDatalist = this.strategy.name == "datalist"
 
-            for (const optionElement of optionRoot.options) {
-                if (optionElement.value == value) {
+            for (const optionElement of this.strategy.optionRoot.options) {
+                const optionValue = isDatalist ? optionElement.dataset.value : optionElement.value
+                if (optionValue == value) {
                     optionElement.disabled = !enabled
                 }
             }

@@ -125,7 +125,9 @@ export class StreamSettingsComponent implements Component {
     private sidebarEdge: SelectComponent
     private hideSidebarButton: InputComponent
 
-    private bitrate: InputComponent
+    private bitrate: HTMLInputElement = document.createElement("input")
+    private bitrateLabel: HTMLParagraphElement = document.createElement("p")
+    private bitrateLabelText: string
     private fps: SelectComponent
     private lastFps: string
     private customFps: number
@@ -208,10 +210,28 @@ export class StreamSettingsComponent implements Component {
         const gamepadSection = createSection(columnRight, i.gamepadSettings)
         const advancedSection = createSection(columnRight, i.advancedSettings)
 
+        const createGroup = (section: HTMLElement, title: string, description?: string) => {
+            const group = document.createElement("div")
+            group.classList.add("settings-group")
+            const heading = document.createElement("p")
+            heading.classList.add("settings-group-title")
+            heading.innerText = title
+            group.appendChild(heading)
+            if (description) {
+                const desc = document.createElement("p")
+                desc.classList.add("settings-group-description")
+                desc.innerText = description
+                group.appendChild(desc)
+            }
+            section.appendChild(group)
+            return { group, heading }
+        }
+
         // Basic Settings: resolution + fps on one row, then bitrate
+        const resFpsGroup = createGroup(basicSection, i.resolutionAndFps, i.resolutionAndFpsDescription).group
         const resFpsRow = document.createElement("div")
         resFpsRow.classList.add("settings-row")
-        basicSection.appendChild(resFpsRow)
+        resFpsGroup.appendChild(resFpsRow)
 
         this.customLabel = i.custom
 
@@ -233,7 +253,6 @@ export class StreamSettingsComponent implements Component {
                 { value: "custom", name: initialVideoSize == "custom" ? this.customResolutionLabel() : i.custom }
             ],
             {
-                displayName: i.videoSize,
                 preSelectedOption: initialVideoSize
             }
         )
@@ -253,7 +272,6 @@ export class StreamSettingsComponent implements Component {
                 { value: "custom", name: isPresetFps ? i.custom : this.customFpsLabel() }
             ],
             {
-                displayName: i.fps,
                 preSelectedOption: this.lastFps
             }
         )
@@ -261,31 +279,34 @@ export class StreamSettingsComponent implements Component {
         this.fps.mount(resFpsRow)
 
         // Bitrate (Mbps in the UI, stored as Kbps internally)
-        this.bitrate = new InputComponent("bitrate", "number", i.bitrate, {
-            defaultValue: (defaultSettings_.bitrate / 1000).toString(),
-            value: settings?.bitrate != null ? (settings.bitrate / 1000).toString() : undefined,
-            step: "1",
-            numberSlider: {
-                range_min: 1,
-                range_max: 150,
-            }
-        })
-        this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
-        this.bitrate.mount(basicSection)
+        this.bitrateLabelText = i.bitrate
+        const bitrateGroup = createGroup(basicSection, "", i.bitrateDescription)
+        this.bitrateLabel = bitrateGroup.heading
+        this.bitrate.id = "bitrate"
+        this.bitrate.type = "range"
+        this.bitrate.classList.add("bitrate-slider")
+        this.bitrate.min = "0.5"
+        this.bitrate.max = "150"
+        this.bitrate.step = "0.5"
+        this.bitrate.value = ((settings?.bitrate ?? defaultSettings_.bitrate) / 1000).toString()
+        this.bitrate.addEventListener("input", () => this.updateBitrateLabel())
+        this.bitrate.addEventListener("change", this.onSettingsChange.bind(this))
+        bitrateGroup.group.appendChild(this.bitrate)
+        this.updateBitrateLabel()
 
         // Display Mode (Moonlight-style select instead of a bare checkbox)
+        const displayModeGroup = createGroup(basicSection, i.displayMode).group
         this.displayMode = new SelectComponent("displayMode",
             [
-                { value: "fullscreen", name: i.displayModeFullscreen },
-                { value: "windowed", name: i.displayModeWindowed }
+                { value: "windowed", name: i.displayModeWindowed },
+                { value: "fullscreen", name: i.displayModeFullscreen }
             ],
             {
-                displayName: i.displayMode,
                 preSelectedOption: (settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart) ? "fullscreen" : "windowed"
             }
         )
         this.displayMode.addChangeListener(this.onSettingsChange.bind(this))
-        this.displayMode.mount(basicSection)
+        this.displayMode.mount(displayModeGroup)
 
         this.quitAppOnExit = new InputComponent("quitAppOnExit", "checkbox", i.quitAppOnExit, {
             checked: settings?.quitAppOnExit ?? defaultSettings_.quitAppOnExit
@@ -535,6 +556,11 @@ export class StreamSettingsComponent implements Component {
     private customResolutionLabel(): string {
         return `${this.customLabel} (${this.customVideoSize.width}x${this.customVideoSize.height})`
     }
+    private updateBitrateLabel() {
+        const mbps = parseFloat(this.bitrate.value)
+        this.bitrateLabel.innerText = `${this.bitrateLabelText}: ${Number.isFinite(mbps) ? mbps : ""} Mbps`
+    }
+
     private customFpsLabel(): string {
         return `${this.customLabel} (${this.customFps} FPS)`
     }
@@ -589,9 +615,9 @@ export class StreamSettingsComponent implements Component {
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
         settings.hideSidebarButton = this.hideSidebarButton.isChecked()
-        const bitrateMbps = parseFloat(this.bitrate.getValue())
+        const bitrateMbps = parseFloat(this.bitrate.value)
         settings.bitrate = Number.isFinite(bitrateMbps)
-            ? Math.min(Math.max(Math.round(bitrateMbps * 1000), 1000), 150000)
+            ? Math.min(Math.max(Math.round(bitrateMbps * 1000), 500), 150000)
             : globalDefaultSettings().bitrate
         const fpsValue = this.fps.getValue() ?? "60"
         const fps = fpsValue == "custom" ? this.customFps : parseInt(fpsValue)

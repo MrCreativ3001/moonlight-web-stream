@@ -707,11 +707,13 @@ export class Stream implements Component {
             })
             : null
 
+        const transportClosePromise = this.transport?.close()
+
         await this.releaseWakeLock()
         await quitAppPromise
 
         // Stop transport
-        await this.transport?.close()
+        await transportClosePromise
 
         return true
     }

@@ -1400,3 +1400,48 @@ canvas.video-stream {
 .role-info-delete {
     background-color: red;
 }
+.settings {
+    color: white;
+    display: flex;
+    gap: 28px;
+    padding: 24px 32px;
+    align-items: flex-start;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.settings-column {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+}
+
+.settings-section {
+    border: 1px solid var(--accent-cyan);
+    border-radius: 8px;
+    padding: 10px 16px 16px;
+    background: var(--muted);
+}
+
+.settings-section-title {
+    margin: 4px 0 10px;
+    font-size: 1.15rem;
+    color: var(--accent-cyan-2);
+}
+
+.settings-row {
+    display: flex;
+    gap: 24px;
+}
+
+@media (max-width: 800px) {
+    .settings {
+        flex-direction: column;
+        padding: 16px;
+    }
+    .settings-column {
+        width: 100%;
+    }
+}

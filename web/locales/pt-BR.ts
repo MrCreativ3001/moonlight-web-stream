@@ -39,6 +39,12 @@ export const ptBR: Translations = {
         rootNotFound: "elemento raiz não encontrado",
     },
     settings: {
+        basicSettings: "Configurações Básicas",
+        audioSettings: "Configurações de Áudio",
+        uiSettings: "Configurações de Interface",
+        inputSettings: "Configurações de Entrada",
+        gamepadSettings: "Configurações de Controle",
+        advancedSettings: "Configurações Avançadas",
         sidebar: "Barra Lateral",
         sidebarEdge: "Posição da Barra Lateral",
         hideSidebarButton: "Ocultar botão da barra lateral (aparece ao passar o mouse)",

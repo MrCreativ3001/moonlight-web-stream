@@ -39,6 +39,12 @@ export const koKR: Translations = {
         rootNotFound: "루트 요소를 찾을 수 없습니다.",
     },
     settings: {
+        basicSettings: "기본 설정",
+        audioSettings: "오디오 설정",
+        uiSettings: "UI 설정",
+        inputSettings: "입력 설정",
+        gamepadSettings: "게임패드 설정",
+        advancedSettings: "고급 설정",
         sidebar: "사이드바",
         sidebarEdge: "사이드바 위치",
         hideSidebarButton: "사이드바 버튼 숨기기 (마우스를 올리면 표시)",

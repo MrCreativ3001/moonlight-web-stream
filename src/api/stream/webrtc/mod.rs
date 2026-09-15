@@ -1,6 +1,7 @@
 use crate::api::stream::webrtc::audio::AudioChannel;
 use crate::api::stream::webrtc::control::ControlChannel;
 use crate::api::stream::webrtc::ext_color_space::COLOR_SPACE_URI;
+use crate::api::stream::webrtc::forward_interceptor::RtcpForwarderInterceptor;
 use crate::api::stream::webrtc::stream::webrtc_loop;
 use crate::api::stream::webrtc::video::VideoChannel;
 use crate::config::PortRange;
@@ -32,7 +33,7 @@ use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
 use rtc::ice::network_type::NetworkType;
-use rtc::interceptor::Registry;
+use rtc::interceptor::{Registry, Slot};
 use rtc::peer_connection::configuration::media_engine::MIME_TYPE_OPUS;
 use rtc::rtp_transceiver::rtp_sender::{
     RTCPFeedback, RTCRtpCodec, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RtpCodecKind,
@@ -67,6 +68,7 @@ mod audio;
 mod control;
 mod convert;
 mod ext_color_space;
+mod forward_interceptor;
 mod ice_servers;
 mod stream;
 mod video;
@@ -305,8 +307,13 @@ pub async fn webrtc_post(
     let ice_servers = generate_ice_servers(&app).await?;
 
     // Interceptor Registry
-    let interceptor_registry = register_default_interceptors(Registry::new(), &mut media_engine)
-        .expect("register default interceptors");
+    let interceptor_registry = register_default_interceptors(
+        Registry::new()
+            // FIR and PLI need Interceptor, See https://github.com/webrtc-rs/webrtc/blob/deaddd32dc4f5f6da06c6267e1bf2e25a64fe222/examples/rtcp-processing/rtcp-processing.rs
+            .with(Slot::from(14_000), RtcpForwarderInterceptor::default()),
+        &mut media_engine,
+    )
+    .expect("register default interceptors");
 
     // Find available port
     let port = if let Some(PortRange { min, max }) = app.config().webrtc.port_range {

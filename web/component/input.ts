@@ -425,6 +425,7 @@ export class SelectComponent extends ElementWithLabel {
     }
 
     setOptionName(value: string, name: string) {
+        const selected = this.getValue() == value
         const option = this.options.find(option => option.value == value)
         if (option) {
             option.name = name
@@ -437,7 +438,6 @@ export class SelectComponent extends ElementWithLabel {
                 }
             }
         } else if (this.strategy.name == "datalist") {
-            const selected = this.getValue() == value
             for (const optionElement of this.strategy.optionRoot.options) {
                 if (optionElement.dataset.value == value) {
                     optionElement.value = name

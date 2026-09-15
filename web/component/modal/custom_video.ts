@@ -27,8 +27,8 @@ function createNumberInput(placeholder: string, value?: number): HTMLInputElemen
 }
 
 function parsePositiveInt(value: string): number | null {
-    const parsed = parseInt(value)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+    const parsed = Number(value)
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 }
 
 class CustomResolutionModal extends FormModal<CustomResolution> {

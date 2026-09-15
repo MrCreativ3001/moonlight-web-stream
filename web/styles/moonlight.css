@@ -298,15 +298,15 @@ input[type=number] {
     background-color: #2b2b2b;
     color: #ffffff;
 
-    margin: 15% auto;
+    box-sizing: border-box;
+    margin: 8vh auto;
     padding: 24px 32px 16px;
     border: none;
     border-radius: 10px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
 
     width: min(80%, 560px);
-
-    max-height: 70%;
+    max-height: 84vh;
     overflow-y: auto;
 }
 

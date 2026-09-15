@@ -155,24 +155,45 @@ export class Stream implements Component {
         }
     }
 
+    private isStopped = false
+
     async startConnection() {
+        while (!this.isStopped) {
+            const wasConnected = await this.connectOnce()
+
+            if (this.isStopped) {
+                return
+            }
+            if (!wasConnected) {
+                this.debugLog("Tried all configured transport options but no connection was possible", { type: "fatal" })
+                return
+            }
+
+            this.debugLog("Connection lost, reconnecting...", { type: "ifErrorDescription" })
+            await wait(FALLBACK_RECONNECT_DELAY_MS)
+        }
+    }
+
+    // Returns true when a connection was established and then lost; false when it never connected.
+    private async connectOnce(): Promise<boolean> {
         const desiredTransport = this.transportOverride ?? this.settings.dataTransport
         this.debugLog(`Using transport: ${desiredTransport}`)
 
+        let shutdownReason: TransportShutdown | undefined
         if (desiredTransport == "auto") {
-            let shutdownReason = await this.tryWebRTCTransport()
+            shutdownReason = await this.tryWebRTCTransport()
 
             if (shutdownReason == "failednoconnect") {
                 this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.", { type: "ifErrorDescription" })
-                await this.tryWebSocketTransport()
+                shutdownReason = await this.tryWebSocketTransport()
             }
         } else if (desiredTransport == "webrtc") {
-            await this.tryWebRTCTransport()
+            shutdownReason = await this.tryWebRTCTransport()
         } else if (desiredTransport == "websocket") {
-            await this.tryWebSocketTransport()
+            shutdownReason = await this.tryWebSocketTransport()
         }
 
-        this.debugLog("Tried all configured transport options but no connection was possible", { type: "fatal" })
+        return shutdownReason == "failed" || shutdownReason == "disconnect"
     }
 
     private transport: Transport | null = null
@@ -541,6 +562,7 @@ export class Stream implements Component {
     }
 
     async stop(): Promise<boolean> {
+        this.isStopped = true
         // Stop transport
         await this.transport?.close()
 

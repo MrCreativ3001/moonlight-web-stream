@@ -492,9 +492,20 @@ input[type=number] {
 .sidebar-content {
     background-color: rgb(86, 92, 100);
     border-radius: 5px;
-    padding: 10px 10px 10px 10px;
+    padding: 6px;
     display: flex;
     flex-direction: column;
+    font-size: 0.85rem;
+}
+
+.sidebar-stream button {
+    font-size: 0.85rem;
+    padding: 4px;
+    margin: 3px;
+}
+
+.sidebar-stream .input-div {
+    font-size: 0.8rem;
 }
 
 /** TODO: reorder stream sidebar */

@@ -608,11 +608,22 @@ input[type=number] {
     background: linear-gradient(135deg, rgba(0, 30, 50, 0.95) 0%, rgba(0, 15, 30, 0.95) 100%);
     backdrop-filter: blur(15px);
     border-radius: 12px;
-    padding: 10px 10px 10px 10px;
     display: flex;
     flex-direction: column;
     border: 2px solid #00a3cc;
     box-shadow: 0 0 25px rgba(0, 212, 255, 0.3), 0 0 50px rgba(0, 212, 255, 0.15);
+    padding: 6px;
+    font-size: 0.85rem;
+}
+
+.sidebar-stream button {
+    font-size: 0.85rem;
+    padding: 4px;
+    margin: 3px;
+}
+
+.sidebar-stream .input-div {
+    font-size: 0.8rem;
 }
 
 /** Notification */

@@ -125,7 +125,9 @@ export class StreamSettingsComponent implements Component {
     private hideSidebarButton: InputComponent
 
     private bitrate: InputComponent
-    private fps: InputComponent
+    private fps: SelectComponent
+    private fpsCustom: InputComponent
+    private displayMode: SelectComponent
     private videoCodec: SelectComponent
     private forceVideoElementRenderer: InputComponent
     private canvasRenderer: InputComponent
@@ -149,7 +151,6 @@ export class StreamSettingsComponent implements Component {
 
     private dataTransport: SelectComponent
     private language: SelectComponent
-    private enterFullscreenOnStreamStart: InputComponent
     private toggleFullscreenWithKeybind: InputComponent
 
     private pageStyle: SelectComponent
@@ -226,23 +227,40 @@ export class StreamSettingsComponent implements Component {
         this.videoSize.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSize.mount(resFpsRow)
 
-        // Fps
-        this.fps = new InputComponent("fps", "number", i.fps, {
-            defaultValue: defaultSettings_.fps.toString(),
-            value: settings?.fps?.toString(),
-            step: "100"
-        })
+        // Fps (Moonlight-style dropdown with presets + custom)
+        const fpsPresets = ["30", "60", "90", "120", "144", "240"]
+        const fpsValue = settings?.fps ?? defaultSettings_.fps
+        const isPresetFps = fpsPresets.includes(fpsValue.toString())
+
+        this.fps = new SelectComponent("fps",
+            [
+                ...fpsPresets.map(value => ({ value, name: value })),
+                { value: "custom", name: i.custom }
+            ],
+            {
+                displayName: i.fps,
+                preSelectedOption: isPresetFps ? fpsValue.toString() : "custom"
+            }
+        )
         this.fps.addChangeListener(this.onSettingsChange.bind(this))
         this.fps.mount(resFpsRow)
 
-        // Bitrate
+        this.fpsCustom = new InputComponent("fpsCustom", "number", i.customFps, {
+            defaultValue: "60",
+            value: isPresetFps ? undefined : fpsValue.toString(),
+            step: "1"
+        })
+        this.fpsCustom.addChangeListener(this.onSettingsChange.bind(this))
+        this.fpsCustom.mount(basicSection)
+
+        // Bitrate (Mbps in the UI, stored as Kbps internally)
         this.bitrate = new InputComponent("bitrate", "number", i.bitrate, {
-            defaultValue: defaultSettings_.bitrate.toString(),
-            value: settings?.bitrate?.toString(),
-            step: "100",
+            defaultValue: (defaultSettings_.bitrate / 1000).toString(),
+            value: settings?.bitrate != null ? (settings.bitrate / 1000).toString() : undefined,
+            step: "1",
             numberSlider: {
-                range_min: 1000,
-                range_max: 150000,
+                range_min: 1,
+                range_max: 150,
             }
         })
         this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
@@ -262,11 +280,19 @@ export class StreamSettingsComponent implements Component {
         this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
         this.videoSizeHeight.mount(basicSection)
 
-        this.enterFullscreenOnStreamStart = new InputComponent("enterFullscreenOnStreamStart", "checkbox", i.enterFullscreenOnStreamStart, {
-            checked: settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart
-        })
-        this.enterFullscreenOnStreamStart.addChangeListener(this.onSettingsChange.bind(this))
-        this.enterFullscreenOnStreamStart.mount(basicSection)
+        // Display Mode (Moonlight-style select instead of a bare checkbox)
+        this.displayMode = new SelectComponent("displayMode",
+            [
+                { value: "fullscreen", name: i.displayModeFullscreen },
+                { value: "windowed", name: i.displayModeWindowed }
+            ],
+            {
+                displayName: i.displayMode,
+                preSelectedOption: (settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart) ? "fullscreen" : "windowed"
+            }
+        )
+        this.displayMode.addChangeListener(this.onSettingsChange.bind(this))
+        this.displayMode.mount(basicSection)
 
         this.quitAppOnExit = new InputComponent("quitAppOnExit", "checkbox", i.quitAppOnExit, {
             checked: settings?.quitAppOnExit ?? defaultSettings_.quitAppOnExit
@@ -522,6 +548,8 @@ export class StreamSettingsComponent implements Component {
             this.videoSizeHeight.setEnabled(false)
         }
 
+        this.fpsCustom.setEnabled(this.fps.getValue() == "custom")
+
         this.divElement.dispatchEvent(new ComponentEvent("ml-settingschange", this))
     }
 
@@ -537,8 +565,9 @@ export class StreamSettingsComponent implements Component {
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
         settings.hideSidebarButton = this.hideSidebarButton.isChecked()
-        settings.bitrate = parseInt(this.bitrate.getValue())
-        settings.fps = parseInt(this.fps.getValue())
+        settings.bitrate = Math.round(parseFloat(this.bitrate.getValue()) * 1000)
+        const fpsValue = this.fps.getValue() ?? "60"
+        settings.fps = fpsValue == "custom" ? parseInt(this.fpsCustom.getValue()) : parseInt(fpsValue)
         settings.videoSize = this.videoSize.getValue() as any
         settings.videoSizeCustom = {
             width: parseInt(this.videoSizeWidth.getValue()),
@@ -567,7 +596,7 @@ export class StreamSettingsComponent implements Component {
         settings.dataTransport = this.dataTransport.getValue() as any
         settings.language = this.language.getValue() as Language
 
-        settings.enterFullscreenOnStreamStart = this.enterFullscreenOnStreamStart.isChecked()
+        settings.enterFullscreenOnStreamStart = this.displayMode.getValue() == "fullscreen"
         settings.toggleFullscreenWithKeybind = this.toggleFullscreenWithKeybind.isChecked()
 
         settings.pageStyle = this.pageStyle.getValue() as any

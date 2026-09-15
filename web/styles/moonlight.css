@@ -165,8 +165,9 @@ input[type=number] {
     color: white;
     font-size: 1.2rem;
     margin: 5px;
+    padding: 10px 14px;
     background-color: rgba(0, 0, 0, 0.2);
-    border-radius: 2px;
+    border-radius: 4px;
     border: 1px solid rgba(255, 255, 255, 0.4);
     /* multiline */
     overflow-x: auto;
@@ -294,17 +295,74 @@ input[type=number] {
 .modal-content {
     position: relative;
     z-index: 5001;
-    background-color: rgb(86, 92, 100);
+    background-color: #2b2b2b;
+    color: #ffffff;
 
     margin: 15% auto;
-    padding: 20px;
-    border: 1px solid #888;
-    border-radius: 5px;
+    padding: 24px 32px 16px;
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
 
-    width: 80%;
+    width: min(80%, 560px);
 
-    max-height: 60%;
+    max-height: 70%;
     overflow-y: auto;
+}
+
+.modal-content p {
+    margin: 0 0 20px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.modal-actions button {
+    background: none;
+    margin: 0;
+    padding: 8px 16px;
+    text-transform: none;
+    font-size: 1.2rem;
+}
+
+.modal-actions .modal-cancel {
+    color: rgb(206, 147, 216);
+}
+
+.modal-actions .modal-ok {
+    color: #bdbdbd;
+}
+
+.modal-actions button:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.custom-value-prompt {
+    font-weight: bold;
+    margin-bottom: 8px !important;
+}
+
+.custom-resolution-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.custom-resolution-row input[type=number] {
+    width: 100%;
+    max-width: 200px;
+    margin: 0;
+    padding: 14px 16px;
+}
+
+.custom-resolution-separator {
+    font-weight: bold;
 }
 
 .modal-disabled {

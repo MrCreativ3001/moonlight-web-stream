@@ -325,6 +325,7 @@ export class SelectComponent extends ElementWithLabel {
 
                 if (this.strategy.name == "datalist") {
                     optionElement.value = option.name
+                    optionElement.dataset.value = option.value
                 } else if (this.strategy.name == "select") {
                     optionElement.innerText = option.name
                     optionElement.value = option.value
@@ -409,6 +410,52 @@ export class SelectComponent extends ElementWithLabel {
         }
 
         throw "Invalid strategy for select input field"
+    }
+
+    setValue(value: string) {
+        if (this.strategy.name == "datalist") {
+            this.strategy.inputElement.value = this.options.find(option => option.value == value)?.name ?? ""
+        } else if (this.strategy.name == "select") {
+            this.strategy.optionRoot.value = value
+        } else if (this.strategy.name == "polyfill") {
+            this.strategy.value = value
+
+            this.updateStrategyPolyfill()
+        }
+    }
+
+    setOptionName(value: string, name: string) {
+        const option = this.options.find(option => option.value == value)
+        if (option) {
+            option.name = name
+        }
+
+        if (this.strategy.name == "select") {
+            for (const optionElement of this.strategy.optionRoot.options) {
+                if (optionElement.value == value) {
+                    optionElement.innerText = name
+                }
+            }
+        } else if (this.strategy.name == "datalist") {
+            const selected = this.getValue() == value
+            for (const optionElement of this.strategy.optionRoot.options) {
+                if (optionElement.dataset.value == value) {
+                    optionElement.value = name
+                }
+            }
+            if (selected) {
+                this.strategy.inputElement.value = name
+            }
+        } else if (this.strategy.name == "polyfill") {
+            for (const optionElement of this.strategy.list.children) {
+                // @ts-ignore
+                if (optionElement.value == value) {
+                    (optionElement as HTMLElement).innerText = name
+                }
+            }
+
+            this.updateStrategyPolyfill()
+        }
     }
 
     setOptionEnabled(value: string, enabled: boolean) {

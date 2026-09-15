@@ -422,6 +422,29 @@ input[type=number] {
     transition: all 0.1s linear;
 }
 
+.modal-content p {
+    white-space: pre-wrap;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.custom-value-prompt {
+    font-weight: bold;
+}
+
+.custom-resolution-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.custom-resolution-separator {
+    font-weight: bold;
+}
+
 /** Context Menu */
 .context-menu-background {
     display: block;

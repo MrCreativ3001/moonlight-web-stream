@@ -49,9 +49,13 @@ export abstract class FormModal<Output> implements Component, Modal<Output | nul
 
     onFinish(signal: AbortSignal): Promise<Output | null> {
         const abortController = new AbortController()
-        signal.addEventListener("abort", abortController.abort.bind(abortController))
 
         return new Promise((resolve, reject) => {
+            signal.addEventListener("abort", () => {
+                abortController.abort()
+                resolve(null)
+            }, { signal: abortController.signal })
+
             this.formElement.addEventListener("submit", event => {
                 const output = this.submit()
 

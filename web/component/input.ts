@@ -293,7 +293,8 @@ export class SelectComponent extends ElementWithLabel {
             inputElement.setAttribute("list", dataListElement.id)
 
             if (init && init.preSelectedOption) {
-                inputElement.defaultValue = init.preSelectedOption
+                const preSelected = init.preSelectedOption
+                inputElement.defaultValue = options.find(option => option.value == preSelected)?.name ?? preSelected
             }
 
             this.div.appendChild(inputElement)

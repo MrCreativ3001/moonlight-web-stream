@@ -284,6 +284,7 @@ export class StreamSettingsComponent implements Component {
         this.bitrateLabel = bitrateGroup.heading
         this.bitrate.id = "bitrate"
         this.bitrate.type = "range"
+        this.bitrate.setAttribute("aria-label", this.bitrateLabelText)
         this.bitrate.classList.add("bitrate-slider")
         this.bitrate.min = "0.5"
         this.bitrate.max = "150"

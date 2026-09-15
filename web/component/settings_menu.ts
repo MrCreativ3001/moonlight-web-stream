@@ -5,6 +5,7 @@ import { getLanguageOptions, getTranslations, Language, normalizeLanguage } from
 import { Component, ComponentEvent } from "./index"
 import { InputComponent, SelectComponent } from "./input"
 import { SidebarEdge } from "./sidebar/index"
+import { showCustomFpsPrompt, showCustomResolutionPrompt } from "./modal/custom_video"
 
 export type Settings = {
     sidebarEdge: SidebarEdge,
@@ -124,9 +125,12 @@ export class StreamSettingsComponent implements Component {
     private sidebarEdge: SelectComponent
     private hideSidebarButton: InputComponent
 
-    private bitrate: InputComponent
+    private bitrate: HTMLInputElement = document.createElement("input")
+    private bitrateLabel: HTMLParagraphElement = document.createElement("p")
+    private bitrateLabelText: string
     private fps: SelectComponent
-    private fpsCustom: InputComponent
+    private lastFps: string
+    private customFps: number
     private displayMode: SelectComponent
     private videoCodec: SelectComponent
     private forceVideoElementRenderer: InputComponent
@@ -135,8 +139,8 @@ export class StreamSettingsComponent implements Component {
     private hdr: InputComponent
 
     private videoSize: SelectComponent
-    private videoSizeWidth: InputComponent
-    private videoSizeHeight: InputComponent
+    private lastVideoSize: string
+    private customVideoSize: { width: number, height: number }
 
     private playAudioLocal: InputComponent
 
@@ -163,6 +167,8 @@ export class StreamSettingsComponent implements Component {
     private keepDisplayAwake: InputComponent
     private showConnectionWarnings: InputComponent
     private yuv444: InputComponent
+
+    private customLabel: string
 
     constructor(settings: Settings) {
         // Sometimes the normal settings object doesn't have some values, because they change between versions.
@@ -204,12 +210,39 @@ export class StreamSettingsComponent implements Component {
         const gamepadSection = createSection(columnRight, i.gamepadSettings)
         const advancedSection = createSection(columnRight, i.advancedSettings)
 
+        const createGroup = (section: HTMLElement, title: string, description?: string) => {
+            const group = document.createElement("div")
+            group.classList.add("settings-group")
+            const heading = document.createElement("p")
+            heading.classList.add("settings-group-title")
+            heading.innerText = title
+            group.appendChild(heading)
+            if (description) {
+                const desc = document.createElement("p")
+                desc.classList.add("settings-group-description")
+                desc.innerText = description
+                group.appendChild(desc)
+            }
+            section.appendChild(group)
+            return { group, heading }
+        }
+
         // Basic Settings: resolution + fps on one row, then bitrate
+        const resFpsGroup = createGroup(basicSection, i.resolutionAndFps, i.resolutionAndFpsDescription).group
         const resFpsRow = document.createElement("div")
         resFpsRow.classList.add("settings-row")
-        basicSection.appendChild(resFpsRow)
+        resFpsGroup.appendChild(resFpsRow)
 
-        // Video Size
+        this.customLabel = i.custom
+
+        // Video Size (Moonlight-style: "Custom" opens a prompt and then shows the chosen size inline)
+        this.customVideoSize = {
+            width: settings?.videoSizeCustom?.width ?? defaultSettings_.videoSizeCustom.width,
+            height: settings?.videoSizeCustom?.height ?? defaultSettings_.videoSizeCustom.height,
+        }
+        const initialVideoSize = settings?.videoSize || defaultSettings_.videoSize
+        this.lastVideoSize = initialVideoSize
+
         this.videoSize = new SelectComponent("videoSize",
             [
                 { value: "720p", name: "720p" },
@@ -217,82 +250,64 @@ export class StreamSettingsComponent implements Component {
                 { value: "1440p", name: "1440p" },
                 { value: "4k", name: "4k" },
                 { value: "native", name: i.native },
-                { value: "custom", name: i.custom }
+                { value: "custom", name: initialVideoSize == "custom" ? this.customResolutionLabel() : i.custom }
             ],
             {
-                displayName: i.videoSize,
-                preSelectedOption: settings?.videoSize || defaultSettings_.videoSize
+                preSelectedOption: initialVideoSize
             }
         )
-        this.videoSize.addChangeListener(this.onSettingsChange.bind(this))
+        this.videoSize.addChangeListener(this.onVideoSizeChange.bind(this))
         this.videoSize.mount(resFpsRow)
 
-        // Fps (Moonlight-style dropdown with presets + custom)
+        // Fps (Moonlight-style dropdown with presets + custom prompt)
         const fpsPresets = ["30", "60", "90", "120", "144", "240"]
         const fpsValue = settings?.fps ?? defaultSettings_.fps
         const isPresetFps = fpsPresets.includes(fpsValue.toString())
+        this.customFps = fpsValue
+        this.lastFps = isPresetFps ? fpsValue.toString() : "custom"
 
         this.fps = new SelectComponent("fps",
             [
-                ...fpsPresets.map(value => ({ value, name: value })),
-                { value: "custom", name: i.custom }
+                ...fpsPresets.map(value => ({ value, name: `${value} FPS` })),
+                { value: "custom", name: isPresetFps ? i.custom : this.customFpsLabel() }
             ],
             {
-                displayName: i.fps,
-                preSelectedOption: isPresetFps ? fpsValue.toString() : "custom"
+                preSelectedOption: this.lastFps
             }
         )
-        this.fps.addChangeListener(this.onSettingsChange.bind(this))
+        this.fps.addChangeListener(this.onFpsChange.bind(this))
         this.fps.mount(resFpsRow)
 
-        this.fpsCustom = new InputComponent("fpsCustom", "number", i.customFps, {
-            defaultValue: "60",
-            value: isPresetFps ? undefined : fpsValue.toString(),
-            step: "1"
-        })
-        this.fpsCustom.addChangeListener(this.onSettingsChange.bind(this))
-        this.fpsCustom.mount(basicSection)
-
         // Bitrate (Mbps in the UI, stored as Kbps internally)
-        this.bitrate = new InputComponent("bitrate", "number", i.bitrate, {
-            defaultValue: (defaultSettings_.bitrate / 1000).toString(),
-            value: settings?.bitrate != null ? (settings.bitrate / 1000).toString() : undefined,
-            step: "1",
-            numberSlider: {
-                range_min: 1,
-                range_max: 150,
-            }
-        })
-        this.bitrate.addChangeListener(this.onSettingsChange.bind(this))
-        this.bitrate.mount(basicSection)
-
-        this.videoSizeWidth = new InputComponent("videoSizeWidth", "number", i.videoWidth, {
-            defaultValue: defaultSettings_.videoSizeCustom.width.toString(),
-            value: settings?.videoSizeCustom?.width.toString()
-        })
-        this.videoSizeWidth.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoSizeWidth.mount(basicSection)
-
-        this.videoSizeHeight = new InputComponent("videoSizeHeight", "number", i.videoHeight, {
-            defaultValue: defaultSettings_.videoSizeCustom.height.toString(),
-            value: settings?.videoSizeCustom?.height.toString()
-        })
-        this.videoSizeHeight.addChangeListener(this.onSettingsChange.bind(this))
-        this.videoSizeHeight.mount(basicSection)
+        this.bitrateLabelText = i.bitrate
+        const bitrateGroup = createGroup(basicSection, "", i.bitrateDescription)
+        this.bitrateLabel = bitrateGroup.heading
+        this.bitrate.id = "bitrate"
+        this.bitrate.type = "range"
+        this.bitrate.setAttribute("aria-label", this.bitrateLabelText)
+        this.bitrate.classList.add("bitrate-slider")
+        this.bitrate.min = "0.5"
+        this.bitrate.max = "150"
+        this.bitrate.step = "0.5"
+        this.bitrate.value = ((settings?.bitrate ?? defaultSettings_.bitrate) / 1000).toString()
+        this.bitrate.addEventListener("input", () => this.updateBitrateLabel())
+        this.bitrate.addEventListener("change", this.onSettingsChange.bind(this))
+        bitrateGroup.group.appendChild(this.bitrate)
+        this.updateBitrateLabel()
 
         // Display Mode (Moonlight-style select instead of a bare checkbox)
+        const displayModeGroup = createGroup(basicSection, i.displayMode).group
         this.displayMode = new SelectComponent("displayMode",
             [
-                { value: "fullscreen", name: i.displayModeFullscreen },
-                { value: "windowed", name: i.displayModeWindowed }
+                { value: "windowed", name: i.displayModeWindowed },
+                { value: "fullscreen", name: i.displayModeFullscreen }
             ],
             {
-                displayName: i.displayMode,
                 preSelectedOption: (settings?.enterFullscreenOnStreamStart ?? defaultSettings_.enterFullscreenOnStreamStart) ? "fullscreen" : "windowed"
             }
         )
         this.displayMode.addChangeListener(this.onSettingsChange.bind(this))
-        this.displayMode.mount(basicSection)
+        this.displayMode.mount(displayModeGroup)
 
         this.quitAppOnExit = new InputComponent("quitAppOnExit", "checkbox", i.quitAppOnExit, {
             checked: settings?.quitAppOnExit ?? defaultSettings_.quitAppOnExit
@@ -539,17 +554,53 @@ export class StreamSettingsComponent implements Component {
         this.onSettingsChange()
     }
 
-    private onSettingsChange() {
-        if (this.videoSize.getValue() == "custom") {
-            this.videoSizeWidth.setEnabled(true)
-            this.videoSizeHeight.setEnabled(true)
+    private customResolutionLabel(): string {
+        return `${this.customLabel} (${this.customVideoSize.width}x${this.customVideoSize.height})`
+    }
+    private updateBitrateLabel() {
+        const mbps = parseFloat(this.bitrate.value)
+        this.bitrateLabel.innerText = `${this.bitrateLabelText}: ${Number.isFinite(mbps) ? mbps : ""} Mbps`
+    }
+
+    private customFpsLabel(): string {
+        return `${this.customLabel} (${this.customFps} FPS)`
+    }
+
+    private async onVideoSizeChange() {
+        const value = this.videoSize.getValue() ?? this.lastVideoSize
+        if (value == "custom") {
+            const result = await showCustomResolutionPrompt(this.customVideoSize)
+            if (result == null) {
+                this.videoSize.setValue(this.lastVideoSize)
+                return
+            }
+            this.customVideoSize = result
+            this.videoSize.setOptionName("custom", this.customResolutionLabel())
         } else {
-            this.videoSizeWidth.setEnabled(false)
-            this.videoSizeHeight.setEnabled(false)
+            this.videoSize.setOptionName("custom", this.customLabel)
         }
+        this.lastVideoSize = value
+        this.onSettingsChange()
+    }
 
-        this.fpsCustom.setEnabled(this.fps.getValue() == "custom")
+    private async onFpsChange() {
+        const value = this.fps.getValue() ?? this.lastFps
+        if (value == "custom") {
+            const result = await showCustomFpsPrompt(this.customFps)
+            if (result == null) {
+                this.fps.setValue(this.lastFps)
+                return
+            }
+            this.customFps = result
+            this.fps.setOptionName("custom", this.customFpsLabel())
+        } else {
+            this.fps.setOptionName("custom", this.customLabel)
+        }
+        this.lastFps = value
+        this.onSettingsChange()
+    }
 
+    private onSettingsChange() {
         this.divElement.dispatchEvent(new ComponentEvent("ml-settingschange", this))
     }
 
@@ -565,19 +616,16 @@ export class StreamSettingsComponent implements Component {
 
         settings.sidebarEdge = this.sidebarEdge.getValue() as any
         settings.hideSidebarButton = this.hideSidebarButton.isChecked()
-        const bitrateMbps = parseFloat(this.bitrate.getValue())
+        const bitrateMbps = parseFloat(this.bitrate.value)
         settings.bitrate = Number.isFinite(bitrateMbps)
-            ? Math.min(Math.max(Math.round(bitrateMbps * 1000), 1000), 150000)
+            ? Math.min(Math.max(Math.round(bitrateMbps * 1000), 500), 150000)
             : globalDefaultSettings().bitrate
         const fpsValue = this.fps.getValue() ?? "60"
-        const fps = fpsValue == "custom" ? parseInt(this.fpsCustom.getValue()) : parseInt(fpsValue)
+        const fps = fpsValue == "custom" ? this.customFps : parseInt(fpsValue)
         // fps is sent to the host as fps*100 in a u32 field, so clamp to u32::MAX/100
         settings.fps = Number.isFinite(fps) && fps > 0 ? Math.min(Math.trunc(fps), 42949672) : globalDefaultSettings().fps
         settings.videoSize = this.videoSize.getValue() as any
-        settings.videoSizeCustom = {
-            width: parseInt(this.videoSizeWidth.getValue()),
-            height: parseInt(this.videoSizeHeight.getValue())
-        }
+        settings.videoSizeCustom = { ...this.customVideoSize }
         settings.videoCodec = this.videoCodec.getValue() as any
         settings.forceVideoElementRenderer = this.forceVideoElementRenderer.isChecked()
         settings.canvasRenderer = this.canvasRenderer.isChecked()

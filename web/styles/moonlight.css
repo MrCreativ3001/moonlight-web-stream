@@ -492,9 +492,20 @@ input[type=number] {
 .sidebar-content {
     background-color: rgb(86, 92, 100);
     border-radius: 5px;
-    padding: 10px 10px 10px 10px;
+    padding: 6px;
     display: flex;
     flex-direction: column;
+    font-size: 0.85rem;
+}
+
+.sidebar-stream button {
+    font-size: 0.85rem;
+    padding: 4px;
+    margin: 3px;
+}
+
+.sidebar-stream .input-div {
+    font-size: 0.8rem;
 }
 
 /** TODO: reorder stream sidebar */
@@ -686,6 +697,48 @@ input[type=number] {
 
 .settings {
     color: white;
+    display: flex;
+    gap: 28px;
+    padding: 24px 32px;
+    align-items: flex-start;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.settings-column {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+}
+
+.settings-section {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    padding: 10px 16px 16px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.settings-section-title {
+    margin: 4px 0 10px;
+    font-size: 1.15rem;
+    color: rgb(206, 147, 216);
+}
+
+.settings-row {
+    display: flex;
+    gap: 24px;
+}
+
+@media (max-width: 800px) {
+    .settings {
+        flex-direction: column;
+        padding: 16px;
+    }
+    .settings-column {
+        width: 100%;
+    }
 }
 
 /** Hosts */

@@ -39,6 +39,12 @@ export const frFr: Translations = {
         rootNotFound: "Elément racine introuvable",
     },
     settings: {
+        basicSettings: "Paramètres de base",
+        audioSettings: "Paramètres audio",
+        uiSettings: "Paramètres d'interface",
+        inputSettings: "Paramètres d'entrée",
+        gamepadSettings: "Paramètres de manette",
+        advancedSettings: "Paramètres avancés",
         sidebar: "Barre latérale",
         sidebarEdge: "Bord de la barre latérale",
         hideSidebarButton: "Masquer le bouton de la barre latérale (visible au survol)",

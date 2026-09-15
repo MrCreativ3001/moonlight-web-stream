@@ -37,6 +37,12 @@ export const en = {
         rootNotFound: "couldn't find root element",
     },
     settings: {
+        basicSettings: "Basic Settings",
+        audioSettings: "Audio Settings",
+        uiSettings: "UI Settings",
+        inputSettings: "Input Settings",
+        gamepadSettings: "Gamepad Settings",
+        advancedSettings: "Advanced Settings",
         sidebar: "Sidebar",
         sidebarEdge: "Sidebar Edge",
         hideSidebarButton: "Hide Sidebar Button (reveal on hover)",

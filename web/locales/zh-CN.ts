@@ -39,6 +39,12 @@ export const zhCN: Translations = {
         rootNotFound: "找不到根元素",
     },
     settings: {
+        basicSettings: "基本设置",
+        audioSettings: "音频设置",
+        uiSettings: "界面设置",
+        inputSettings: "输入设置",
+        gamepadSettings: "手柄设置",
+        advancedSettings: "高级设置",
         sidebar: "侧边栏",
         sidebarEdge: "侧边栏位置",
         hideSidebarButton: "隐藏侧边栏按钮（悬停时显示）",

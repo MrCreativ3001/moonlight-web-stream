@@ -3,7 +3,7 @@ use crate::api::stream::webrtc::control::ControlChannel;
 use crate::api::stream::webrtc::ext_color_space::COLOR_SPACE_URI;
 use crate::api::stream::webrtc::forward_interceptor::RtcpForwarderInterceptor;
 use crate::api::stream::webrtc::stream::webrtc_loop;
-use crate::api::stream::webrtc::video::VideoChannel;
+use crate::api::stream::webrtc::video::{VideoChannel, video_rtcp_feedback};
 use crate::config::PortRange;
 use actix_web::HttpRequest;
 use actix_web::body::{BoxBody, MessageBody};
@@ -33,8 +33,8 @@ use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
 use rtc::ice::network_type::NetworkType;
-use rtc::interceptor::{Registry, Slot};
-use rtc::peer_connection::configuration::media_engine::MIME_TYPE_OPUS;
+use rtc::interceptor::{FlexFec03SendBuilder, Registry, Slot};
+use rtc::peer_connection::configuration::media_engine::{MIME_TYPE_FLEX_FEC03, MIME_TYPE_OPUS};
 use rtc::rtp_transceiver::rtp_sender::{
     RTCPFeedback, RTCRtpCodec, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RtpCodecKind,
 };
@@ -63,6 +63,8 @@ use crate::app::App;
 use crate::app::host::HostId;
 use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
 use crate::app::{AppError, user::AuthenticatedUser};
+
+const FLEX_FEC_PAYLOAD_TYPE: u8 = 49;
 
 mod audio;
 mod control;
@@ -151,6 +153,8 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
     // The media engine contains all supported codecs this peer has
     let mut media_engine = MediaEngine::default();
 
+    // -- register codecs
+
     // register audio
     media_engine
         .register_codec(
@@ -169,9 +173,27 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
             .expect("register video codec");
     }
 
-    // register extensions
+    // register flex fec codec
+    media_engine
+        .register_codec(
+            RTCRtpCodecParameters {
+                rtp_codec: RTCRtpCodec {
+                    mime_type: MIME_TYPE_FLEX_FEC03.to_owned(),
+                    clock_rate: 90000,
+                    channels: 0,
+                    sdp_fmtp_line: "repair-window=10000000".to_owned(),
+                    rtcp_feedback: video_rtcp_feedback(),
+                },
+                payload_type: FLEX_FEC_PAYLOAD_TYPE,
+            },
+            RtpCodecKind::Video,
+        )
+        .expect("register flex-fec-03 codec");
+
+    // -- register extensions
     const PLAYOUT_DELAY_URI: &str = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay";
 
+    // register video playout delay
     media_engine
         .register_header_extension(
             RTCRtpHeaderExtensionCapability {
@@ -181,6 +203,7 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
             None,
         )
         .expect("register playout delay extension");
+    // register video color space (hdr)
     media_engine
         .register_header_extension(
             RTCRtpHeaderExtensionCapability {
@@ -190,6 +213,8 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
             None,
         )
         .expect("register color space extension");
+
+    // register audio playout delay
     media_engine
         .register_header_extension(
             RTCRtpHeaderExtensionCapability {
@@ -309,6 +334,15 @@ pub async fn webrtc_post(
     // Interceptor Registry
     let interceptor_registry = register_default_interceptors(
         Registry::new()
+            .with(
+                Slot::FecEncoder,
+                FlexFec03SendBuilder::default()
+                    // 1 to 5 ratio = 20% fec
+                    // moonlight uses 20% by default
+                    .with_num_media_packets(5)
+                    .with_num_fec_packets(1)
+                    .build(),
+            )
             // FIR and PLI need Interceptor, See https://github.com/webrtc-rs/webrtc/blob/deaddd32dc4f5f6da06c6267e1bf2e25a64fe222/examples/rtcp-processing/rtcp-processing.rs
             .with(Slot::from(14_000), RtcpForwarderInterceptor::default()),
         &mut media_engine,

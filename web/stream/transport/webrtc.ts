@@ -350,6 +350,8 @@ export class WebRTCTransport implements Transport {
                 out.pliCount = value?.pliCount
                 out.firCount = value?.firCount
 
+                out.fecPacketsReceived = value?.fecPacketsReceived
+
                 if ("totalDecodeTime" in value && "framesDecoded" in value) {
                     out.decodeTimePerFrameMs = (value.totalDecodeTime - this.lastTotalDecodeTime) / (value.framesDecoded - this.lastFramesDecoded) * 1000.0
 

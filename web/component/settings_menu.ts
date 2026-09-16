@@ -622,7 +622,8 @@ export class StreamSettingsComponent implements Component {
             : globalDefaultSettings().bitrate
         const fpsValue = this.fps.getValue() ?? "60"
         const fps = fpsValue == "custom" ? this.customFps : parseInt(fpsValue)
-        settings.fps = Number.isFinite(fps) && fps > 0 ? fps : globalDefaultSettings().fps
+        // fps is sent to the host as fps*100 in a u32 field, so clamp to u32::MAX/100
+        settings.fps = Number.isFinite(fps) && fps > 0 ? Math.min(Math.trunc(fps), 42949672) : globalDefaultSettings().fps
         settings.videoSize = this.videoSize.getValue() as any
         settings.videoSizeCustom = { ...this.customVideoSize }
         settings.videoCodec = this.videoCodec.getValue() as any

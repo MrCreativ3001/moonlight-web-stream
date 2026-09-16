@@ -209,6 +209,13 @@ export class Stream implements Component {
     private transport: Transport | null = null
 
     private setTransport(transport: Transport) {
+        if (this.isStopped) {
+            // A transport that finishes connecting after stop() began would
+            // otherwise stay open since stop() already captured its close promise
+            this.debugLog("Closing transport that connected after stop")
+            transport.close()
+            return
+        }
         if (this.transport) {
             this.debugLog("Closing old transport")
             this.transport.close()
@@ -707,11 +714,13 @@ export class Stream implements Component {
             })
             : null
 
+        const transportClosePromise = this.transport?.close()
+
         await this.releaseWakeLock()
         await quitAppPromise
 
         // Stop transport
-        await this.transport?.close()
+        await transportClosePromise
 
         return true
     }

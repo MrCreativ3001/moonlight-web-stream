@@ -3,6 +3,7 @@ use std::{
     io,
     ops::Deref,
     sync::{Arc, Weak},
+    time::Instant,
 };
 
 use actix_web::{HttpResponse, ResponseError, body::BoxBody, http::StatusCode};
@@ -20,7 +21,7 @@ use moonlight_common::{
     webrtc::WebRTCParseError,
 };
 use thiserror::Error;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     app::{
@@ -101,6 +102,8 @@ pub(crate) struct AppInner {
     pub(crate) storage: Arc<dyn Storage + Send + Sync>,
     pub(crate) app_image_cache: RwLock<HashMap<(HostId, AppId), actix_web::web::Bytes>>,
     pub(crate) streams: RwLock<HashMap<StreamId, Stream>>,
+    pub(crate) ice_server_script_cache:
+        Mutex<Option<(Instant, Vec<crate::api::bindings::RtcIceServer>)>>,
 }
 
 pub type RequestClient = TokioHyperClient;
@@ -118,6 +121,7 @@ impl App {
                 config,
                 app_image_cache: Default::default(),
                 streams: Default::default(),
+                ice_server_script_cache: Default::default(),
             }),
         })
     }

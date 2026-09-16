@@ -263,88 +263,6 @@ pub async fn webrtc_post(
         session.preferred_codecs.unwrap_or(VideoFormats::all()),
     )?;
 
-    // Create media engine
-    let mut media_engine = create_media_engine(video_channel.supported_video_formats());
-
-    let ice_servers = generate_ice_servers(&app).await?;
-
-    // Interceptor Registry
-    let interceptor_registry = register_default_interceptors(Registry::new(), &mut media_engine)
-        .expect("register default interceptors");
-
-    // Find available port
-    let port = if let Some(PortRange { min, max }) = app.config().webrtc.port_range {
-        let mut valid_port = None;
-
-        // Try to bind a udp socket to see if the port is available
-        for port in min..=max {
-            let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
-
-            if UdpSocket::bind(addr).await.is_ok() {
-                valid_port = Some(port);
-                break;
-            }
-        }
-
-        match valid_port {
-            Some(port) => port,
-            None => {
-                error!(port_min = %min, port_max = %max, "No available udp port found in given port range. Cannot create webrtc peer!");
-                return Err(AppError::WebRTC(
-                    webrtc::error::Error::ErrAddressAlreadyInUse,
-                ));
-            }
-        }
-    } else {
-        0
-    };
-    let local_addrs = vec![SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port)];
-
-    // Initialize senders and receivers for events
-    let (on_data_channel_sender, on_data_channel) =
-        mpsc::unbounded_channel::<Arc<dyn DataChannel>>();
-
-    let handler = Arc::new(WebRtcHandler {
-        peer_state: Mutex::new(RTCPeerConnectionState::New),
-        on_ice_gathering_finished: Notify::new(),
-        on_data_channel_sender,
-    });
-
-    // Create new peer
-    let peer = PeerConnectionBuilder::default()
-        .with_media_engine(media_engine)
-        .with_interceptor_registry(interceptor_registry)
-        .with_setting_engine(setting_engine.build())
-        .with_udp_addrs(local_addrs)
-        .with_handler(handler.clone())
-        .with_configuration(
-            RTCConfigurationBuilder::default()
-                .with_ice_servers(
-                    ice_servers
-                        .iter()
-                        .map(|x| RTCIceServer {
-                            username: x.username.clone(),
-                            credential: x.credential.clone(),
-                            urls: x.urls.clone(),
-                        })
-                        .collect(),
-                )
-                .build(),
-        )
-        .build()
-        .await?;
-    let peer = Arc::new(peer) as Arc<dyn PeerConnection>;
-
-    info!("created server webrtc peer");
-
-    // Set remote description
-    if let Err(err) = peer.set_remote_description(offer.clone()).await {
-        error!(error = %err, description = %offer, "failed to set remote description");
-
-        peer.close().await?;
-        return Err(err.into());
-    }
-
     info!("querying client for supported video and audio codecs");
 
     // Video Formats
@@ -412,40 +330,153 @@ pub async fn webrtc_post(
     let aes_key = AesKey::new_random(&RustCryptoBackend)?;
     let aes_iv = AesIv::new_random(&RustCryptoBackend)?;
 
-    // Start moonlight stream
-    info!(settings = ?settings, "starting stream");
+    // Create media engine
+    let mut media_engine = create_media_engine(video_channel.supported_video_formats());
 
-    let apps = host.app_list().await?;
-    let app_title = apps
-        .into_iter()
-        .find(|app| app.id == app_id)
-        .map(|app| app.title);
+    // Interceptor Registry
+    let interceptor_registry = register_default_interceptors(Registry::new(), &mut media_engine)
+        .expect("register default interceptors");
 
-    let config = host
-        .start_stream(
-            app_id,
-            &settings,
-            aes_key,
-            aes_iv,
-            // TODO: replace with normal `MoonlightStream::launch`
-            MoonlightStreamSetup::launch_query_parameters(),
-        )
-        .await?;
+    let peer_app = app.clone();
+    let peer_offer = offer.clone();
+    let peer_future = async move {
+        let ice_servers = if peer_app.config().webrtc.nat_1to1.is_some() {
+            vec![]
+        } else {
+            generate_ice_servers(&peer_app).await?
+        };
 
-    let moonlight_stream = match MoonlightStream::connect(
-        config,
-        settings,
-        Arc::new(RustCryptoBackend),
-        VideoCapabilities::default(),
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(err) => {
-            error!(error = %err, "failed to start stream");
+        // Find available port
+        let port = if let Some(PortRange { min, max }) = peer_app.config().webrtc.port_range {
+            let mut valid_port = None;
+
+            // Try to bind a udp socket to see if the port is available
+            for port in min..=max {
+                let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
+
+                if UdpSocket::bind(addr).await.is_ok() {
+                    valid_port = Some(port);
+                    break;
+                }
+            }
+
+            match valid_port {
+                Some(port) => port,
+                None => {
+                    error!(port_min = %min, port_max = %max, "No available udp port found in given port range. Cannot create webrtc peer!");
+                    return Err(AppError::WebRTC(
+                        webrtc::error::Error::ErrAddressAlreadyInUse,
+                    ));
+                }
+            }
+        } else {
+            0
+        };
+        let local_addrs = vec![SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port)];
+
+        // Initialize senders and receivers for events
+        let (on_data_channel_sender, on_data_channel) =
+            mpsc::unbounded_channel::<Arc<dyn DataChannel>>();
+
+        let handler = Arc::new(WebRtcHandler {
+            peer_state: Mutex::new(RTCPeerConnectionState::New),
+            on_ice_gathering_finished: Notify::new(),
+            on_data_channel_sender,
+        });
+
+        // Create new peer
+        let peer = PeerConnectionBuilder::default()
+            .with_media_engine(media_engine)
+            .with_interceptor_registry(interceptor_registry)
+            .with_setting_engine(setting_engine.build())
+            .with_udp_addrs(local_addrs)
+            .with_handler(handler.clone())
+            .with_configuration(
+                RTCConfigurationBuilder::default()
+                    .with_ice_servers(
+                        ice_servers
+                            .iter()
+                            .map(|x| RTCIceServer {
+                                username: x.username.clone(),
+                                credential: x.credential.clone(),
+                                urls: x.urls.clone(),
+                            })
+                            .collect(),
+                    )
+                    .build(),
+            )
+            .build()
+            .await?;
+        let peer = Arc::new(peer) as Arc<dyn PeerConnection>;
+
+        info!("created server webrtc peer");
+
+        // Set remote description
+        if let Err(err) = peer.set_remote_description(peer_offer.clone()).await {
+            error!(error = %err, description = %peer_offer, "failed to set remote description");
+
+            peer.close().await?;
             return Err(err.into());
         }
+
+        Ok::<_, AppError>((peer, handler, on_data_channel))
     };
+
+    let launch_host = host.clone();
+    let launch_future = async move {
+        info!(settings = ?settings, "starting stream");
+
+        let apps = launch_host.app_list().await?;
+        let app_title = apps
+            .into_iter()
+            .find(|app| app.id == app_id)
+            .map(|app| app.title);
+
+        let config = launch_host
+            .start_stream(
+                app_id,
+                &settings,
+                aes_key,
+                aes_iv,
+                // TODO: replace with normal `MoonlightStream::launch`
+                MoonlightStreamSetup::launch_query_parameters(),
+            )
+            .await?;
+
+        let moonlight_stream = match MoonlightStream::connect(
+            config,
+            settings,
+            Arc::new(RustCryptoBackend),
+            VideoCapabilities::default(),
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                error!(error = %err, "failed to start stream");
+                return Err(err.into());
+            }
+        };
+
+        Ok::<_, AppError>((app_title, moonlight_stream))
+    };
+
+    let (peer_result, stream_result) = tokio::join!(peer_future, launch_future);
+    let (peer, handler, on_data_channel, app_title, moonlight_stream) =
+        match (peer_result, stream_result) {
+            (Ok((peer, handler, on_data_channel)), Ok((app_title, moonlight_stream))) => {
+                (peer, handler, on_data_channel, app_title, moonlight_stream)
+            }
+            (Err(peer_err), Ok((_, mut moonlight_stream))) => {
+                let _ = moonlight_stream.disconnect();
+                return Err(peer_err);
+            }
+            (Ok((peer, _, _)), Err(stream_err)) => {
+                peer.close().await?;
+                return Err(stream_err);
+            }
+            (Err(peer_err), Err(_)) => return Err(peer_err),
+        };
 
     // Add audio and video track forwarding
     let audio_channel = match AudioChannel::new_track(&moonlight_stream, &*peer).await {
@@ -528,11 +559,11 @@ pub async fn webrtc_post(
         .instrument(debug_span!("moonlight stream"))
     });
 
-    // Wait for ice gathering to complete or 10 seconds to pass
+    // Wait for ice gathering to complete or 1.5 seconds to pass
     select! {
         _ = handler.on_ice_gathering_finished.notified() => {},
-        _ = sleep(Duration::from_secs(4)) => {
-            warn!("Couldn't fully gather ice candidates after 4 seconds! Sending response regardless of uncomplete ice gathering state.");
+        _ = sleep(Duration::from_millis(1500)) => {
+            info!("Couldn't fully gather ice candidates after 1.5 seconds! Sending answer with partial ice candidates.");
         }
     }
 

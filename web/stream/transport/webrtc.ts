@@ -67,17 +67,29 @@ export class WebRTCTransport implements Transport {
         this.logger?.debug("Setting webrtc local description")
         await this.peer.setLocalDescription(offer)
 
+        const gatheringComplete = new Promise<void>(resolve => {
+            const onGatheringStateChange = () => {
+                if (this.peer.iceGatheringState == "complete") {
+                    this.peer.removeEventListener("icegatheringstatechange", onGatheringStateChange)
+                    resolve()
+                }
+            }
+
+            this.peer.addEventListener("icegatheringstatechange", onGatheringStateChange)
+            onGatheringStateChange()
+        })
+        await Promise.race([gatheringComplete, wait(300)])
+
         // Insert custom options
         this.sdpOfferOptions = {
             ...options
         }
-        const sdp = webrtcSessionOfferApply(offer.sdp ?? "", this.sdpOfferOptions)
+        const localDescription = this.peer.localDescription!
+        this.pendingIceCandidates = []
+        const sdp = webrtcSessionOfferApply(localDescription.sdp ?? "", this.sdpOfferOptions)
 
         this.logger?.debug(`successfully generated webrtc sdp with options ${JSON.stringify(this.sdpOfferOptions)}`)
         console.debug("Client Sdp", sdp)
-
-        this.logger?.debug(`starting ice candidate sender`)
-        this.sendIceCandidates()
 
         return sdp
     }
@@ -93,6 +105,7 @@ export class WebRTCTransport implements Transport {
         }
 
         this.location = response.location
+        this.flushIceCandidates()
 
         this.sdpAnswer = webrtcSessionAnswerParse(response.answerSdp)
         this.logger?.debug(`Server responded with extensions ${JSON.stringify(this.sdpAnswer)}`)
@@ -163,8 +176,8 @@ export class WebRTCTransport implements Transport {
     }
 
     // -- Trickle Ice
-    private iceCandidateSendTimer: number | null = null
     private pendingIceCandidates: Array<string> = []
+    private iceFlushChain: Promise<void> = Promise.resolve()
     private onIceCandidate(event: RTCPeerConnectionIceEvent) {
         if (!event.candidate) {
             // Ice Gathering finished
@@ -175,35 +188,34 @@ export class WebRTCTransport implements Transport {
         const candidate = event.candidate.toJSON().candidate
         if (candidate) {
             this.pendingIceCandidates.push(candidate)
+            this.flushIceCandidates()
         }
     }
 
-    private boundSendIceCandidates = this.sendIceCandidates.bind(this)
-    private async sendIceCandidates() {
-        this.iceCandidateSendTimer = null
-        if (this.iceCandidateSendTimer != null) {
-            globalObject().clearTimeout(this.iceCandidateSendTimer)
+    private flushIceCandidates() {
+        if (!this.location || this.pendingIceCandidates.length == 0) {
+            return
         }
 
-        for (const candidate of this.pendingIceCandidates) {
+        const location = this.location
+        const candidates = this.pendingIceCandidates.splice(0)
+        const trickleIceSdpFrag = candidates.map(x => `a=${x}`).join("\r\n")
+
+        for (const candidate of candidates) {
             this.logger?.debug(`sending ice candidate: ${candidate}`)
         }
 
-        if (this.location && this.pendingIceCandidates.length > 0) {
-            const trickleIceSdpFrag = this.pendingIceCandidates.map(x => `a=${x}`).join("\r\n")
-
-            await fetchApi(this.api, this.location, "PATCH", {
-                noUrlModify: true,
-                trickleIceSdpFrag,
-                response: "ignore",
-            })
-
-            this.pendingIceCandidates = []
-        }
-
-        if (this.peer.iceGatheringState != "complete") {
-            this.iceCandidateSendTimer = globalObject().setTimeout(this.boundSendIceCandidates, 2000)
-        }
+        this.iceFlushChain = this.iceFlushChain.then(async () => {
+            try {
+                await fetchApi(this.api, location, "PATCH", {
+                    noUrlModify: true,
+                    trickleIceSdpFrag,
+                    response: "ignore",
+                })
+            } catch (e) {
+                this.logger?.debug(`failed to PATCH ice candidates: ${e}`)
+            }
+        })
     }
 
     // -- Control Stream / Media
@@ -279,10 +291,6 @@ export class WebRTCTransport implements Transport {
         // Close the peer
         this.peer.close()
 
-        // Delete the ice candidate send loop
-        globalObject().clearTimeout(this.iceCandidateSendTimer)
-        this.iceCandidateSendTimer = null
-
         // Delete our current session on the server
         if (this.location) {
             try {
@@ -298,26 +306,47 @@ export class WebRTCTransport implements Transport {
     }
 
     private async findOutCodec(): Promise<keyof VideoFormats> {
-        let tries = 0
+        const codecFromMimeType = (mimeType: string | undefined): keyof VideoFormats | undefined => {
+            switch (mimeType?.toLowerCase()) {
+                case "video/h264":
+                    return "h264"
+                case "video/h265":
+                    return "h265"
+                case "video/av1":
+                    return "av1Main8"
+            }
+            return undefined
+        }
 
-        while (true) {
-            const stats = await this.peer.getStats()
-            for (const [_key, value] of stats) {
-                // Video Stream
-                if ("type" in value && "kind" in value
-                    && value.type == "inbound-rtp" && value.kind == "video"
-                ) {
+        const receiver = this.peer.getReceivers().find(receiver => receiver.track.kind == "video")
+        const receiverCodec = codecFromMimeType(receiver?.getParameters().codecs[0]?.mimeType)
+        if (receiverCodec) {
+            return receiverCodec
+        }
 
+        const stats = await this.peer.getStats()
+        let inboundCodecId: string | undefined
+        for (const [_key, value] of stats) {
+            if ("type" in value && "kind" in value
+                && value.type == "inbound-rtp" && value.kind == "video"
+            ) {
+                inboundCodecId = value.codecId
+                break
+            }
+        }
+
+        if (inboundCodecId) {
+            const codec = stats.get(inboundCodecId)
+            if (codec && "type" in codec && codec.type == "codec" && "mimeType" in codec) {
+                const statsCodec = codecFromMimeType(codec.mimeType)
+                if (statsCodec) {
+                    return statsCodec
                 }
             }
-            tries += 1
-            if (tries > 10) {
-                this.logger?.debug(`failed to determine codec using stats after ${tries} tries, assuming h264`)
-                return "h264"
-            }
-
-            await wait(100)
         }
+
+        this.logger?.debug("failed to determine codec from receiver or stats, assuming h264")
+        return "h264"
     }
 
     private lastTotalDecodeTime = 0

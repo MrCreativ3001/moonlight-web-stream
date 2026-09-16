@@ -340,11 +340,7 @@ pub async fn webrtc_post(
     let peer_app = app.clone();
     let peer_offer = offer.clone();
     let peer_future = async move {
-        let ice_servers = if peer_app.config().webrtc.nat_1to1.is_some() {
-            vec![]
-        } else {
-            generate_ice_servers(&peer_app).await?
-        };
+        let ice_servers = generate_ice_servers(&peer_app).await?;
 
         // Find available port
         let port = if let Some(PortRange { min, max }) = peer_app.config().webrtc.port_range {

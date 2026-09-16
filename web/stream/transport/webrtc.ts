@@ -165,6 +165,9 @@ export class WebRTCTransport implements Transport {
                 if (this.onconnect) {
                     this.onconnect(connectData)
                 }
+            }).catch(e => {
+                this.logger?.debug(`failed to generate connect data: ${e}`)
+                this.close()
             })
         } else if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
             const shutdown = this.wasConnected ? "failed" : "failednoconnect"
@@ -334,9 +337,11 @@ export class WebRTCTransport implements Transport {
         }
 
         const receiver = this.peer.getReceivers().find(receiver => receiver.track.kind == "video")
-        const receiverCodec = codecFromMimeType(receiver?.getParameters().codecs[0]?.mimeType)
-        if (receiverCodec) {
-            return receiverCodec
+        for (const codec of receiver?.getParameters().codecs ?? []) {
+            const receiverCodec = codecFromMimeType(codec.mimeType)
+            if (receiverCodec) {
+                return receiverCodec
+            }
         }
 
         const stats = await this.peer.getStats()

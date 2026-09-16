@@ -462,7 +462,7 @@ pub async fn webrtc_post(
     };
 
     let (peer_result, stream_result) = tokio::join!(peer_future, launch_future);
-    let (peer, handler, on_data_channel, app_title, moonlight_stream) =
+    let (peer, handler, on_data_channel, app_title, mut moonlight_stream) =
         match (peer_result, stream_result) {
             (Ok((peer, handler, on_data_channel)), Ok((app_title, moonlight_stream))) => {
                 (peer, handler, on_data_channel, app_title, moonlight_stream)
@@ -484,6 +484,7 @@ pub async fn webrtc_post(
         Err(err) => {
             error!(error = %err, "failed to add audio track to webrtc peer");
 
+            let _ = moonlight_stream.disconnect();
             peer.close().await?;
             return Err(err);
         }
@@ -494,6 +495,7 @@ pub async fn webrtc_post(
     {
         error!(error = %err, "failed to add video track to webrtc peer");
 
+        let _ = moonlight_stream.disconnect();
         peer.close().await?;
         return Err(err);
     }
@@ -506,6 +508,7 @@ pub async fn webrtc_post(
         Err(err) => {
             error!("failed to add control stream to webrtc peer");
 
+            let _ = moonlight_stream.disconnect();
             peer.close().await?;
             return Err(err);
         }

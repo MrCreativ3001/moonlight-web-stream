@@ -19,7 +19,9 @@ pub async fn generate_ice_servers(app: &App) -> Result<Vec<RtcIceServer>, AppErr
             ice_servers.clone()
         } else {
             let ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
-            *cache = Some((Instant::now(), ice_servers.clone()));
+            if !ice_servers.is_empty() {
+                *cache = Some((Instant::now(), ice_servers.clone()));
+            }
             ice_servers
         }
     } else {

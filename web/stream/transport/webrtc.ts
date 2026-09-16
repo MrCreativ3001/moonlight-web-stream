@@ -178,6 +178,7 @@ export class WebRTCTransport implements Transport {
     // -- Trickle Ice
     private pendingIceCandidates: Array<string> = []
     private iceFlushChain: Promise<void> = Promise.resolve()
+    private iceRetryTimer: number | null = null
     private onIceCandidate(event: RTCPeerConnectionIceEvent) {
         if (!event.candidate) {
             // Ice Gathering finished
@@ -214,6 +215,15 @@ export class WebRTCTransport implements Transport {
                 })
             } catch (e) {
                 this.logger?.debug(`failed to PATCH ice candidates: ${e}`)
+                this.pendingIceCandidates.unshift(...candidates)
+                if (this.peer.connectionState != "closed" && this.peer.connectionState != "failed"
+                    && this.iceRetryTimer == null
+                ) {
+                    this.iceRetryTimer = globalObject().setTimeout(() => {
+                        this.iceRetryTimer = null
+                        this.flushIceCandidates()
+                    }, 1000)
+                }
             }
         })
     }
@@ -288,6 +298,11 @@ export class WebRTCTransport implements Transport {
     }
 
     async close(): Promise<void> {
+        if (this.iceRetryTimer != null) {
+            globalObject().clearTimeout(this.iceRetryTimer)
+            this.iceRetryTimer = null
+        }
+
         // Close the peer
         this.peer.close()
 

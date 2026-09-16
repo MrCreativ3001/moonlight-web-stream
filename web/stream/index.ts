@@ -255,10 +255,17 @@ export class Stream implements Component {
     private async tryWebRTCTransport(): Promise<TransportShutdown> {
         this.debugLog("Trying WebRTC transport")
 
-        const [config, options] = await Promise.all([
-            apiWebRTCConfiguration(this.api),
-            this.createTransportOptions(),
-        ])
+        let config: Awaited<ReturnType<typeof apiWebRTCConfiguration>>
+        let options: Awaited<ReturnType<typeof this.createTransportOptions>>
+        try {
+            [config, options] = await Promise.all([
+                apiWebRTCConfiguration(this.api),
+                this.createTransportOptions(),
+            ])
+        } catch (error) {
+            this.debugLog(`failed to prepare WebRTC connection because ${error}`)
+            return "failednoconnect"
+        }
 
         this.debugLog("Received WebRTC config and transport options")
 

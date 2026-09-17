@@ -374,7 +374,7 @@ will currespond to the ice server
 You can disable all default ice servers with the cli argument `--disable-default-webrtc-ice-servers` or the environment variable `DISABLE_DEFAULT_WEBRTC_ICE_SERVERS`.
 
 ### WebRTC Ice Server Script
-The given script will be executed on every stream start to dynamically generate ice servers.
+The given script will be executed on stream start to dynamically generate ice servers. Non-empty output is cached for 60 seconds, so a working script runs at most once per minute; empty output (e.g. a script failure) is not cached and is retried on the next stream start.
 
 ```json
 {

@@ -1,5 +1,6 @@
 use crate::{api::bindings::RtcIceServer, config::WebRtcConfig};
 use log::error;
+use std::time::{Duration, Instant};
 use tokio::process::Command;
 use tracing::debug;
 
@@ -10,7 +11,22 @@ pub async fn generate_ice_servers(app: &App) -> Result<Vec<RtcIceServer>, AppErr
     let mut ice_servers = app.config().webrtc.ice_servers.clone();
 
     // Load dynamic ice servers and append them to the current ice servers
-    let dynamic_ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
+    let dynamic_ice_servers = if app.config().webrtc.ice_server_script.is_some() {
+        let mut cache = app.inner.ice_server_script_cache.lock().await;
+        if let Some((loaded_at, ice_servers)) = cache.as_ref()
+            && loaded_at.elapsed() < Duration::from_secs(60)
+        {
+            ice_servers.clone()
+        } else {
+            let ice_servers = load_dynamic_ice_servers(&app.config().webrtc).await;
+            if !ice_servers.is_empty() {
+                *cache = Some((Instant::now(), ice_servers.clone()));
+            }
+            ice_servers
+        }
+    } else {
+        load_dynamic_ice_servers(&app.config().webrtc).await
+    };
     ice_servers.extend_from_slice(&dynamic_ice_servers);
 
     Ok(ice_servers)

@@ -3744,7 +3744,7 @@ dependencies = [
 
 [[package]]
 name = "web-server"
-version = "3.0.0-prerelease.6"
+version = "3.0.0-prerelease.7"
 dependencies = [
  "actix-files",
  "actix-web",

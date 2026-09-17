@@ -212,7 +212,15 @@ struct ActixDebugSpan;
 
 impl ActixDebugSpan {
     fn sanitize_headers(headers: &HeaderMap) -> Vec<(String, String)> {
-        const SENSITIVE: &[&str] = &["authorization", "cookie", "set-cookie"];
+        const SENSITIVE: &[&str] = &[
+            "authorization",
+            "cookie",
+            "set-cookie",
+            "host",
+            "origin",
+            "x-forwarded-host",
+            "x-forwarded-for",
+        ];
 
         headers
             .iter()
@@ -233,23 +241,22 @@ impl ActixDebugSpan {
 
 impl RootSpanBuilder for ActixDebugSpan {
     fn on_request_start(request: &ServiceRequest) -> Span {
-        if tracing::enabled!(Level::TRACE) {
-            span!(
-                Level::TRACE,
-                "http_request",
-                method = %request.method(),
-                uri = %request.uri(),
+        let span = span!(
+            Level::DEBUG,
+            "http_request",
+            method = %request.method(),
+            path = %request.uri().path_and_query().map(|x| x.as_str()).unwrap_or(""),
+        );
+
+        span.in_scope(|| {
+            trace!(
                 headers = ?Self::sanitize_headers(request.headers()),
                 peer_addr = ?request.peer_addr(),
+                "request details",
             )
-        } else {
-            span!(
-                Level::DEBUG,
-                "http_request",
-                method = %request.method(),
-                uri = %request.uri(),
-            )
-        }
+        });
+
+        span
     }
     fn on_request_end<B: MessageBody>(
         _span: Span,

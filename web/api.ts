@@ -256,7 +256,7 @@ export async function fetchApi(api: Api, endpoint: string, method: string = GET,
         return json
     } else if (init?.response == "jsonStreaming") {
         if (!response.body) {
-            throw FetchError.create("failed", endpoint, method, response)
+            throw await FetchError.create("failed", endpoint, method, response)
         }
 
         // @ts-ignore

@@ -53,7 +53,7 @@ export abstract class CodecStreamTranslator {
 
     protected currentFrame = new Uint8Array(1000)
 
-    submitDecodeUnit(unit: VideoDecodeUnit): { configure: VideoDecoderConfig | null, chunk: Uint8Array | null, error: false } | { error: true } {
+    submitDecodeUnit(unit: VideoDecodeUnit): { configure: VideoDecoderConfig | null, chunk: Uint8Array | null, type?: EncodedVideoChunkType, error: false } | { error: true } {
         if (!this.decoderConfig) {
             this.logger?.debug("Failed to retrieve decoderConfig which should already exist for VideoDecoder", { type: "fatal" })
             return { error: true }
@@ -145,6 +145,280 @@ export abstract class CodecStreamTranslator {
             newFrame.set(this.currentFrame);
             this.currentFrame = newFrame;
         }
+    }
+}
+
+type Av1Obu = {
+    type: number
+    header: Uint8Array
+    payload: Uint8Array
+}
+
+const AV1_OBU_SEQUENCE_HEADER = 1
+const AV1_OBU_TEMPORAL_DELIMITER = 2
+const AV1_OBU_TILE_LIST = 8
+const AV1_OBU_PADDING = 15
+
+function readLeb128(data: Uint8Array, offset: number): { value: number, offset: number } | null {
+    let value = 0
+
+    for (let i = 0; i < 8; i++) {
+        if (offset >= data.length) {
+            return null
+        }
+
+        const b = data[offset++]
+        value += (b & 0x7f) * 2 ** (i * 7)
+
+        if (!Number.isSafeInteger(value)) {
+            return null
+        }
+
+        if ((b & 0x80) == 0) {
+            return { value, offset }
+        }
+    }
+
+    return null
+}
+
+function writeLeb128(value: number): Uint8Array {
+    const bytes = []
+
+    do {
+        let b = value % 0x80
+        value = Math.floor(value / 0x80)
+        if (value != 0) {
+            b |= 0x80
+        }
+        bytes.push(b)
+    } while (value != 0)
+
+    return new Uint8Array(bytes)
+}
+
+function av1ObuType(header: number): number {
+    return (header >> 3) & 0x0f
+}
+
+function isValidAv1ObuHeader(header: number): boolean {
+    const forbidden = (header & 0x80) != 0
+    const reserved = (header & 0x01) != 0
+    const type = av1ObuType(header)
+
+    return !forbidden && !reserved && type > 0
+}
+
+function parseAv1LowOverheadObus(data: Uint8Array): Av1Obu[] | null {
+    const obus: Av1Obu[] = []
+    let offset = 0
+
+    while (offset < data.length) {
+        const obuStart = offset
+        const header = data[offset++]
+
+        if (!isValidAv1ObuHeader(header)) {
+            return null
+        }
+
+        const hasExtension = (header & 0x04) != 0
+        const hasSize = (header & 0x02) != 0
+        const headerEnd = offset + (hasExtension ? 1 : 0)
+
+        if (headerEnd > data.length) {
+            return null
+        }
+
+        offset = headerEnd
+
+        if (!hasSize) {
+            obus.push({
+                type: av1ObuType(header),
+                header: data.slice(obuStart, headerEnd),
+                payload: data.slice(offset),
+            })
+            offset = data.length
+            break
+        }
+
+        const size = readLeb128(data, offset)
+        if (!size || size.offset + size.value > data.length) {
+            return null
+        }
+        offset = size.offset
+        obus.push({
+            type: av1ObuType(header),
+            header: data.slice(obuStart, headerEnd),
+            payload: data.slice(offset, offset + size.value),
+        })
+        offset += size.value
+    }
+
+    return obus.length > 0 ? obus : null
+}
+
+function av1ShouldDropObu(obu: Av1Obu): boolean {
+    return obu.type == AV1_OBU_TEMPORAL_DELIMITER ||
+        obu.type == AV1_OBU_TILE_LIST ||
+        obu.type == AV1_OBU_PADDING
+}
+
+function parseAv1AnnexBObus(data: Uint8Array): Av1Obu[] | null {
+    const obus: Av1Obu[] = []
+    let temporalOffset = 0
+
+    while (temporalOffset < data.length) {
+        const temporalUnit = readLeb128(data, temporalOffset)
+        if (!temporalUnit || temporalUnit.value <= 0 || temporalUnit.offset + temporalUnit.value > data.length) {
+            return null
+        }
+
+        let frameOffset = temporalUnit.offset
+        const temporalEnd = temporalUnit.offset + temporalUnit.value
+
+        while (frameOffset < temporalEnd) {
+            const frameUnit = readLeb128(data, frameOffset)
+            if (!frameUnit || frameUnit.value <= 0 || frameUnit.offset + frameUnit.value > temporalEnd) {
+                return null
+            }
+
+            let obuOffset = frameUnit.offset
+            const frameEnd = frameUnit.offset + frameUnit.value
+
+            while (obuOffset < frameEnd) {
+                const obuLength = readLeb128(data, obuOffset)
+                if (!obuLength || obuLength.value <= 0 || obuLength.offset + obuLength.value > frameEnd) {
+                    return null
+                }
+
+                const obuStart = obuLength.offset
+                const header = data[obuStart]
+                if (!isValidAv1ObuHeader(header)) {
+                    return null
+                }
+
+                const hasExtension = (header & 0x04) != 0
+                const headerEnd = obuStart + 1 + (hasExtension ? 1 : 0)
+                if (headerEnd > obuLength.offset + obuLength.value) {
+                    return null
+                }
+
+                obus.push({
+                    type: av1ObuType(header),
+                    header: data.slice(obuStart, headerEnd),
+                    payload: data.slice(headerEnd, obuLength.offset + obuLength.value),
+                })
+
+                obuOffset = obuLength.offset + obuLength.value
+            }
+
+            frameOffset = frameEnd
+        }
+
+        temporalOffset = temporalEnd
+    }
+
+    return obus.length > 0 ? obus : null
+}
+
+function parseAv1SingleObu(data: Uint8Array): Av1Obu[] | null {
+    if (data.length == 0 || !isValidAv1ObuHeader(data[0])) {
+        return null
+    }
+
+    const header = data[0]
+    const hasExtension = (header & 0x04) != 0
+    const headerEnd = 1 + (hasExtension ? 1 : 0)
+    if (headerEnd > data.length) {
+        return null
+    }
+
+    return [{
+        type: av1ObuType(header),
+        header: data.slice(0, headerEnd),
+        payload: data.slice(headerEnd),
+    }]
+}
+
+function serializeAv1LowOverheadObus(obus: Av1Obu[]): Uint8Array {
+    let size = 0
+
+    for (const obu of obus) {
+        size += obu.header.length + writeLeb128(obu.payload.length).length + obu.payload.length
+    }
+
+    const output = new Uint8Array(size)
+    let offset = 0
+
+    for (const obu of obus) {
+        const header = new Uint8Array(obu.header)
+        header[0] |= 0x02
+
+        const payloadSize = writeLeb128(obu.payload.length)
+
+        output.set(header, offset)
+        offset += header.length
+        output.set(payloadSize, offset)
+        offset += payloadSize.length
+        output.set(obu.payload, offset)
+        offset += obu.payload.length
+    }
+
+    return output
+}
+
+export class Av1StreamVideoTranslator extends CodecStreamTranslator {
+    private seenSequenceHeader = false
+    private configured = false
+
+    submitDecodeUnit(unit: VideoDecodeUnit): { configure: VideoDecoderConfig | null, chunk: Uint8Array | null, type?: EncodedVideoChunkType, error: false } | { error: true } {
+        const data = new Uint8Array(unit.data)
+        const lowOverheadObus = parseAv1LowOverheadObus(data)
+        const annexBObus = lowOverheadObus ? null : parseAv1AnnexBObus(data)
+        const singleObu = lowOverheadObus || annexBObus ? null : parseAv1SingleObu(data)
+        const obus = lowOverheadObus ?? annexBObus ?? singleObu
+
+        if (!obus) {
+            this.logger?.debug(`Failed to parse AV1 decode unit (${data.length} bytes)`, { type: "fatal" })
+            return { error: true }
+        }
+
+        const hasSequenceHeader = obus.some(obu => obu.type == AV1_OBU_SEQUENCE_HEADER)
+
+        if (hasSequenceHeader) {
+            this.seenSequenceHeader = true
+        }
+
+        if (!this.seenSequenceHeader && unit.type != "key") {
+            return { configure: null, chunk: null, error: false }
+        }
+
+        const frameObus = obus.filter(obu => !av1ShouldDropObu(obu))
+        if (frameObus.length == 0) {
+            return { configure: null, chunk: null, error: false }
+        }
+
+        const chunk = serializeAv1LowOverheadObus(frameObus)
+
+        const configure = this.configured ? null : this.decoderConfig
+        this.configured = true
+
+        return {
+            configure,
+            chunk,
+            type: unit.type,
+            error: false,
+        }
+    }
+
+    protected startProcessChunk(_unit: VideoDecodeUnit): { shouldProcess: boolean } {
+        return { shouldProcess: false }
+    }
+    protected onChunkUnit(_slice: Uint8Array): { include: boolean } {
+        return { include: false }
+    }
+    protected endChunk(): { reconfigure: boolean } {
+        return { reconfigure: false }
     }
 }
 

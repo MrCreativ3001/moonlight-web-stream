@@ -514,7 +514,7 @@ export class StreamInput {
 
         if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
-                this.sendTouch(0, touch, rect)
+                this.sendTouch(TouchEventType.Down, touch, rect)
             }
         } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor" || this.config.touchMode == "pointAndDrag") {
             // Set primary touch if it doesn't exists currently
@@ -581,7 +581,7 @@ export class StreamInput {
     onTouchMove(event: TouchEvent, rect: DOMRect) {
         if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
-                this.sendTouch(1, touch, rect)
+                this.sendTouch(TouchEventType.Move, touch, rect)
             }
         } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor" || this.config.touchMode == "pointAndDrag") {
             for (const touch of event.changedTouches) {
@@ -716,7 +716,7 @@ export class StreamInput {
     onTouchEnd(event: TouchEvent, rect: DOMRect) {
         if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
-                this.sendTouch(2, touch, rect)
+                this.sendTouch(TouchEventType.Up, touch, rect)
             }
         } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "localCursor" || this.config.touchMode == "pointAndDrag") {
             const endingScroll = this.touchMouseAction == "scroll" && this.touchTracker.size == 2
@@ -853,7 +853,7 @@ export class StreamInput {
     onTouchCancel(event: TouchEvent, rect: DOMRect) {
         if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
-                this.sendTouch(2, touch, rect)
+                this.sendTouch(TouchEventType.Cancel, touch, rect)
             }
         } else {
             for (const trackedTouch of this.touchTracker.values()) {
@@ -896,8 +896,8 @@ export class StreamInput {
             x,
             y,
             pressureOrDistance: touch.force,
-            contactAreaMajor: touch.radiusX,
-            contactAreaMinor: touch.radiusY,
+            contactAreaMajor: touch.radiusX / rect.width,
+            contactAreaMinor: touch.radiusY / rect.height,
         }))
     }
 

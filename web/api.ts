@@ -158,22 +158,30 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
 export class FetchError extends Error {
     private response?: Response
 
-    constructor(type: "timeout", endpoint: string, method: string)
-    constructor(type: "failed", endpoint: string, method: string, response: Response, reason?: string)
-    constructor(type: "unknown", endpoint: string, method: string, error: Error)
 
-    constructor(type: "timeout" | "failed" | "unknown", endpoint: string, method: string, responseOrError?: Response | any, reason?: string) {
+    constructor(message: string, response?: Response) {
+        super(message)
+        this.response = response
+    }
+
+    static create(type: "timeout", endpoint: string, method: string): Promise<FetchError>
+    static create(type: "failed", endpoint: string, method: string, response: Response, reason?: string): Promise<FetchError>
+    static create(type: "unknown", endpoint: string, method: string, error: Error): Promise<FetchError>
+
+    static async create(type: "timeout" | "failed" | "unknown", endpoint: string, method: string, responseOrError?: Response | any, reason?: string): Promise<FetchError> {
         if (type == "timeout") {
-            super(`failed to fetch ${method} at ${endpoint} because of timeout`)
+            return new FetchError(`failed to fetch ${method} at ${endpoint} because of timeout`)
         } else if (type == "failed") {
             const response = responseOrError as Response
-            super(`failed to fetch ${method} at ${endpoint} with code ${response?.status} ${reason ? `because of ${reason}` : ""}`)
+            const text = await response.text()
 
-            this.response = response
+            return new FetchError(`failed to fetch ${method} at ${endpoint} with "${response.statusText}"(${response?.status}) ${text ? `and response ${text}` : ""} ${reason ? `because of ${reason}` : ""}`)
         } else if (type == "unknown") {
             const error = responseOrError as Error
-            super(`failed to fetch ${method} at ${endpoint} because of ${error}`)
+            return new FetchError(`failed to fetch ${method} at ${endpoint} because of ${error}`)
         }
+
+        throw "invalid fetch error type"
     }
 
     getResponse(): Response | null {
@@ -231,11 +239,11 @@ export async function fetchApi(api: Api, endpoint: string, method: string = GET,
     try {
         response = await fetch(url, request)
     } catch (e: any) {
-        throw new FetchError("unknown", endpoint, method, e)
+        throw await FetchError.create("unknown", endpoint, method, e)
     }
 
     if (!response.ok) {
-        throw new FetchError("failed", endpoint, method, response)
+        throw await FetchError.create("failed", endpoint, method, response)
     }
 
     if (init?.response == "ignore") {
@@ -248,7 +256,7 @@ export async function fetchApi(api: Api, endpoint: string, method: string = GET,
         return json
     } else if (init?.response == "jsonStreaming") {
         if (!response.body) {
-            throw new FetchError("failed", endpoint, method, response)
+            throw FetchError.create("failed", endpoint, method, response)
         }
 
         // @ts-ignore
@@ -495,7 +503,7 @@ export async function apiWebRTCConfiguration(api: Api): Promise<WebRTCConfigurat
     try {
         response = await fetch(url, request)
     } catch (e: any) {
-        throw new FetchError("unknown", ENDPOINT, OPTIONS, e)
+        throw await FetchError.create("unknown", ENDPOINT, OPTIONS, e)
     }
 
     const iceServers: Array<RTCIceServer> = []
@@ -533,13 +541,13 @@ export async function apiWebRTCOffer(api: Api, offerSdp: string): Promise<WebRTC
     try {
         response = await fetch(url, request)
     } catch (e: any) {
-        throw new FetchError("unknown", ENDPOINT, POST, e)
+        throw await FetchError.create("unknown", ENDPOINT, POST, e)
     }
 
     // 201 == Created
     if (response.status != 201) {
         const reason = await response.text()
-        throw new FetchError("failed", ENDPOINT, POST, response, reason)
+        throw await FetchError.create("failed", ENDPOINT, POST, response, reason)
     }
 
     // Get sdp

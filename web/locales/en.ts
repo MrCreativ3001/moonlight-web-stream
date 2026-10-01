@@ -1,4 +1,4 @@
-import type { PairFailReason } from "../api_bindings.js"
+import type { PairFailReason } from "../api_bindings"
 export const en = {
     index: {
         appTitle: "Moonlight Web",
@@ -40,6 +40,7 @@ export const en = {
     settings: {
         sidebar: "Sidebar",
         sidebarEdge: "Sidebar Edge",
+        hideSidebarButton: "Hide Sidebar Button (reveal on hover)",
         left: "Left",
         right: "Right",
         up: "Up",
@@ -104,6 +105,9 @@ export const en = {
         searchRole: "Search Role",
         delete: "Delete",
         apply: "Apply",
+        setDefault: "Set Default",
+        removeAsDefault: "Remove As Default",
+        setDefaultUserDialog: "Are you sure you want to do this? Setting this user as the default user will allow anyone without authorization to access the user.",
         user: "User",
         role: "Role",
         name: "Name",

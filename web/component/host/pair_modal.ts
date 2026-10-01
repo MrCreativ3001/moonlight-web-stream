@@ -1,6 +1,6 @@
-import { Component } from "../index.js"
-import { Modal } from "../modal/index.js"
-import { getCurrentLanguage, getTranslations } from "../../i18n.js"
+import { Component } from "../index"
+import { Modal } from "../modal/index"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
 
 type PairModalInit = {
     signal?: AbortSignal

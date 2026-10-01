@@ -12,6 +12,10 @@ dist
 bindings
 web/api_bindings.ts
 
+# uniffi bindings
+rust_modules
+web/uniffi
+
 # Server
 server
 

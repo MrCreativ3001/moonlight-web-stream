@@ -3,14 +3,14 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-use clap::{Args, Parser, Subcommand};
-use common::{
-    api_bindings::RtcIceServer,
+use crate::{
+    api::bindings::RtcIceServer,
     config::{
         Config, ConfigSsl, ForwardedHeaders, PortRange, WebRtcNat1To1IceCandidateType,
-        WebRtcNat1To1Mapping, WebRtcNetworkType,
+        WebRtcNat1To1Mapping,
     },
 };
+use clap::{Args, Parser, Subcommand};
 use log::LevelFilter;
 
 impl Cli {
@@ -63,8 +63,18 @@ pub struct Cli {
 pub enum Command {
     /// Runs the server (default if no command specified)
     Run,
-    /// Prints the config into stdout in json format
-    PrintConfig,
+    /// Config related commands
+    #[command(subcommand)]
+    Config(ConfigCommand),
+}
+
+#[derive(Subcommand)]
+pub enum ConfigCommand {
+    /// Creates the current config at the specified `config_path` or "./server/config.json" if no path is specified.
+    Generate,
+    /// Prints the currently used config into stdout in json format.
+    /// This includes all modifications from cli arguments and environment variables.
+    Print,
 }
 
 #[derive(Args)]
@@ -78,9 +88,6 @@ pub struct CliConfig {
     /// Overwrites `webrtc.ice_server_script`.
     #[arg(long, env = "WEBRTC_ICE_SERVER_SCRIPT")]
     pub webrtc_ice_server_script: Option<String>,
-    /// Overwrites `webrtc.network_types`. Example: "udp4,udp6"
-    #[arg(long, env = "WEBRTC_NETWORK_TYPES", value_delimiter = ',')]
-    pub webrtc_network_types: Option<Vec<WebRtcNetworkType>>,
     /// Overwrites `webrtc.include_loopback_candidates`.
     #[arg(long, env = "WEBRTC_INCLUDE_LOOPBACK_CANDIDATES")]
     pub webrtc_include_loopback_candidates: Option<bool>,
@@ -105,8 +112,6 @@ pub struct CliConfig {
     /// Overwrites `log.log_file_path`.
     #[arg(long, env = "LOG_FILE")]
     pub log_file: Option<String>,
-    #[arg(long, env = "STREAMER_PATH")]
-    pub streamer_path: Option<String>,
     /// Disables the STUN ice server which are bundled by default.
     /// This only disables the generation of them in the first config.
     /// After the config.json has been generated the ice servers in the config will be used regardless if this is set.
@@ -133,9 +138,6 @@ impl CliConfig {
         }
         if let Some(webrtc_ice_server_script) = self.webrtc_ice_server_script {
             config.webrtc.ice_server_script = Some(webrtc_ice_server_script);
-        }
-        if let Some(webrtc_network_types) = self.webrtc_network_types {
-            config.webrtc.network_types = webrtc_network_types;
         }
         if let Some(webrtc_include_loopback_candidates) = self.webrtc_include_loopback_candidates {
             config.webrtc.include_loopback_candidates = webrtc_include_loopback_candidates;
@@ -167,6 +169,12 @@ impl CliConfig {
                     .clone()
                     .unwrap_or_default()
                     .auto_create_missing_user,
+                ignore_case: config
+                    .web_server
+                    .forwarded_header
+                    .clone()
+                    .unwrap_or_default()
+                    .ignore_case,
             });
         }
         if let Some(log_level_filter) = self.log_level_filter {
@@ -174,9 +182,6 @@ impl CliConfig {
         }
         if let Some(log_file) = self.log_file {
             config.log.file_path = Some(log_file);
-        }
-        if let Some(streamer_path) = self.streamer_path {
-            config.streamer_path = streamer_path;
         }
         if self.disable_default_webrtc_ice_servers {
             config

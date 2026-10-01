@@ -1,16 +1,18 @@
-import { download, globalObject } from "../../util.js"
-import { ByteBuffer } from "../buffer.js"
-import { Logger } from "../log.js"
-import { Pipe, PipeInfo } from "../pipeline/index.js"
-import { addPipePassthrough } from "../pipeline/pipes.js"
-import { emptyVideoCodecs } from "../video.js"
-import { h264NalType, H264StreamVideoTranslator } from "./annex_b_translator.js"
-import { DataVideoRenderer, UrlVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index.js"
+import { download, globalObject } from "../../util"
+import { ByteBuffer } from "../buffer"
+import { Logger } from "../log"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { emptyVideoCodecs } from "../video"
+import { h264NalType, H264StreamVideoTranslator } from "./annex_b_translator"
+import { DataVideoRenderer, UrlVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index"
 
 // auto download an mp4 file containing all data until a media source error occured, testing only
 const DEBUG_FILE = false
 
 export class MediaSourceDecoder implements DataVideoRenderer {
+    static readonly pipeName = "MediaSourceDecoder"
+
     static async getInfo(): Promise<PipeInfo> {
         const environmentSupported = "MediaSource" in globalObject() && "isTypeSupported" in MediaSource
 
@@ -18,7 +20,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
 
         // We only know 100% if the codec is supported when we try to play the stream and get the
         // Sps which contains information about the actual h264 codec being used
-        videoCodecs.H264 = "maybe"
+        videoCodecs.h264 = true
 
         // no link
         return {
@@ -45,11 +47,12 @@ export class MediaSourceDecoder implements DataVideoRenderer {
     private onReadyPromise: Promise<void>
 
     private videoSize: [number, number] | null = null
+    private frameDuration = 0
     private sequenceNumber: number = -1
 
     private sourceBuffer: SourceBuffer | null = null
 
-    private debugBuffer: Uint8Array | null = null
+    private debugBuffer: Uint8Array<ArrayBuffer> | null = null
 
     constructor(base: UrlVideoRenderer, logger?: Logger) {
         this.logger = logger ?? null
@@ -67,15 +70,13 @@ export class MediaSourceDecoder implements DataVideoRenderer {
         addPipePassthrough(this)
     }
 
-    private expectedDurationMicroseconds = 0
-
     async setup(setup: VideoRendererSetup): Promise<void> {
         this.logger?.debug("The stream may experience increased latency, as modern browser APIs are not currently supported.", { type: "informError" })
 
         this.base.setUrl(this.url)
 
         this.videoSize = [setup.width, setup.height]
-        this.expectedDurationMicroseconds = 1_000_000 / setup.fps
+        this.frameDuration = 1_000_000 / setup.fps
 
         await this.onReadyPromise
 
@@ -84,21 +85,14 @@ export class MediaSourceDecoder implements DataVideoRenderer {
         }
     }
 
-    // A source buffer is created on each idr
+    // A source buffer is only created on first idr
     private createNewSourceBuffer(codec: string) {
-        // Clean the old source buffer
-        if (this.sourceBuffer) {
-            this.mediaSource.removeSourceBuffer(this.sourceBuffer)
-            this.sourceBuffer = null
-        }
-
-        this.sourceBuffer = this.mediaSource.addSourceBuffer(`video/mp4; codecs=${codec}`)
+        this.sourceBuffer = this.mediaSource.addSourceBuffer(
+            `video/mp4; codecs="${codec}"`
+        )
 
         this.sourceBuffer.addEventListener("error", this.onError.bind(this))
         this.sourceBuffer.addEventListener("updateend", this.onUpdateEnd.bind(this))
-
-        // https://www.w3.org/TR/media-source-2/#dom-sourcebuffer
-        this.sourceBuffer.mode = "segments"
     }
 
 
@@ -118,12 +112,10 @@ export class MediaSourceDecoder implements DataVideoRenderer {
         this.tryAppendDecodeUnit()
     }
 
-    private buffers: Array<Uint8Array> = []
+    private buffers: Array<Uint8Array<ArrayBuffer>> = []
     private needIdr = true
 
     private droppedFrames = 0
-    private timestampMicrosecondsShift = 0
-    private lastTimestampMicroseconds = 0
 
     submitDecodeUnit(unit: VideoDecodeUnit): void {
         if (this.errored) {
@@ -143,17 +135,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             return
         }
 
-        // Fix timestamps if we're given bad ones
-        let timestampMicroseconds = unit.timestampMicroseconds - this.timestampMicrosecondsShift
-        if (timestampMicroseconds <= this.lastTimestampMicroseconds) {
-            // Timestamps must increase at a "normal" rate
-            timestampMicroseconds = this.lastTimestampMicroseconds + this.expectedDurationMicroseconds
-        }
-
-        let durationMicroseconds = timestampMicroseconds - this.lastTimestampMicroseconds
-        this.lastTimestampMicroseconds = timestampMicroseconds
-
-        if (configure) {
+        if (configure && !this.sourceBuffer) {
             if (!configure.description
                 || !(configure.description instanceof Uint8Array)
             ) {
@@ -171,10 +153,6 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             }
             const [width, height] = this.videoSize
 
-            // Every segment must start at timestamp 0
-            this.timestampMicrosecondsShift = unit.timestampMicroseconds
-            this.lastTimestampMicroseconds = 0
-
             // Sequence number should start at 1
             this.sequenceNumber = 1
 
@@ -184,7 +162,15 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             this.buffers.push(initSegment.getRemainingBuffer())
 
             const idrSegment = new ByteBuffer(400 + unit.data.byteLength, false)
-            putVideoFrameSegment(idrSegment, 1, this.sequenceNumber, 0, durationMicroseconds, true, chunk)
+            putVideoFrameSegment(
+                idrSegment,
+                1,
+                this.sequenceNumber,
+                0,
+                this.frameDuration,
+                true,
+                chunk
+            )
             idrSegment.flip()
             this.buffers.push(idrSegment.getRemainingBuffer())
 
@@ -198,7 +184,15 @@ export class MediaSourceDecoder implements DataVideoRenderer {
 
             this.sequenceNumber += 1
             const segment = new ByteBuffer(400 + unit.data.byteLength, false)
-            putVideoFrameSegment(segment, 1, this.sequenceNumber, timestampMicroseconds, durationMicroseconds, false, chunk)
+            putVideoFrameSegment(
+                segment,
+                1,
+                this.sequenceNumber,
+                (this.sequenceNumber - 1) * this.frameDuration,
+                this.frameDuration,
+                unit.type == "key",
+                chunk
+            )
             segment.flip()
             this.buffers.push(segment.getRemainingBuffer())
 

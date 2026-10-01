@@ -558,10 +558,29 @@ input[type=number] {
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 0;
 }
 
 .sidebar-button-image {
+    width: 100%;
+    height: 100%;
+    background-position: center;
+    background-image: url("../resources/arrow_left.svg");
+
     transition: all 0.3s linear;
+}
+
+/** "Hide sidebar button" stream setting: invisible until hovered or focused,
+    so it never overlays the game but stays reachable in the same spot. */
+.sidebar-button.sidebar-button-unobtrusive {
+    opacity: 0;
+    transition: opacity 0.2s linear;
+}
+
+.sidebar-button.sidebar-button-unobtrusive:hover,
+.sidebar-button.sidebar-button-unobtrusive:focus-visible,
+.sidebar-show .sidebar-button.sidebar-button-unobtrusive {
+    opacity: 1;
 }
 
 .sidebar-edge-left .sidebar-button-image {
@@ -1372,6 +1391,7 @@ canvas.video-stream {
 }
 
 .user-info-delete,
+.user-info-remove-as-default,
 .role-info-delete {
     background-color: red;
 }

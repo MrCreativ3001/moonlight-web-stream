@@ -1,9 +1,9 @@
+use crate::api::bindings::{self, GetAppImageQuery, GetAppsQuery, GetAppsResponse};
 use actix_web::{
     HttpRequest, HttpResponse, get,
     http::header,
     web::{Json, Query},
 };
-use common::api_bindings::{self, GetAppImageQuery, GetAppsQuery, GetAppsResponse};
 use sha2::{Digest, Sha256};
 
 use crate::app::{
@@ -26,7 +26,7 @@ async fn get_apps(
     Ok(Json(GetAppsResponse {
         apps: apps
             .into_iter()
-            .map(|app| api_bindings::App {
+            .map(|app| bindings::App {
                 app_id: app.id.0,
                 title: app.title,
                 is_hdr_supported: app.is_hdr_supported,

@@ -1,7 +1,7 @@
-import { Component } from "../component/index.js"
-import { getCurrentLanguage, getTranslations } from "../i18n.js"
-import { showNotification } from "./notification.js"
-import { ListComponent } from "./list.js"
+import { Component } from "../component/index"
+import { getCurrentLanguage, getTranslations } from "../i18n"
+import { showNotification } from "./notification"
+import { ListComponent } from "./list"
 
 document.addEventListener("click", () => removeContextMenu())
 

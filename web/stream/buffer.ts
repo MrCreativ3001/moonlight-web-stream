@@ -231,7 +231,7 @@ export class ByteBuffer {
         return this.position
     }
 
-    getRemainingBuffer(): Uint8Array {
+    getRemainingBuffer(): Uint8Array<ArrayBuffer> {
         return this.buffer.slice(this.position, this.limit)
     }
 }

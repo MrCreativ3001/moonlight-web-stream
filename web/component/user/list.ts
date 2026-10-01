@@ -1,8 +1,8 @@
-import { User, UserEventListener } from "./index.js";
-import { DetailedUser } from "../../api_bindings.js";
-import { FetchListComponent } from "../fetch_list.js";
-import { Api, apiGetUsers } from "../../api.js";
-import { ComponentEvent } from "../index.js";
+import { User, UserEventListener } from "./index"
+import { DetailedUser } from "../../api_bindings"
+import { FetchListComponent } from "../fetch_list"
+import { Api, apiGetUsers } from "../../api"
+import { ComponentEvent } from "../index"
 
 export class UserList extends FetchListComponent<DetailedUser, User> {
     private api: Api

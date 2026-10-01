@@ -1,14 +1,15 @@
-import { OpusMultistreamDecoder } from "../../libopus/index.js";
-import loadOpus from "../../libopus/libopus.js";
-import { MainModule as OpusModule } from "../../libopus/libopus.js";
-import { Logger } from "../log.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, PcmAudioPlayer } from "./index.js";
+import { OpusMultistreamDecoder } from "../../libopus/index"
+import loadOpus from "../../libopus/libopus"
+import { MainModule as OpusModule } from "../../libopus/libopus"
+import { Logger } from "../log"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, PcmAudioPlayer } from "./index"
 
 // TODO: use AudioWorklets? https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_AudioWorklet
 
 export class OpusAudioDecoderPipe implements DataAudioPlayer {
+    static readonly pipeName = "OpusAudioDecoderPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         return {
@@ -33,7 +34,7 @@ export class OpusAudioDecoderPipe implements DataAudioPlayer {
     private setupData: AudioPlayerSetup | null = null
 
     private buffer: Float32Array = new Float32Array([])
-    private channelBuffers: Array<Float32Array> = []
+    private channelBuffers: Array<Float32Array<ArrayBuffer>> = []
 
     constructor(base: PcmAudioPlayer, logger?: Logger) {
         loadOpus().then(module => this.opusModule = module)

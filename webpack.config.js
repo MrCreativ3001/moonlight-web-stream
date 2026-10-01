@@ -1,0 +1,92 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import HtmlWebpackPlugin from 'html-webpack-plugin';
+import CopyPlugin from "copy-webpack-plugin";
+
+// In Node.js versions prior to native support for import.meta.dirname,
+// derive __dirname from import.meta.url.
+// (Node 20.11+ supports import.meta.dirname and import.meta.filename.)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default {
+    entry: {
+        // TODO: also include i18n
+        common: ["./web/styles/index.ts"],
+        index: "./web/index.ts",
+        stream: "./web/stream.ts",
+        admin: "./web/admin.ts"
+    },
+    module: {
+        rules: [
+            {
+                test: /\.tsx?$/,
+                use: "ts-loader",
+                exclude: /node_modules/,
+            },
+            {
+                test: /\.css$/i,
+                use: [
+                    {
+                        loader: 'style-loader',
+                        options: {
+                            injectType: 'lazyStyleTag'
+                        }
+                    },
+                    'css-loader'
+                ]
+            },
+            {
+                test: /\.(png|svg|jpg|jpeg|gif)$/i,
+                type: 'asset/resource',
+            },
+            {
+                test: /\.(wasm)$/i,
+                type: 'asset/resource',
+            },
+        ],
+    },
+    plugins: [
+        new HtmlWebpackPlugin({
+            filename: 'index.html',
+            template: './web/index.html',
+            chunks: ['index'],
+            scriptLoading: 'blocking',
+            favicon: "./web/resources/moonlight.svg"
+        }),
+        new HtmlWebpackPlugin({
+            filename: 'stream.html',
+            template: './web/stream.html',
+            chunks: ['stream'],
+            scriptLoading: 'blocking',
+            favicon: "./web/resources/moonlight.svg"
+        }),
+        new HtmlWebpackPlugin({
+            filename: 'admin.html',
+            template: './web/admin.html',
+            chunks: ['admin'],
+            scriptLoading: 'blocking',
+            favicon: "./web/resources/moonlight.svg"
+        }),
+        new CopyPlugin({
+            patterns: [
+                {
+                    from: "./web/manifest.json",
+                    to: "manifest.json"
+                },
+            ],
+        }),
+    ],
+    resolve: {
+        extensions: [".ts", ".js"]
+    },
+    output: {
+        filename: "[name].js",
+        path: path.resolve(__dirname, "dist"),
+        clean: true
+    },
+    externals: {
+        "./config.js": "window.__CONFIG_JS__",
+        "../../libopenh264/decoder.js": "window.__OPENH264_DECODER__",
+    }
+};

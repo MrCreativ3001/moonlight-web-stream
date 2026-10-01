@@ -5,6 +5,9 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
 
 ![An image displaying: PC with sunshine and moonlight web installed, a browser making requests to it](/readme/structure.png)
 
+> **Note**
+> Documentation for the current latest release is available on the [`v2.10.0`](https://github.com/MrCreativ3001/moonlight-web-stream/tree/v2.10.0) branch. The `master` branch contains the latest development version and may not match the published documentation.
+
 ## Overview
 
 - [Limitations](#limitations)
@@ -19,6 +22,7 @@ It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/
   - [Using Web Socket Transport](#using-websocket-transport)
 - [Config](#config)
 - [Migrating to v2](#migrating-to-v2)
+- [Migrating to v3](#migrating-to-v3)
 - [Contributors](#contributors)
 - [Building](#building)
 
@@ -41,6 +45,10 @@ You can install it [manually](#install-manually) or with [docker](docker/README.
 3. Run the "web-server" executable
 
 4. Go to `localhost:8080` and view the web interface. You can also the change [bind address](#bind-address).
+
+> **NOTE**
+> A `config.json` file is **not generated automatically on first startup**.
+> If you plan to follow the configuration guides below, you will need to create a config.json with `./web-server config generate`
 
 ## Setup
 
@@ -85,15 +93,8 @@ If a direct WebRTC connection cannot be established, you have a few options:
             {
                 "urls": [
                     "stun:stun.l.google.com:19302",
-                    "stun:stun.l.google.com:5349",
                     "stun:stun1.l.google.com:3478",
-                    "stun:stun1.l.google.com:5349",
-                    "stun:stun2.l.google.com:19302",
-                    "stun:stun2.l.google.com:5349",
-                    "stun:stun3.l.google.com:3478",
-                    "stun:stun3.l.google.com:5349",
-                    "stun:stun4.l.google.com:19302",
-                    "stun:stun4.l.google.com:5349",
+                    "stun:stun.l.google.com:5349"
                 ]
             },
             {
@@ -113,7 +114,7 @@ Some (business) firewalls might be very strict and only allow tcp on port 443 fo
 
 #### Port forward
 
-1. Set the port range used by the WebRTC Peer to a fixed range in the [config](#config)
+1. Set the [WebRTC Port Range](#webrtc-port-range) to a fixed range
 ```json
 {
     "webrtc": {
@@ -158,7 +159,7 @@ python ./generate_certificate.py
 
 2. Copy the files `server/key.pem` and `server/cert.pem` into your `server` directory.
 
-3. Modify the [config](#config) to enable https using the certificates
+3. Configure the [private key](#https-certificates) and [certificate](#https-certificates) https using the certificates
 ```json
 {
     "web_server": {
@@ -192,9 +193,9 @@ Define MOONLIGHT_STREAMER YOUR_LOCAL_IP:YOUR_PORT
 ProxyPreserveHost on
         
 # Important: This WebSocket will help negotiate the WebRTC Peers
-<Location ${MOONLIGHT_SUBPATH}/api/host/stream>
-        ProxyPass ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream
-        ProxyPassReverse ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream
+<Location ${MOONLIGHT_SUBPATH}/api/host/stream/web_socket>
+        ProxyPass ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream/web_socket
+        ProxyPassReverse ws://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/api/host/stream/web_socket
 </Location>
 
 ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/
@@ -235,6 +236,8 @@ By default the [auto create missing user](#forwarded-header-auto-create-missing-
 }
 ```
 
+If `auto_create_missing_user` is enabled, newly created users will be assigned the role configured as the default in the Admin Panel.
+
 ### Using WebSocket Transport
 
 In some networks (for example, corporate or highly restricted environments), establishing a WebRTC connection can be difficult or may not work at all.
@@ -266,10 +269,17 @@ Most options have command line arguments or environment variables associated wit
 ./web-server help
 ```
 
-For a full list of values look into the [Rust Config module](moonlight-web/common/src/config.rs).
+Generate the config with:
+```sh
+./web-server config generate
+```
+
+For a full list of values look into the [Rust Config module](src/config.rs).
 
 ### Bind Address 
 The address and port the website will run on
+
+Environment Variable: `BIND_ADDRESS=0.0.0.0:8080`
 
 ```json
 {
@@ -294,6 +304,10 @@ Go into the Admin Panel and look for the user id of the user you want to make th
 ### Https Certificates
 If enabled the web server will use https with the provided certificate data
 
+Environment Variables:
+- `SSL_PRIVATE_KEY=./server/key.pem`
+- `SSL_CERTIFICATE=./server/cert.pem`
+
 ```json
 {
     "web_server":{
@@ -307,6 +321,8 @@ If enabled the web server will use https with the provided certificate data
 
 ### WebRTC Port Range
 This will set the port range on the web server used to communicate when using WebRTC
+
+Environment Variable: `WEBRTC_PORT_RANGE=40000:40010`
 
 ```json
 {
@@ -329,15 +345,8 @@ A list of ice servers for webrtc to use.
             {
                 "urls": [
                     "stun:stun.l.google.com:19302",
-                    "stun:stun.l.google.com:5349",
                     "stun:stun1.l.google.com:3478",
-                    "stun:stun1.l.google.com:5349",
-                    "stun:stun2.l.google.com:19302",
-                    "stun:stun2.l.google.com:5349",
-                    "stun:stun3.l.google.com:3478",
-                    "stun:stun3.l.google.com:5349",
-                    "stun:stun4.l.google.com:19302",
-                    "stun:stun4.l.google.com:5349",
+                    "stun:stun.l.google.com:5349"
                 ]
             }
         ]
@@ -374,8 +383,7 @@ will currespond to the ice server
 }
 ```
 
-On first startup you can disable all default ice servers with the cli argument `--disable-default-webrtc-ice-servers` or the environment variable `DISABLE_DEFAULT_WEBRTC_ICE_SERVERS`.
-After the `config.json` has been generated all ice server in it will be used, even if those are the defaults.
+You can disable all default ice servers with the cli argument `--disable-default-webrtc-ice-servers` or the environment variable `DISABLE_DEFAULT_WEBRTC_ICE_SERVERS`.
 
 ### WebRTC Ice Server Script
 The given script will be executed on every stream start to dynamically generate ice servers.
@@ -456,28 +464,11 @@ You can also use the cli argument `--webrtc-nat-1to1-host` or environment variab
 ENV WEBRTC_NAT_1TO1_HOST=74.125.224.72
 ```
 
-### WebRTC Network Types
-This will set the network types allowed by webrtc.
-<br>Allowed values:
-- udp4: All udp with ipv4
-- udp6: All udp with ipv6
-- tcp4: All tcp with ipv4
-- tcp6: All tcp with ipv6
-
-```json
-{
-    "webrtc": {
-        "network_types": [
-            "udp4",
-            "udp6",
-        ]
-    }
-}
-```
-
 ### Url Path Prefix
 This is useful when rerouting the web page using services like [Apache 2](#proxying-via-apache-2).
 Will always append the prefix to all requests made by the website.
+
+Environment Variable: `PATH_PREFIX=/moonlight`
 
 ```json
 {
@@ -513,6 +504,20 @@ Automatically create a new user when the requested user specified in the [userna
 }
 ```
 
+### Forwarded Header Ignore Case
+Perform a case-insensitive lookup for the user in the in the [username_header](#forwarded-header-username).
+If multiple users match the given name, the request will fail.
+
+```json
+{
+    "web_server": {
+        "forwarded_header": {
+            "ignore_case": true
+        }
+    }
+}
+```
+
 ## Migrating to v2
 1. Some config options have changed so backup your old config by renaming it to something like `old_config.json`.
 
@@ -527,52 +532,65 @@ Other changes:
   - change all instances of `ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}/`<br> to `ProxyPass ${MOONLIGHT_SUBPATH}/ http://${MOONLIGHT_STREAMER}${MOONLIGHT_SUBPATH}/`
   - [Proxying via Apache 2](https://github.com/MrCreativ3001/moonlight-web-stream/tree/v2?tab=readme-ov-file#proxying-via-apache-2)
 
+## Migrating to v3
+Changes:
+- replaced openssl by rustls
+  - This makes older v1 and v2 server certificates incompatible
+  - When using a self signed certificate, regenerate it using the updated [generate_certificate.py](./generate_certificate.py)
+- replaced moonlight-common-c by moonlight-common-rust
+  - This could make older Nvidia GameStream and Sunshine Servers unsupported
+- moved web socket endpoint from `/api/host/stream` to `/api/host/stream/web_socket`
+  - Change the Web Socket Endpoint when using a Reserve Proxy: See [Proxying via Apache2](#proxying-via-apache-2)
+- `config.json` is not generated at first startup and can optionally be used for more granular control
+  - you can generate a config with `./web-server config generate`, if required
+- moved `default_user_id` and `default_role_id` from the `config.json` into the `data.json` file
+  - go into the admin panel and set the user or role you that you want to be the default to the default at the bottom of the page
+- removed old unused `default_settings` value in the config
+- removed `webrtc.network_types` setting in the config
+
 ## Contributors
-- Thanks to [@Argon2000](https://github.com/Argon2000) for implementing a canvas renderer, which makes this run in the Tesla browser.
-- Thanks to [@Maneetbal](https://github.com/Maneetbal) for creating a new beautiful GUI.
-- Thanks to [@chromaticpipe](https://github.com/chromaticpipe) for making Github CI.
-- Thanks to [@qiin2333](https://github.com/qiin2333) for implementing HDR support.
-- Thanks to [@Idefix2020](https://github.com/Idefix2020) for fixing the context menu and implementing caching for app images
+Thanks to everyone who contributed to make this software better :).
+
+<a href = "https://github.com/Tanu-N-Prabhu/Python/graphs/contributors">
+  <img src = "https://contrib.rocks/image?repo=MrCreativ3001/moonlight-web-stream"/>
+</a>
 
 ## Building
-Make sure you've cloned this repo with all it's submodules
+Clone this repository:
 ```sh
 git clone https://github.com/MrCreativ3001/moonlight-web-stream.git
 ```
-A [Rust](https://www.rust-lang.org/tools/install) [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) installation is required.
+A [Rust](https://www.rust-lang.org/tools/install) installation is required.
 
-There are 2 ways to build Moonlight Web:
-- Build it on your system
+Moonlight Web consists the [web server binary](#building-the-web-server) and a [web frontend](#building-the-frontend):
 
-  When you want to build it on your system take a look at how to compile the web server and streamer binary:
-  - [moonlight web server](#crate-moonlight-web-server)
-  - [moonlight web streamer](#crate-moonlight-web-streamer)
-  - [moonlight common rust](https://github.com/MrCreativ3001/moonlight-common-rust/tree/master/examples#client-common-c)
-
-- Compile using [Cargo Cross](https://github.com/cross-rs/cross) (doesn't work on most targets because cross-rs images use outdated c/cpp compilers)
-
-  After you've got a successful installation of cross just run the command in the project root directory.
-  This will compile the [web server](#crate-moonlight-web-server) and the [streamer](#crate-moonlight-web-streamer).
-  ```sh
-  cross build --release --target YOUR_TARGET
-  ```
-  Note: windows only has the gnu target `x86_64-pc-windows-gnu`
-
-### Crate: Moonlight Web Server
-This is the web server for Moonlight Web found at `src/`.
-It'll spawn a multiple [streamers](#crate-moonlight-web-server) as a subprocess for handling each stream.
-
-Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
+### Building the Web Server
+Run
 ```sh
+cargo build --release
+```
+.
+
+You can use [Cargo Cross](https://github.com/cross-rs/cross) for cross compilation:
+```sh
+cross build --release --target YOUR_TARGET
+```
+Note: windows only has the gnu target `x86_64-pc-windows-gnu`
+
+### Building the Frontend
+Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
+
+To generate bindings to rust code it is using [Uniffi Bindgen React Native](https://github.com/jhugman/uniffi-bindgen-react-native).
+This has a dependency on wasm-bindgen.
+
+```sh
+cargo install wasm-bindgen-cli
 npm install
 npm run build
 ```
+
 The build output will be in `dist/`.
 
 If you're compiling in:
 - debug mode -> the folder needs to be called `dist/`
 - release mode -> the folder needs to be called `static/`
-
-### Crate: Moonlight Web Streamer
-This is the streamer subprocess of the [web server](#crate-moonlight-web-server) and found at `streamer/`.
-It'll communicate via stdin and stdout with the web server to negotiate the WebRTC peers and then continue to communicate via the peer.

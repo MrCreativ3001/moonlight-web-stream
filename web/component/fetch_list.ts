@@ -1,5 +1,5 @@
-import { Component, FetchComponent } from "./index.js"
-import { ListComponent, ListComponentInit } from "./list.js"
+import { Component, FetchComponent } from "./index"
+import { ListComponent, ListComponentInit } from "./list"
 
 export abstract class FetchListComponent<Data, T extends Component> implements FetchComponent<Data>, Component {
     protected list: ListComponent<T>

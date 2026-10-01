@@ -1,9 +1,9 @@
-import { Api, apiDeleteRole, apiGetRole, apiGetUsers } from "../../api.js";
-import { DetailedRole, UndetailedRole } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { setContextMenu } from "../context_menu.js";
-import { Component, ComponentEvent } from "../index.js";
-import { showMessage } from "../modal/index.js";
+import { Api, apiDeleteRole, apiGetRole, apiGetUsers } from "../../api"
+import { DetailedRole, UndetailedRole } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { setContextMenu } from "../context_menu"
+import { Component, ComponentEvent } from "../index"
+import { showMessage } from "../modal/index"
 
 export type RoleEventListener = (event: ComponentEvent<Role>) => void
 

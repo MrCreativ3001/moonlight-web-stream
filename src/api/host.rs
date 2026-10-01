@@ -1,16 +1,17 @@
+use crate::api::bindings::{
+    DeleteHostQuery, GetHostQuery, GetHostResponse, GetHostsResponse, PairFailReason,
+    PatchHostRequest, PostCancelRequest, PostCancelResponse, PostHostRequest, PostHostResponse,
+    PostPairCancelRequest, PostPairRequest, PostPairResponse1, PostPairResponse2,
+    PostWakeUpRequest, UndetailedHost,
+};
 use actix_web::{
     HttpResponse, delete, get, patch, post,
     rt::spawn,
     web::{Data, Json, Query},
 };
-use common::api_bindings::{
-    DeleteHostQuery, GetHostQuery, GetHostResponse, GetHostsResponse, PairFailReason,
-    PatchHostRequest, PostHostRequest, PostHostResponse, PostPairCancelRequest, PostPairRequest,
-    PostPairResponse1, PostPairResponse2, PostWakeUpRequest, UndetailedHost,
-};
 use futures::future::try_join_all;
 use moonlight_common::{
-    crypto::openssl::OpenSSLCryptoBackend, high::MoonlightClientError, http::pair::PairPin,
+    crypto::rustcrypto::RustCryptoBackend, high::MoonlightClientError, http::pair::PairPin,
 };
 use tracing::warn;
 
@@ -189,14 +190,10 @@ async fn pair_host(
     // ever sees a pin; `Host::pair` still guards atomically against races.
     if host.pair_in_progress()? {
         let (reason, detail) = pair_fail_reason(&AppError::PairingInProgress);
-        return Ok(StreamedResponse::new(PostPairResponse1::PairFailed {
-            reason,
-            detail,
-        })
-        .0);
+        return Ok(StreamedResponse::new(PostPairResponse1::PairFailed { reason, detail }).0);
     }
 
-    let pin = PairPin::new_random(&OpenSSLCryptoBackend)?;
+    let pin = PairPin::new_random(&RustCryptoBackend)?;
 
     let (stream_response, stream_sender) = StreamedResponse::new(PostPairResponse1::Pin {
         pin: pin.to_string(),
@@ -264,6 +261,20 @@ async fn wake_host(
     Ok(HttpResponse::Ok().finish())
 }
 
+#[post("/host/cancel")]
+pub async fn cancel_host(
+    mut user: AuthenticatedUser,
+    Json(request): Json<PostCancelRequest>,
+) -> Result<Json<PostCancelResponse>, AppError> {
+    let host_id = HostId(request.host_id);
+
+    let mut host = user.host(host_id).await?;
+
+    host.cancel_app(&mut user).await?;
+
+    Ok(Json(PostCancelResponse { success: true }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,7 +298,10 @@ mod tests {
             reason_of(AppError::PairingCancelled),
             PairFailReason::Cancelled
         );
-        assert_eq!(reason_of(AppError::HostPaired), PairFailReason::AlreadyPaired);
+        assert_eq!(
+            reason_of(AppError::HostPaired),
+            PairFailReason::AlreadyPaired
+        );
     }
 
     #[test]

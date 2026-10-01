@@ -1,7 +1,7 @@
-import { StreamPermissions } from "../../api_bindings.js";
-import { getCurrentLanguage, getTranslations } from "../../i18n.js";
-import { Component, ComponentEvent } from "../index.js";
-import { InputComponent } from "../input.js";
+import { StreamPermissions } from "../../api_bindings"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { Component, ComponentEvent } from "../index"
+import { InputComponent } from "../input"
 
 export function defaultRolePermissions(): StreamPermissions {
     return {

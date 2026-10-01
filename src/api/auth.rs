@@ -1,3 +1,4 @@
+use crate::api::bindings::PostLoginRequest;
 use actix_web::{
     Error, FromRequest, HttpRequest, HttpResponse,
     body::MessageBody,
@@ -8,7 +9,6 @@ use actix_web::{
     post,
     web::{Data, Json},
 };
-use common::api_bindings::PostLoginRequest;
 use futures::future::{Ready, ready};
 use std::{pin::Pin, time::Duration};
 

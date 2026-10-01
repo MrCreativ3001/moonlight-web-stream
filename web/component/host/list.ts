@@ -1,8 +1,8 @@
-import { DetailedHost, UndetailedHost } from "../../api_bindings.js"
-import { Api, apiGetHosts } from "../../api.js"
-import { ComponentEvent } from "../index.js"
-import { Host, HostEventListener } from "./index.js"
-import { FetchListComponent } from "../fetch_list.js"
+import { DetailedHost, UndetailedHost } from "../../api_bindings"
+import { Api, apiGetHosts } from "../../api"
+import { ComponentEvent } from "../index"
+import { Host, HostEventListener } from "./index"
+import { FetchListComponent } from "../fetch_list"
 
 export class HostList extends FetchListComponent<DetailedHost | UndetailedHost, Host> {
     private api: Api

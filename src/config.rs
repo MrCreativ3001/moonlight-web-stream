@@ -1,0 +1,265 @@
+use std::{
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    num::ParseIntError,
+    str::FromStr,
+    time::Duration,
+};
+
+use log::LevelFilter;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use crate::api::bindings::RtcIceServer;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Config {
+    #[serde(default)]
+    pub data_storage: StorageConfig,
+    #[serde(default)]
+    pub webrtc: WebRtcConfig,
+    #[serde(default)]
+    pub web_server: WebServerConfig,
+    #[serde(default)]
+    pub moonlight: MoonlightConfig,
+    #[serde(default)]
+    pub log: LogConfig,
+}
+
+// -- Log
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogConfig {
+    pub level_filter: LevelFilter,
+    pub file_path: Option<String>,
+    #[serde(default = "default_dev_venator")]
+    pub dev_venator: bool,
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            level_filter: default_level_filter(),
+            file_path: None,
+            dev_venator: default_dev_venator(),
+        }
+    }
+}
+
+fn default_level_filter() -> LevelFilter {
+    LevelFilter::Info
+}
+
+fn default_dev_venator() -> bool {
+    false
+}
+
+// -- Data Storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
+pub enum StorageConfig {
+    Json {
+        path: String,
+        session_expiration_check_interval: Duration,
+    },
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        StorageConfig::Json {
+            path: "server/data.json".to_string(),
+            session_expiration_check_interval: default_session_expiration_check_interval(),
+        }
+    }
+}
+
+fn default_session_expiration_check_interval() -> Duration {
+    Duration::from_mins(5)
+}
+
+// -- WebRTC Config
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebRtcConfig {
+    #[serde(default = "default_ice_servers")]
+    pub ice_servers: Vec<RtcIceServer>,
+    #[serde(default)]
+    pub ice_server_script: Option<String>,
+    #[serde(default)]
+    pub port_range: Option<PortRange>,
+    #[serde(default)]
+    pub nat_1to1: Option<WebRtcNat1To1Mapping>,
+    #[serde(default = "default_include_loopback_candidates")]
+    pub include_loopback_candidates: bool,
+}
+
+impl Default for WebRtcConfig {
+    fn default() -> Self {
+        Self {
+            ice_servers: default_ice_servers(),
+            ice_server_script: None,
+            port_range: None,
+            nat_1to1: None,
+            include_loopback_candidates: default_include_loopback_candidates(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebRtcNat1To1Mapping {
+    pub ips: Vec<String>,
+    pub ice_candidate_type: WebRtcNat1To1IceCandidateType,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum WebRtcNat1To1IceCandidateType {
+    #[serde(rename = "srflx")]
+    Srflx,
+    #[serde(rename = "host")]
+    Host,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortRange {
+    pub min: u16,
+    pub max: u16,
+}
+
+#[derive(Debug, Error)]
+pub enum PortRangeFromStrError {
+    #[error("the port range must be of format \"MIN:MAX\"")]
+    Split,
+    #[error("couldn't parse number: {0}")]
+    ParseNumber(#[from] ParseIntError),
+}
+
+impl FromStr for PortRange {
+    type Err = PortRangeFromStrError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (min, max) = s.split_once(":").ok_or(PortRangeFromStrError::Split)?;
+        Ok(PortRange {
+            min: min.parse().map_err(PortRangeFromStrError::ParseNumber)?,
+            max: max.parse().map_err(PortRangeFromStrError::ParseNumber)?,
+        })
+    }
+}
+
+fn default_ice_servers() -> Vec<RtcIceServer> {
+    vec![RtcIceServer {
+        is_default: true,
+        urls: vec![
+            // Google
+            "stun:stun.l.google.com:19302".to_string(),
+            "stun:stun1.l.google.com:3478".to_string(),
+        ],
+        ..Default::default()
+    }]
+}
+fn default_include_loopback_candidates() -> bool {
+    true
+}
+
+// -- Web Server Config
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebServerConfig {
+    #[serde(default = "default_bind_address")]
+    pub bind_address: SocketAddr,
+    pub certificate: Option<ConfigSsl>,
+    #[serde(default)]
+    pub url_path_prefix: String,
+    #[serde(default = "default_session_cookie_secure")]
+    pub session_cookie_secure: bool,
+    #[serde(default = "default_session_cookie_expiration")]
+    pub session_cookie_expiration: Duration,
+    pub first_login_create_admin: bool,
+    pub first_login_assign_global_hosts: bool,
+    pub forwarded_header: Option<ForwardedHeaders>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigSsl {
+    pub private_key_pem: String,
+    pub certificate_pem: String,
+}
+
+impl Default for WebServerConfig {
+    fn default() -> Self {
+        Self {
+            bind_address: default_bind_address(),
+            certificate: None,
+            url_path_prefix: "".to_string(),
+            session_cookie_secure: default_session_cookie_secure(),
+            session_cookie_expiration: default_session_cookie_expiration(),
+            first_login_create_admin: true,
+            first_login_assign_global_hosts: true,
+            forwarded_header: None,
+        }
+    }
+}
+
+fn default_bind_address() -> SocketAddr {
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8080))
+}
+fn default_session_cookie_secure() -> bool {
+    false
+}
+fn default_session_cookie_expiration() -> Duration {
+    const DAY_SECONDS: u64 = 24 * 60 * 60;
+
+    Duration::from_secs(DAY_SECONDS)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForwardedHeaders {
+    pub username_header: String,
+    #[serde(default = "default_forwarded_headers_auto_create_user")]
+    pub auto_create_missing_user: bool,
+    #[serde(default = "default_forwarded_headers_ignore_case")]
+    pub ignore_case: bool,
+}
+
+impl Default for ForwardedHeaders {
+    fn default() -> Self {
+        Self {
+            username_header: "X-Forwarded-User".to_string(),
+            auto_create_missing_user: default_forwarded_headers_auto_create_user(),
+            ignore_case: default_forwarded_headers_ignore_case(),
+        }
+    }
+}
+
+fn default_forwarded_headers_auto_create_user() -> bool {
+    true
+}
+
+fn default_forwarded_headers_ignore_case() -> bool {
+    false
+}
+
+// -- Moonlight
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoonlightConfig {
+    #[serde(default = "default_moonlight_http_port")]
+    pub default_http_port: u16,
+    #[serde(default = "default_pair_device_name")]
+    pub pair_device_name: String,
+}
+
+impl Default for MoonlightConfig {
+    fn default() -> Self {
+        Self {
+            default_http_port: default_moonlight_http_port(),
+            pair_device_name: default_pair_device_name(),
+        }
+    }
+}
+
+fn default_moonlight_http_port() -> u16 {
+    47989
+}
+
+fn default_pair_device_name() -> String {
+    "roth".to_string()
+}

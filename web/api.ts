@@ -1,8 +1,9 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairCancelRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, UndetailedRole, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole } from "./api_bindings.js";
-import { showNotification } from "./component/notification.js";
-import { showMessage, showModal } from "./component/modal/index.js";
-import { ApiUserPasswordPrompt } from "./component/modal/login.js";
-import { buildUrl } from "./config_.js";
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairCancelRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, PutDefaultUserRequest, PutDefaultRoleRequest, GetDefaultRoleResponse, GetDefaultUserResponse, } from "./api_bindings"
+import { showNotification } from "./component/notification"
+import { showMessage, showModal } from "./component/modal/index"
+import { ApiUserPasswordPrompt } from "./component/modal/login"
+import { buildUrl } from "./config_"
+import { WebRtcLinkHeader_Tags, webrtcLinkHeaderParse } from "./uniffi/moonlight_common_bindings"
 
 // IMPORTANT: this should be a bit bigger than the moonlight-common reqwest backend timeout if some hosts are offline!
 const API_TIMEOUT = 12000
@@ -70,7 +71,9 @@ export async function tryLogin(): Promise<Api | null> {
     }
 }
 
+const OPTIONS = "OPTIONS"
 const GET = "GET"
+const PUT = "PUT"
 const POST = "POST"
 const PATCH = "PATCH"
 const DELETE = "DELETE"
@@ -84,10 +87,15 @@ export type Api = {
 }
 
 export type ApiFetchInit = {
-    json?: any,
+    noUrlModify?: boolean,
     query?: any,
     noTimeout?: boolean,
-}
+    keepalive?: boolean,
+} & (
+        { json?: any, }
+        | { sdp?: string }
+        | { trickleIceSdpFrag?: string }
+    )
 
 export function isDetailedHost(host: UndetailedHost | DetailedHost): host is DetailedHost {
     return (host as DetailedHost).https_port !== undefined
@@ -106,24 +114,42 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
     }
     const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-    const url = `${api.host_url}${endpoint}${queryString}`
+    let url
+    if (init?.noUrlModify) {
+        url = `${endpoint}${queryString}`
+    } else {
+        url = `${api.host_url}${endpoint}${queryString}`
+    }
 
-    const headers: any = {
-    };
+    const headers: any = {};
 
     if (api.bearer) {
         headers["Authorization"] = `Bearer ${api.bearer}`;
     }
 
-    if (init?.json) {
-        headers["Content-Type"] = "application/json";
+    let body = null
+    if (init) {
+        if ("json" in init) {
+            headers["Content-Type"] = "application/json"
+            body = JSON.stringify(init.json)
+        } else if ("sdp" in init) {
+            headers["Content-Type"] = "application/sdp"
+            body = init.sdp
+        } else if ("trickleIceSdpFrag" in init) {
+            headers["Content-Type"] = "application/trickle-ice-sdpfrag"
+            body = init.trickleIceSdpFrag
+        }
     }
 
     const request: RequestInit = {
         method: method,
         headers,
-        body: init?.json && JSON.stringify(init.json),
+        body,
         credentials: "include"
+    }
+
+    if (init?.keepalive) {
+        request.keepalive = true
     }
 
     return [url, request]
@@ -132,22 +158,30 @@ function buildRequest(api: Api, endpoint: string, method: string, init?: ApiFetc
 export class FetchError extends Error {
     private response?: Response
 
-    constructor(type: "timeout", endpoint: string, method: string)
-    constructor(type: "failed", endpoint: string, method: string, response: Response, reason?: string)
-    constructor(type: "unknown", endpoint: string, method: string, error: Error)
 
-    constructor(type: "timeout" | "failed" | "unknown", endpoint: string, method: string, responseOrError?: Response | any, reason?: string) {
+    constructor(message: string, response?: Response) {
+        super(message)
+        this.response = response
+    }
+
+    static create(type: "timeout", endpoint: string, method: string): Promise<FetchError>
+    static create(type: "failed", endpoint: string, method: string, response: Response, reason?: string): Promise<FetchError>
+    static create(type: "unknown", endpoint: string, method: string, error: Error): Promise<FetchError>
+
+    static async create(type: "timeout" | "failed" | "unknown", endpoint: string, method: string, responseOrError?: Response | any, reason?: string): Promise<FetchError> {
         if (type == "timeout") {
-            super(`failed to fetch ${method} at ${endpoint} because of timeout`)
+            return new FetchError(`failed to fetch ${method} at ${endpoint} because of timeout`)
         } else if (type == "failed") {
             const response = responseOrError as Response
-            super(`failed to fetch ${method} at ${endpoint} with code ${response?.status} ${reason ? `because of ${reason}` : ""}`)
+            const text = await response.text()
 
-            this.response = response
+            return new FetchError(`failed to fetch ${method} at ${endpoint} with "${response.statusText}"(${response?.status}) ${text ? `and response ${text}` : ""} ${reason ? `because of ${reason}` : ""}`)
         } else if (type == "unknown") {
             const error = responseOrError as Error
-            super(`failed to fetch ${method} at ${endpoint} because of ${error}`)
+            return new FetchError(`failed to fetch ${method} at ${endpoint} because of ${error}`)
         }
+
+        throw "invalid fetch error type"
     }
 
     getResponse(): Response | null {
@@ -205,11 +239,11 @@ export async function fetchApi(api: Api, endpoint: string, method: string = GET,
     try {
         response = await fetch(url, request)
     } catch (e: any) {
-        throw new FetchError("unknown", endpoint, method, e)
+        throw await FetchError.create("unknown", endpoint, method, e)
     }
 
     if (!response.ok) {
-        throw new FetchError("failed", endpoint, method, response)
+        throw await FetchError.create("failed", endpoint, method, response)
     }
 
     if (init?.response == "ignore") {
@@ -222,7 +256,7 @@ export async function fetchApi(api: Api, endpoint: string, method: string = GET,
         return json
     } else if (init?.response == "jsonStreaming") {
         if (!response.body) {
-            throw new FetchError("failed", endpoint, method, response)
+            throw await FetchError.create("failed", endpoint, method, response)
         }
 
         // @ts-ignore
@@ -329,6 +363,21 @@ export async function apiDeleteUser(api: Api, data: DeleteUserRequest): Promise<
     })
 }
 
+export async function apiPutDefaultUser(api: Api, data: PutDefaultUserRequest): Promise<void> {
+    await fetchApi(api, "/user/default", PUT, {
+        json: data,
+        response: "ignore"
+    })
+}
+export async function apiDeleteDefaultUser(api: Api): Promise<void> {
+    await fetchApi(api, "/user/default", DELETE, {
+        response: "ignore"
+    })
+}
+export async function apiGetDefaultUser(api: Api): Promise<GetDefaultUserResponse> {
+    return await fetchApi(api, "/user/default", GET)
+}
+
 export async function apiGetRoles(api: Api): Promise<GetRolesResponse> {
     const response = await fetchApi(api, "/roles", GET, {
         response: "json"
@@ -362,6 +411,21 @@ export async function apiDeleteRole(api: Api, query: DeleteRoleQuery): Promise<v
         query,
         response: "ignore",
     })
+}
+
+export async function apiPutDefaultRole(api: Api, data: PutDefaultRoleRequest): Promise<void> {
+    await fetchApi(api, "/role/default", PUT, {
+        json: data,
+        response: "ignore"
+    })
+}
+export async function apiDeleteDefaultRole(api: Api): Promise<void> {
+    await fetchApi(api, "/role/default", DELETE, {
+        response: "ignore"
+    })
+}
+export async function apiGetDefaultRole(api: Api): Promise<GetDefaultRoleResponse> {
+    return await fetchApi(api, "/role/default", GET)
 }
 
 export async function apiGetHosts(api: Api): Promise<StreamedJsonResponse<GetHostsResponse, UndetailedHost>> {
@@ -431,4 +495,81 @@ export async function apiHostCancel(api: Api, request: PostCancelRequest): Promi
     })
 
     return response as PostCancelResponse
+}
+
+export type WebRTCConfiguration = {
+    iceServers: Array<RTCIceServer>
+}
+
+export async function apiWebRTCConfiguration(api: Api): Promise<WebRTCConfiguration> {
+    const ENDPOINT = "/host/stream/webrtc"
+
+    const [url, request] = buildRequest(api, ENDPOINT, OPTIONS)
+
+    let response
+    try {
+        response = await fetch(url, request)
+    } catch (e: any) {
+        throw await FetchError.create("unknown", ENDPOINT, OPTIONS, e)
+    }
+
+    const iceServers: Array<RTCIceServer> = []
+
+    const rawLinks = response.headers.get("Link")
+    if (rawLinks) {
+        const links = webrtcLinkHeaderParse(rawLinks)
+        for (const link of links) {
+            if (link.tag == WebRtcLinkHeader_Tags.IceServer) {
+                iceServers.push({
+                    urls: link.inner.url,
+                    username: link.inner.username,
+                    credential: link.inner.credential,
+                })
+            }
+        }
+    }
+
+    return {
+        iceServers
+    }
+}
+
+export type WebRTCAnswer = {
+    answerSdp: string,
+    location: string | null,
+}
+
+export async function apiWebRTCOffer(api: Api, offerSdp: string): Promise<WebRTCAnswer> {
+    const ENDPOINT = "/host/stream/webrtc"
+
+    const [url, request] = buildRequest(api, ENDPOINT, POST, { sdp: offerSdp })
+
+    let response
+    try {
+        response = await fetch(url, request)
+    } catch (e: any) {
+        throw await FetchError.create("unknown", ENDPOINT, POST, e)
+    }
+
+    // 201 == Created
+    if (response.status != 201) {
+        const reason = await response.text()
+        throw await FetchError.create("failed", ENDPOINT, POST, response, reason)
+    }
+
+    // Get sdp
+    const answerSdp = await response.text()
+
+    // get location, if set
+    let location = null
+    for (const [name, value] of response.headers) {
+        if (name.trim().toLowerCase() == "location") {
+            location = value
+        }
+    }
+
+    return {
+        answerSdp,
+        location,
+    }
 }

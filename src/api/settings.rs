@@ -1,5 +1,5 @@
+use crate::{api::bindings::StreamPermissions, api::bindings_ext::TsAny};
 use actix_web::{get, web::Json};
-use common::{api_bindings::StreamPermissions, api_bindings_ext::TsAny};
 
 use crate::app::{AppError, user::AuthenticatedUser};
 

@@ -1,12 +1,12 @@
-import { DetailedHost, DetailedUser, PairFailReason, UndetailedHost } from "../../api_bindings.js"
-import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiPostPairCancel, apiWakeUp, apiGetUser, apiPatchHost } from "../../api.js"
-import { Component, ComponentEvent } from "../index.js"
-import { getCurrentLanguage, getTranslations } from "../../i18n.js"
-import { setContextMenu } from "../context_menu.js"
-import { showNotification } from "../notification.js"
-import { showMessage, showModal } from "../modal/index.js"
-import { PairModal } from "./pair_modal.js"
-import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE, HOST_OVERLAY_OFFLINE } from "../../resources/index.js"
+import { DetailedHost, DetailedUser, PairFailReason, UndetailedHost } from "../../api_bindings"
+import { Api, apiDeleteHost, apiGetHost, isDetailedHost, apiPostPair, apiPostPairCancel, apiWakeUp, apiGetUser, apiPatchHost } from "../../api"
+import { Component, ComponentEvent } from "../index"
+import { getCurrentLanguage, getTranslations } from "../../i18n"
+import { setContextMenu } from "../context_menu"
+import { showNotification } from "../notification"
+import { showMessage, showModal } from "../modal/index"
+import { PairModal } from "./pair_modal"
+import { HOST_IMAGE, HOST_OVERLAY_LOCK, HOST_OVERLAY_NONE, HOST_OVERLAY_OFFLINE } from "../../resources/index"
 
 export type HostEventListener = (event: ComponentEvent<Host>) => void
 

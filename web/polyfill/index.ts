@@ -1,1 +1,1 @@
-import "./abort_controller.js"
+import "./abort_controller"

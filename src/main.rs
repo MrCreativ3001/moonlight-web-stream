@@ -1,18 +1,21 @@
-use common::config::Config;
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+use crate::{cli::ConfigCommand, config::Config};
+use rustls::{
+    ServerConfig,
+    pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+};
 use std::{
     fs::OpenOptions,
-    io::{self, ErrorKind, IsTerminal},
+    io::{self, IsTerminal},
     path::PathBuf,
     str::FromStr,
 };
 use tokio::fs::{self};
-use tracing::{Level, Span, level_filters::LevelFilter, span, warn};
+use tracing::{Level, Span, level_filters::LevelFilter, span};
 use tracing_actix_web::{RootSpanBuilder, TracingLogger};
 use tracing_appender::non_blocking;
 use tracing_subscriber::{
     EnvFilter, Registry,
-    fmt::{self, format::FmtSpan},
+    fmt::{self},
     layer::SubscriberExt,
     util::SubscriberInitExt,
 };
@@ -41,6 +44,7 @@ mod app;
 mod web;
 
 mod cli;
+mod config;
 mod human_json;
 
 #[actix_web::main]
@@ -49,40 +53,40 @@ async fn main() {
 
     // Load Config
     let config_path = PathBuf::from_str(&cli.config_path).expect("invalid config file path");
-    let config = match fs::read_to_string(&config_path).await {
+    let mut config = match fs::read_to_string(&config_path).await {
         Ok(mut value) => {
             value = preprocess_human_json(value);
 
-            let mut config = serde_json::from_str(&value).expect("invalid file");
-            cli.options.apply(&mut config);
-            config
+            serde_json::from_str(&value).expect("invalid file")
         }
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-            let mut new_config = Config::default();
-            cli.options.apply(&mut new_config);
+        Err(err) if matches!(err.kind(), io::ErrorKind::NotFound) => Config::default(),
+        Err(err) => {
+            panic!("failed to read config: {err}");
+        }
+    };
+    cli.options.apply(&mut config);
 
+    match cli.command {
+        Some(Command::Config(ConfigCommand::Print)) => {
+            let json =
+                serde_json::to_string_pretty(&config).expect("failed to serialize config to json");
+            println!("{json}");
+            return;
+        }
+        Some(Command::Config(ConfigCommand::Generate)) => {
             let value_str =
-                serde_json::to_string_pretty(&new_config).expect("failed to serialize file");
+                serde_json::to_string_pretty(&config).expect("failed to serialize file");
 
             if let Some(parent) = config_path.parent() {
                 fs::create_dir_all(parent)
                     .await
                     .expect("failed to create directories to file");
             }
-            fs::write(config_path, value_str)
+            fs::write(&config_path, value_str)
                 .await
                 .expect("failed to write default file");
 
-            new_config
-        }
-        Err(err) => panic!("failed to read file: {err}"),
-    };
-
-    match cli.command {
-        Some(Command::PrintConfig) => {
-            let json =
-                serde_json::to_string_pretty(&config).expect("failed to serialize config to json");
-            println!("{json}");
+            println!("Successfully generate config at {config_path:?}");
             return;
         }
         None | Some(Command::Run) => {
@@ -92,13 +96,12 @@ async fn main() {
 
     let guard = init_log(&config);
 
-    #[allow(deprecated)]
-    if config.default_settings.is_some() {
-        warn!(
-            "You're currently using the \"default_settings\" config option. Please remove this option. Default Settings have been moved into roles. You can edit them in the Admin UI"
-        );
-    }
+    // Initialize crypto provider
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to set ring crypto provider as default");
 
+    // Start the server
     if let Err(err) = start(config).await {
         error!("{err:?}");
     }
@@ -121,22 +124,41 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
         .from_env_lossy()
         // Add default directives
         .add_directive(
-            "actix_http::h1=off"
+            "actix_http::h1=debug"
                 .parse()
                 .expect("failed to add actix-web tracing directive"),
         )
         .add_directive(
-            "mio::poll=off"
+            "h2=debug"
+                .parse()
+                .expect("failed to add h2 tracing directive"),
+        )
+        .add_directive(
+            "mio::poll=debug"
                 .parse()
                 .expect("failed to add mio tracing directive"),
+        )
+        // Filter out webrtc specific modules, because they just debug log everything
+        .add_directive(
+            "rtc::peer_connection::handler::sctp=info"
+                .parse()
+                .expect("failed to add rtc tracing directive"),
+        )
+        .add_directive(
+            "rtc::peer_connection::handler=info"
+                .parse()
+                .expect("failed to add rtc tracing directive"),
+        )
+        .add_directive(
+            "rtc_sctp::association=info"
+                .parse()
+                .expect("failed to add rtc tracing directive"),
         );
 
     #[cfg(windows)]
     enable_ansi_windows();
 
-    let stdout_layer = fmt::layer()
-        .with_span_events(FmtSpan::CLOSE)
-        .with_ansi(io::stdout().is_terminal());
+    let stdout_layer = fmt::layer().with_ansi(io::stdout().is_terminal());
 
     let (file_layer, guard) = if let Some(log_file) = &config.log.file_path {
         let file = OpenOptions::new()
@@ -148,10 +170,7 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
 
         let (writer, guard) = non_blocking(file);
 
-        let fmt_layer = fmt::layer()
-            .with_span_events(FmtSpan::FULL)
-            .with_writer(writer)
-            .with_ansi(false);
+        let fmt_layer = fmt::layer().with_writer(writer).with_ansi(false);
 
         (Some(fmt_layer), Some(guard))
     } else {
@@ -193,7 +212,15 @@ struct ActixDebugSpan;
 
 impl ActixDebugSpan {
     fn sanitize_headers(headers: &HeaderMap) -> Vec<(String, String)> {
-        const SENSITIVE: &[&str] = &["authorization", "cookie", "set-cookie"];
+        const SENSITIVE: &[&str] = &[
+            "authorization",
+            "cookie",
+            "set-cookie",
+            "host",
+            "origin",
+            "x-forwarded-host",
+            "x-forwarded-for",
+        ];
 
         headers
             .iter()
@@ -214,23 +241,22 @@ impl ActixDebugSpan {
 
 impl RootSpanBuilder for ActixDebugSpan {
     fn on_request_start(request: &ServiceRequest) -> Span {
-        if tracing::enabled!(Level::TRACE) {
-            span!(
-                Level::TRACE,
-                "http_request",
-                method = %request.method(),
-                uri = %request.uri(),
+        let span = span!(
+            Level::DEBUG,
+            "http_request",
+            method = %request.method(),
+            path = %request.uri().path_and_query().map(|x| x.as_str()).unwrap_or(""),
+        );
+
+        span.in_scope(|| {
+            trace!(
                 headers = ?Self::sanitize_headers(request.headers()),
                 peer_addr = ?request.peer_addr(),
+                "request details",
             )
-        } else {
-            span!(
-                Level::DEBUG,
-                "http_request",
-                method = %request.method(),
-                uri = %request.uri(),
-            )
-        }
+        });
+
+        span
     }
     fn on_request_end<B: MessageBody>(
         _span: Span,
@@ -273,16 +299,24 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
     if let Some(certificate) = app.config().web_server.certificate.as_ref() {
         info!("[Server]: Running Https Server with ssl tls");
 
-        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())
-            .expect("failed to create ssl tls acceptor");
-        builder
-            .set_private_key_file(&certificate.private_key_pem, SslFiletype::PEM)
-            .expect("failed to set private key");
-        builder
-            .set_certificate_chain_file(&certificate.certificate_pem)
-            .expect("failed to set certificate");
+        let certificate_chain = {
+            let results =
+                CertificateDer::pem_file_iter(&certificate.certificate_pem)?.collect::<Vec<_>>();
+            let mut chain = Vec::with_capacity(results.len());
 
-        server.bind_openssl(bind_address, builder)?.run().await?;
+            for result in results {
+                chain.push(result?);
+            }
+
+            chain
+        };
+        let private_key = PrivateKeyDer::from_pem_file(&certificate.private_key_pem)?;
+
+        let config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certificate_chain, private_key)?;
+
+        server.bind_rustls_0_23(bind_address, config)?.run().await?;
     } else {
         server.bind(bind_address)?.run().await?;
     }

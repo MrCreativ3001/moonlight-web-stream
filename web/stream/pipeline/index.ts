@@ -1,23 +1,23 @@
-import { AudioBufferPipe } from "../audio/audio_buffer_pipe.js";
-import { AudioContextTrackPipe } from "../audio/audio_context_track_pipe.js";
-import { OpusAudioDecoderPipe } from "../audio/opus_decoder_pipe.js";
-import { AudioDecoderPipe } from "../audio/audio_decoder_pipe.js";
-import { DepacketizeAudioPipe } from "../audio/depacketize_pipe.js";
-import { AudioMediaStreamTrackGeneratorPipe } from "../audio/media_stream_track_generator_pipe.js";
-import { Logger } from "../log.js";
-import { VideoCodecSupport } from "../video.js";
-import { OpenH264DecoderPipe } from "../video/openh264_decoder_pipe.js";
-import { CanvasFrameDrawPipe, CanvasRgbaFrameDrawPipe, CanvasYuv420FrameDrawPipe } from "../video/canvas_frame.js";
-import { DepacketizeVideoPipe } from "../video/depackitize_pipe.js";
-import { VideoMediaStreamTrackGeneratorPipe } from "../video/media_stream_track_generator_pipe.js";
-import { VideoMediaStreamTrackProcessorPipe } from "../video/media_stream_track_processor_pipe.js";
-import { WorkerDataToCanvasGlRenderOpenH264Pipe, WorkerDataToVideoTrackPipe, WorkerVideoMediaStreamProcessorCanvasPipe, WorkerVideoMediaStreamProcessorPipe } from "../video/pipeline.js";
-import { VideoDecoderPipe } from "../video/video_decoder_pipe.js";
-import { VideoTrackGeneratorPipe } from "../video/video_track_generator.js";
-import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerOffscreenCanvasSendPipe, WorkerVideoDataReceivePipe, WorkerVideoDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "./worker_io.js";
-import { StatValue } from "../stats.js";
-import { Yuv420ToRgbaFramePipe } from "../video/video_frame.js";
-import { MediaSourceDecoder } from "../video/media_source_decoder.js";
+import { AudioBufferPipe } from "../audio/audio_buffer_pipe"
+import { AudioContextTrackPipe } from "../audio/audio_context_track_pipe"
+import { OpusAudioDecoderPipe } from "../audio/opus_decoder_pipe"
+import { AudioDecoderPipe } from "../audio/audio_decoder_pipe"
+import { DepacketizeAudioPipe } from "../audio/depacketize_pipe"
+import { AudioMediaStreamTrackGeneratorPipe } from "../audio/media_stream_track_generator_pipe"
+import { Logger } from "../log"
+import { OpenH264DecoderPipe } from "../video/openh264_decoder_pipe"
+import { CanvasFrameDrawPipe, CanvasRgbaFrameDrawPipe, CanvasYuv420FrameDrawPipe } from "../video/canvas_frame"
+import { DepacketizeVideoPipe } from "../video/depackitize_pipe"
+import { VideoMediaStreamTrackGeneratorPipe } from "../video/media_stream_track_generator_pipe"
+import { VideoMediaStreamTrackProcessorPipe } from "../video/media_stream_track_processor_pipe"
+import { WorkerDataToCanvasGlRenderOpenH264Pipe, WorkerDataToVideoTrackPipe, WorkerVideoMediaStreamProcessorCanvasPipe, WorkerVideoMediaStreamProcessorPipe } from "../video/pipeline"
+import { VideoDecoderPipe } from "../video/video_decoder_pipe"
+import { VideoTrackGeneratorPipe } from "../video/video_track_generator"
+import { WorkerDataReceivePipe, WorkerDataSendPipe, WorkerOffscreenCanvasSendPipe, WorkerVideoDataReceivePipe, WorkerVideoDataSendPipe, WorkerVideoFrameReceivePipe, WorkerVideoFrameSendPipe, WorkerVideoTrackReceivePipe, WorkerVideoTrackSendPipe } from "./worker_io"
+import { StatValue } from "../stats"
+import { Yuv420ToRgbaFramePipe } from "../video/video_frame"
+import { MediaSourceDecoder } from "../video/media_source_decoder"
+import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
 
 export interface Pipe {
     readonly implementationName: string
@@ -29,13 +29,14 @@ export interface Pipe {
 
 export type PipeInfo = {
     environmentSupported: boolean
-    supportedVideoCodecs?: VideoCodecSupport
+    supportedVideoCodecs?: VideoFormats
 }
 
 export interface PipeInfoStatic {
     getInfo(): Promise<PipeInfo>
 }
 export interface PipeStatic extends PipeInfoStatic, InputPipeStatic {
+    readonly pipeName: string
     readonly type: string
 
     new(base: any, logger?: Logger): Pipe
@@ -58,16 +59,16 @@ export function pipelineToString(pipeline: Pipeline): string {
     return pipeline.pipes.map(pipe => pipeName(pipe)).join(" -> ")
 }
 
-export function pipeName(pipe: string | PipeStatic): string {
+export function pipeName(pipe: string | { pipeName: string }): string {
     if (typeof pipe == "string") {
         return pipe
     } else {
-        return pipe.name
+        return pipe.pipeName
     }
 }
 export function getPipe(pipe: string | PipeStatic): PipeStatic | null {
     if (typeof pipe == "string") {
-        const foundPipe = pipes().find(check => check.name == pipe)
+        const foundPipe = pipes().find(check => check.pipeName == pipe)
 
         return foundPipe ?? null
     } else {
@@ -89,7 +90,7 @@ export function buildPipeline(base: OutputPipeStatic, pipeline: Pipeline, logger
         }
 
         if (previousPipeStatic && currentPipe.baseType != previousPipeStatic.type) {
-            logger?.debug(`Failed to create pipeline "${pipelineToString(pipeline)}" because baseType of "${currentPipe.name}" is "${currentPipe.baseType}", but it's trying to connect with "${previousPipeStatic.type}"`)
+            logger?.debug(`Failed to create pipeline "${pipelineToString(pipeline)}" because baseType of "${pipeName(currentPipe)}" is "${currentPipe.baseType}", but it's trying to connect with "${previousPipeStatic.type}"`)
             return null
         }
 

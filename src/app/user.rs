@@ -5,26 +5,29 @@ use std::{
     time::Duration,
 };
 
-use common::api_bindings::{self, DetailedUser};
 use moonlight_common::{
     high::MoonlightClientError,
     http::{
         ClientInfo,
-        client::{RequestError, async_client::RequestClient},
+        client::{RequestError, async_client::RequestClient as _},
         server_info::{ServerInfoEndpoint, ServerInfoRequest},
     },
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::app::{
-    AppError, AppRef, MoonlightClient,
-    auth::{SessionToken, UserAuth},
-    host::{Host, HostId},
-    password::StoragePassword,
-    role::{Role, RoleId},
-    storage::{
-        StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser, StorageUserModify,
+use crate::{
+    api::bindings::DetailedUser,
+    app::{
+        AppError, AppRef, RequestClient,
+        auth::{SessionToken, UserAuth},
+        host::{Host, HostId},
+        password::StoragePassword,
+        role::{Role, RoleId},
+        storage::{
+            Either, StorageHostAdd, StorageHostCache, StorageQueryHosts, StorageUser,
+            StorageUserModify,
+        },
     },
 };
 
@@ -34,7 +37,7 @@ pub enum RoleType {
     Admin,
 }
 
-impl From<RoleType> for api_bindings::RoleType {
+impl From<RoleType> for crate::api::bindings::RoleType {
     fn from(value: RoleType) -> Self {
         match value {
             RoleType::User => Self::User,
@@ -43,9 +46,9 @@ impl From<RoleType> for api_bindings::RoleType {
     }
 }
 
-impl From<api_bindings::RoleType> for RoleType {
-    fn from(value: common::api_bindings::RoleType) -> Self {
-        use common::api_bindings::RoleType;
+impl From<crate::api::bindings::RoleType> for RoleType {
+    fn from(value: crate::api::bindings::RoleType) -> Self {
+        use crate::api::bindings::RoleType;
 
         match value {
             RoleType::User => Self::User,
@@ -99,7 +102,15 @@ impl User {
     pub async fn is_default_user(&self) -> Result<bool, AppError> {
         let app = self.app.access()?;
 
-        Ok(app.config.web_server.default_user_id.map(UserId) == Some(self.id))
+        let Some(default_user) = app.storage.default_user().await? else {
+            return Ok(false);
+        };
+        let default_user_id = match default_user {
+            Either::Left(id) => id,
+            Either::Right(storage) => storage.id,
+        };
+
+        Ok(self.id == default_user_id)
     }
 
     pub async fn role_id(&mut self) -> Result<RoleId, AppError> {
@@ -202,12 +213,22 @@ impl User {
             UserAuth::ForwardedHeaders { username } => {
                 let app = self.app.access()?;
 
-                if app.config.web_server.forwarded_header.is_none() {
+                let Some(config_forwarded_headers) = &app.config.web_server.forwarded_header else {
                     return Err(AppError::HeaderAuthDisabled);
-                }
+                };
 
                 let storage = self.storage_user().await?;
-                if storage.name.as_str() == username.as_str() {
+
+                let user_matches = if config_forwarded_headers.ignore_case {
+                    storage
+                        .name
+                        .as_str()
+                        .eq_ignore_ascii_case(username.as_str())
+                } else {
+                    storage.name.as_str() == username.as_str()
+                };
+
+                if user_matches {
                     Ok(AuthenticatedUser { inner: self })
                 } else {
                     Err(AppError::Forbidden)
@@ -320,7 +341,7 @@ impl AuthenticatedUser {
 
         let unique_id = self.host_unique_id().await?;
 
-        let client = MoonlightClient::with_defaults()
+        let client = RequestClient::with_defaults()
             .map_err(|err| MoonlightClientError::Backend(Box::new(err)))?;
 
         let info = match client

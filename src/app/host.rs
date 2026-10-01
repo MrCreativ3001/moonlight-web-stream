@@ -1,9 +1,12 @@
-use std::fmt::{Debug, Formatter};
+use std::{
+    fmt::{Debug, Formatter},
+    sync::Arc,
+};
 
+use crate::api::bindings::{self, DetailedHost, HostOwner, HostState, PairStatus, UndetailedHost};
 use actix_web::web::Bytes;
-use common::api_bindings::{self, DetailedHost, HostOwner, HostState, PairStatus, UndetailedHost};
 use moonlight_common::{
-    crypto::openssl::OpenSSLCryptoBackend,
+    crypto::rustcrypto::RustCryptoBackend,
     high::{
         MoonlightClientError,
         tokio::{MoonlightHost, broadcast_magic_packet},
@@ -16,7 +19,7 @@ use moonlight_common::{
 };
 
 use crate::app::{
-    AppError, AppInner, AppRef, MoonlightClient,
+    AppError, AppInner, AppRef, RequestClient,
     storage::{StorageHost, StorageHostModify, StorageHostPairInfo},
     user::{AuthenticatedUser, RoleType, UserId},
 };
@@ -37,8 +40,15 @@ impl Debug for Host {
     }
 }
 
+// TODO: replace this by the moonlight common rust app id
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AppId(pub u32);
+
+impl From<AppId> for moonlight_common::AppId {
+    fn from(value: AppId) -> Self {
+        Self(value.0)
+    }
+}
 
 pub struct App {
     pub id: AppId,
@@ -46,16 +56,16 @@ pub struct App {
     pub is_hdr_supported: bool,
 }
 
-impl From<moonlight_common::http::app_list::App> for App {
-    fn from(value: moonlight_common::http::app_list::App) -> Self {
+impl From<moonlight_common::App> for App {
+    fn from(value: moonlight_common::App) -> Self {
         Self {
-            id: AppId(value.id),
+            id: AppId(value.id.0),
             title: value.title,
             is_hdr_supported: value.is_hdr_supported,
         }
     }
 }
-impl From<App> for api_bindings::App {
+impl From<App> for bindings::App {
     fn from(value: App) -> Self {
         Self {
             app_id: value.id.0,
@@ -142,18 +152,18 @@ impl Host {
         })
     }
 
-    async fn use_client<R>(
+    async fn use_request_client<R>(
         &mut self,
         app: &AppInner,
         user: &mut AuthenticatedUser,
         // app, https_capable, client, host, port, client_info
-        f: impl AsyncFnOnce(&mut Self, &MoonlightHost<MoonlightClient>) -> R,
+        f: impl AsyncFnOnce(&mut Self, &Arc<MoonlightHost<RequestClient>>) -> R,
     ) -> Result<R, AppError> {
         let user_unique_id = user.host_unique_id().await?;
         let host_data = self.storage_host(app).await?;
 
         // TODO: put this globally somewhere and retrieve it?
-        let host = MoonlightHost::<MoonlightClient>::new(
+        let host = MoonlightHost::<RequestClient>::new(
             host_data.address.clone(),
             host_data.http_port,
             Some(user_unique_id),
@@ -168,7 +178,20 @@ impl Host {
             .await?;
         }
 
-        Ok(f(self, &host).await)
+        Ok(f(self, &Arc::new(host)).await)
+    }
+
+    pub async fn use_host(
+        &mut self,
+        user: &mut AuthenticatedUser,
+    ) -> Result<Arc<MoonlightHost<RequestClient>>, AppError> {
+        let app = self.app.access()?;
+
+        let client = self
+            .use_request_client(&app, user, async |_this, client| client.clone())
+            .await?;
+
+        Ok(client)
     }
 
     async fn storage_host(&self, app: &AppInner) -> Result<StorageHost, AppError> {
@@ -177,32 +200,6 @@ impl Host {
         }
 
         app.storage.get_host(self.id).await
-    }
-
-    pub async fn address_port(
-        &self,
-        user: &mut AuthenticatedUser,
-    ) -> Result<(String, u16), AppError> {
-        self.can_use(user).await?;
-
-        let app = self.app.access()?;
-
-        let host = app.storage.get_host(self.id).await?;
-
-        Ok((host.address, host.http_port))
-    }
-
-    pub async fn pair_info(
-        &self,
-        user: &mut AuthenticatedUser,
-    ) -> Result<StorageHostPairInfo, AppError> {
-        self.can_use(user).await?;
-
-        let app = self.app.access()?;
-
-        let host = app.storage.get_host(self.id).await?;
-
-        host.pair_info.ok_or(AppError::HostNotPaired)
     }
 
     fn is_offline<T>(
@@ -229,7 +226,7 @@ impl Host {
             return Ok(Some(cache.clone()));
         }
 
-        self.use_client(app, user, async |this, host| {
+        self.use_request_client(app, user, async |this, host| {
             let info = match this.is_offline(host.server_info().await) {
                 Ok(Some(value)) => value,
                 err => return err,
@@ -329,7 +326,7 @@ impl Host {
                     address: storage.address,
                     http_port: storage.http_port,
                     https_port: 0,
-                    external_port: 0,
+                    external_port: None,
                     version: "Offline".to_string(),
                     gfe_version: "Offline".to_string(),
                     unique_id: "Offline".to_string(),
@@ -452,13 +449,10 @@ impl Host {
                 // the library's own unpair-on-error cleanup did not run. Tell
                 // the host to drop its pending pair session so a fresh attempt
                 // can start cleanly.
-                if matches!(
-                    err,
-                    AppError::PairingTimedOut | AppError::PairingCancelled
-                ) {
+                if matches!(err, AppError::PairingTimedOut | AppError::PairingCancelled) {
                     let mut user = user.clone();
                     match self
-                        .use_client(&app, &mut user, async |_, host| host.unpair().await)
+                        .use_request_client(&app, &mut user, async |_, host| host.unpair().await)
                         .await
                     {
                         Ok(Ok(())) | Err(_) => {}
@@ -482,9 +476,11 @@ impl Host {
         pin: PairPin,
     ) -> Result<StorageHostModify, AppError> {
         let user = &mut user;
+        let device_name = app.config.moonlight.pair_device_name.clone();
+
         let modify = self
-            .use_client(app, user, async |this, host| {
-                let (client_identifier, client_secret) = OpenSSLCryptoBackend
+            .use_request_client(app, user, async |this, host| {
+                let (client_identifier, client_secret) = RustCryptoBackend
                     .generate_client_identity()
                     .map_err(|err| {
                         MoonlightClientError::Pairing(ClientPairingError::Crypto(Box::new(err)))
@@ -494,9 +490,9 @@ impl Host {
                 host.pair(
                     &client_identifier,
                     &client_secret,
-                    "roth".to_string(),
+                    device_name,
                     pin,
-                    OpenSSLCryptoBackend,
+                    RustCryptoBackend,
                 )
                 .await?;
                 let info = host.server_info().await?;
@@ -546,7 +542,7 @@ impl Host {
 
         let app = self.app.access()?;
 
-        self.use_client(&app, user, async |_this, host| {
+        self.use_request_client(&app, user, async |_this, host| {
             let apps = host.app_list().await?;
 
             let apps = apps.into_iter().map(App::from).collect::<Vec<_>>();
@@ -576,8 +572,8 @@ impl Host {
         }
 
         let app_image = self
-            .use_client(&app, user, async |_this, host| {
-                let image = host.request_app_image(app_id.0).await?;
+            .use_request_client(&app, user, async |_this, host| {
+                let image = host.request_app_image(app_id.into()).await?;
 
                 Ok::<_, AppError>(image)
             })
@@ -597,7 +593,7 @@ impl Host {
 
         let app = self.app.access()?;
 
-        self.use_client(&app, user, async |_this, host| {
+        self.use_request_client(&app, user, async |_this, host| {
             let success = host.cancel().await?;
 
             Ok(success)

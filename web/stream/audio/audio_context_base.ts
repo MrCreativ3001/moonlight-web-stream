@@ -1,9 +1,8 @@
-
-import { Logger } from "../log.js";
-import { Pipe } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { StatValue } from "../stats.js";
-import { AudioPlayerSetup, NodeAudioPlayer } from "./index.js";
+import { Logger } from "../log"
+import { Pipe } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { StatValue } from "../stats"
+import { AudioPlayerSetup, NodeAudioPlayer } from "./index"
 
 export abstract class AudioContextBasePipe implements NodeAudioPlayer {
 

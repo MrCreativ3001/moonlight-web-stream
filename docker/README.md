@@ -3,9 +3,11 @@
 
 Run with
 ```sh
-docker run -d -p 8080:8080 -p 40000-40100:40000-40100/udp -e WEBRTC_NAT_1TO1_HOST=YOUR_LAN_IP mrcreativ3001/moonlight-web-stream:latest
+docker run -d -p 8080:8080 -p 40000-40100:40000-40100/udp -e WEBRTC_PORT_RANGE=40000:40100 -e WEBRTC_NAT_1TO1_HOST=YOUR_LAN_IP mrcreativ3001/moonlight-web-stream:latest
 ```
 and replace `YOUR_LAN_IP` with the device ip address of the local network.
+
+`WEBRTC_PORT_RANGE` must match the udp port mapping.
 
 # Running with a TURN server
 

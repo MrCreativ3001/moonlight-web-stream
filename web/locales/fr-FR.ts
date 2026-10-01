@@ -1,4 +1,4 @@
-import type { Translations } from "./en.js"
+import type { Translations } from "./en"
 
 export const frFr: Translations = {
     index: {
@@ -41,6 +41,7 @@ export const frFr: Translations = {
     settings: {
         sidebar: "Barre latérale",
         sidebarEdge: "Bord de la barre latérale",
+        hideSidebarButton: "Masquer le bouton de la barre latérale (visible au survol)",
         left: "Gauche",
         right: "Droite",
         up: "Haut",
@@ -131,6 +132,9 @@ export const frFr: Translations = {
         allowWebrtc: "Permettre WebRTC",
         allowWebSockets: "Permettre Web Sockets",
         roleDeleteBlocked: (users: string[]) => `Pour supprimer ce rôle, tous les utilisateurs associés à ce rôle doivent être supprimés ou associés à un autre rôle.\nUtilisateurs actuellement associés à ce rôle:\n${JSON.stringify(users)}`,
+        setDefault: "Définir par défaut",
+        removeAsDefault: "Retirer comme valeur par défaut",
+        setDefaultUserDialog: "Définir cet utilisateur comme utilisateur par défaut ?"
     },
     host: {
         showDetails: "Afficher les détails",

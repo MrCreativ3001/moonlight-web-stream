@@ -1,8 +1,8 @@
-import { globalObject } from "../../util.js";
-import { Logger } from "../log.js";
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough } from "../pipeline/pipes.js";
-import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, SampleAudioPlayer } from "./index.js";
+import { globalObject } from "../../util"
+import { Logger } from "../log"
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough } from "../pipeline/pipes"
+import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, SampleAudioPlayer } from "./index"
 
 async function detectCodec(): Promise<boolean> {
     if (!("isConfigSupported" in AudioDecoder)) {
@@ -21,6 +21,7 @@ async function detectCodec(): Promise<boolean> {
 }
 
 export class AudioDecoderPipe implements DataAudioPlayer {
+    static readonly pipeName = "AudioDecoderPipe"
 
     static readonly baseType = "audiosample"
     static readonly type = "audiodata"

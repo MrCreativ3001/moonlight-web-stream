@@ -1,21 +1,21 @@
-import "./polyfill/index.js"
-import "./styles/index.js"
-import { Api, apiGetRole, apiGetUser, apiLogout, apiPostRole, apiPostUser, FetchError, getApi } from "./api.js";
-import { Component, ComponentEvent } from "./component/index.js";
-import { showNotification } from "./component/notification.js";
-import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click.js";
-import { UserList } from "./component/user/list.js";
-import { AddUserModal } from "./component/user/add_modal.js";
-import { showMessage, showModal } from "./component/modal/index.js";
-import { buildUrl } from "./config_.js";
-import { DetailedUserPage } from "./component/user/detailed_page.js";
-import { User, UserEventListener } from "./component/user/index.js";
-import { DetailedRole, DetailedUser } from "./api_bindings.js";
-import { Role, RoleEventListener } from "./component/roles/index.js";
-import { RoleList } from "./component/roles/list.js";
-import { DetailedRolePage } from "./component/roles/detailed_page.js";
-import { AddRoleModal } from "./component/roles/add_modal.js";
-import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n.js";
+import "./polyfill/index"
+import "./styles/index"
+import { Api, apiGetRole, apiGetUser, apiLogout, apiPostRole, apiPostUser, FetchError, getApi } from "./api"
+import { Component, ComponentEvent } from "./component/index"
+import { showNotification } from "./component/notification"
+import { setTouchContextMenuEnabled } from "./polyfill/ios_right_click"
+import { UserList } from "./component/user/list"
+import { AddUserModal } from "./component/user/add_modal"
+import { showMessage, showModal } from "./component/modal/index"
+import { buildUrl } from "./config_"
+import { DetailedUserPage } from "./component/user/detailed_page"
+import { User, UserEventListener } from "./component/user/index"
+import { DetailedRole, DetailedUser } from "./api_bindings"
+import { Role, RoleEventListener } from "./component/roles/index"
+import { RoleList } from "./component/roles/list"
+import { DetailedRolePage } from "./component/roles/detailed_page"
+import { AddRoleModal } from "./component/roles/add_modal"
+import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations } from "./i18n"
 
 let I = getTranslations(getCurrentLanguage())
 

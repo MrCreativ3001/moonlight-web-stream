@@ -1,8 +1,9 @@
-import { Pipe, PipeInfo } from "../pipeline/index.js";
-import { addPipePassthrough, DataPipe } from "../pipeline/pipes.js";
-import { AudioPlayerSetup, DataAudioPlayer } from "./index.js";
+import { Pipe, PipeInfo } from "../pipeline/index"
+import { addPipePassthrough, DataPipe } from "../pipeline/pipes"
+import { AudioPlayerSetup, DataAudioPlayer } from "./index"
 
 export class DepacketizeAudioPipe implements DataPipe {
+    static readonly pipeName = "DepacketizeAudioPipe"
 
     static async getInfo(): Promise<PipeInfo> {
         return {
@@ -34,7 +35,7 @@ export class DepacketizeAudioPipe implements DataPipe {
         }
     }
 
-    submitPacket(buffer: ArrayBuffer) {
+    submitPacket(buffer: Uint8Array) {
         this.base.decodeAndPlay({
             data: buffer,
             timestampMicroseconds: this.timestampMicroseconds,

@@ -1,6 +1,6 @@
+use crate::api::bindings::ConfigJs;
 use actix_files::Files;
 use actix_web::{HttpResponse, dev::HttpServiceFactory, get, services, web::Data};
-use common::api_bindings::ConfigJs;
 use log::warn;
 
 use crate::app::App;
@@ -32,7 +32,7 @@ async fn config_js(app: Data<App>) -> HttpResponse {
             return HttpResponse::InternalServerError().finish();
         }
     };
-    let config_js = format!("export default {config_json}");
+    let config_js = format!("window.__CONFIG_JS__ = {config_json}");
 
     HttpResponse::Ok()
         .append_header(("Content-Type", "text/javascript"))

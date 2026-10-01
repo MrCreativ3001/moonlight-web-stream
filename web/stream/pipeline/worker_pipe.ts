@@ -1,16 +1,16 @@
-import { globalObject } from "../../util.js";
-import { Logger } from "../log.js";
-import { OffscreenCanvasRenderer } from "../video/offscreen_canvas.js";
-import { getPipe, Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index.js";
-import { addPipePassthrough } from "./pipes.js";
-import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types.js";
+import { globalObject } from "../../util"
+import { Logger } from "../log"
+import { OffscreenCanvasRenderer } from "../video/offscreen_canvas"
+import { getPipe, Pipe, PipeInfo, Pipeline, pipelineToString, PipeStatic } from "./index"
+import { addPipePassthrough } from "./pipes"
+import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types"
 
 export function createPipelineWorker(): Worker | null {
     if (!("Worker" in globalObject())) {
         return null
     }
 
-    return new Worker(new URL("worker.js", import.meta.url), { type: "module" })
+    return new Worker(new URL("./worker", import.meta.url), { type: "module" })
 }
 
 export interface WorkerReceiver extends Pipe {
@@ -143,6 +143,8 @@ export class WorkerPipe implements WorkerReceiver {
 
 export function workerPipe(name: string, pipeline: Pipeline): PipeStatic {
     class CustomWorkerPipe extends WorkerPipe {
+        static readonly pipeName = name
+
         static async getInfo(): Promise<PipeInfo> {
             return await this.getInfoInternal(pipeline)
         }
@@ -154,8 +156,6 @@ export function workerPipe(name: string, pipeline: Pipeline): PipeStatic {
             super(base, pipeline, logger)
         }
     }
-
-    Object.defineProperty(CustomWorkerPipe, "name", { value: name })
 
     return CustomWorkerPipe
 }

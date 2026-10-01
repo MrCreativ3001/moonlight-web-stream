@@ -9,7 +9,8 @@ services:
       - "8080:8080"
       - "40000-40100:40000-40100/udp"
     environment:
-      - WEBRTC_NAT_1TO1_HOST=127.0.0.1 # Set this to your LAN ip or public ip
+      - WEBRTC_NAT_1TO1_HOST=127.0.0.1
+      - WEBRTC_PORT_RANGE=40000:40100
     volumes:
       - moonlight-server:/moonlight-web/server
 

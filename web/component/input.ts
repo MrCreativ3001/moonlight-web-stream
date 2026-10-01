@@ -1,6 +1,6 @@
-import { Component, ComponentEvent } from "./index.js"
-import { getLocalStreamSettings, globalDefaultSettings } from "./settings_menu.js"
-import { getCurrentLanguage, getTranslations } from "../i18n.js"
+import { Component, ComponentEvent } from "./index"
+import { getLocalStreamSettings, globalDefaultSettings } from "./settings_menu"
+import { getCurrentLanguage, getTranslations } from "../i18n"
 
 export class ElementWithLabel implements Component {
     protected div: HTMLDivElement = document.createElement("div")

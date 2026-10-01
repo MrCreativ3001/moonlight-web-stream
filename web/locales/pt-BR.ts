@@ -1,4 +1,4 @@
-import type { Translations } from "./en.js"
+import type { Translations } from "./en"
 
 export const ptBR: Translations = {
     index: {
@@ -41,6 +41,7 @@ export const ptBR: Translations = {
     settings: {
         sidebar: "Barra Lateral",
         sidebarEdge: "Posição da Barra Lateral",
+        hideSidebarButton: "Ocultar botão da barra lateral (aparece ao passar o mouse)",
         left: "Esquerda",
         right: "Direita",
         up: "Cima",
@@ -131,6 +132,9 @@ export const ptBR: Translations = {
         allowWebrtc: "Permitir WebRTC",
         allowWebSockets: "Permitir WebSockets",
         roleDeleteBlocked: (users: string[]) => `Para remover este perfil, todos os usuários atribuídos a ele precisam ser excluídos ou reatribuídos a outro perfil.\nUsuários com este perfil:\n${JSON.stringify(users)}`,
+        setDefault: "Definir como padrão",
+        removeAsDefault: "Remover como padrão",
+        setDefaultUserDialog: "Deseja definir este usuário como usuário padrão?"
     },
     host: {
         showDetails: "Mostrar Detalhes",

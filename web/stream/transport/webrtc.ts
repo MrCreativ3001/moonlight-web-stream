@@ -1,589 +1,847 @@
-import { StreamSignalingMessage, TransportChannelId } from "../../api_bindings.js";
-import { Logger } from "../log.js";
-import { StatValue } from "../stats.js";
-import { CAPABILITIES_CODECS, emptyVideoCodecs, maybeVideoCodecs, VideoCodecSupport } from "../video.js";
-import { DataTransportChannel, Transport, TransportAudioSetup, TransportChannel, TransportChannelIdKey, TransportChannelIdValue, TransportVideoSetup, AudioTrackTransportChannel, VideoTrackTransportChannel, TrackTransportChannel, TransportShutdown } from "./index.js";
+import { Api, fetchApi, WebRTCAnswer } from "../../api"
+import { StreamKeys } from "../../api_bindings"
+import { ActiveGamepads, ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, KeyAction, keyStatesCanStore, keyStatesEmpty, keyStatesSetPressed, MouseButton, MouseButtonAction, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
+import { globalObject, wait } from "../../util"
+import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
+import { I16_MAX, U16_MAX, U8_MAX } from "../buffer"
+import { createControllerPacketBitflags } from "../gamepad"
+import { Logger } from "../log"
+import { DataPipe } from "../pipeline/pipes"
+import { StatValue } from "../stats"
+import { TrackVideoRenderer, VideoRenderer } from "../video/index"
+import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index"
 
 export class WebRTCTransport implements Transport {
-    implementationName: string = "webrtc"
 
-    private logger: Logger | null
+    readonly implementationName: string = "webrtc"
 
-    private peer: RTCPeerConnection | null = null
+    readonly controlStream
+    onconnect: ((connectData: TransportConnectData) => void) | null = null
+    onclose: ((shutdown: TransportShutdown) => void) | null = null
 
-    constructor(logger?: Logger) {
-        this.logger = logger ?? null
-    }
+    private logger?: Logger
 
-    async initPeer(configuration?: RTCConfiguration) {
-        this.logger?.debug(`Creating Client Peer`)
+    private api: Api
 
-        if (this.peer) {
-            this.logger?.debug(`Cannot create Peer because a Peer already exists`)
-            return
-        }
+    private peer: RTCPeerConnection
+    private location: string | null = null
 
-        // Configure web rtc
-        // TODO: use this for signaling instead and extend the protocol so that the client also requests a control channel with name: "control", protocol:"moonlight-control-v1": https://www.ietf.org/archive/id/draft-ietf-wish-whep-02.html
+    constructor(api: Api, configuration: RTCConfiguration, logger?: Logger) {
+        this.logger = logger
+
+        this.api = api
+
+        // Create peer
         this.peer = new RTCPeerConnection(configuration)
-        this.peer.addEventListener("error", this.onError.bind(this))
+        this.controlStream = new WebRtcControlStream(this.peer)
 
+        this.logger?.debug(`Using ice servers ${JSON.stringify(configuration.iceServers?.flatMap(server => server.urls))}`)
+
+        // Set Event Listeners
+        this.peer.addEventListener("connectionstatechange", this.onStateChange.bind(this))
+        this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
+        this.peer.addEventListener("track", this.onTrack.bind(this))
+
+        // Ice Gathering
         this.peer.addEventListener("icecandidate", this.onIceCandidate.bind(this))
 
-        this.peer.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this))
-        this.peer.addEventListener("signalingstatechange", this.onSignalingStateChange.bind(this))
-        this.peer.addEventListener("iceconnectionstatechange", this.onIceConnectionStateChange.bind(this))
-        this.peer.addEventListener("icegatheringstatechange", this.onIceGatheringStateChange.bind(this))
+        // Add Media
+        this.peer.addTransceiver("video", { direction: "recvonly" })
+        this.peer.addTransceiver("audio", { direction: "recvonly" })
 
-        this.peer.addEventListener("track", this.onTrack.bind(this))
-        this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
-
-        this.initChannels()
-
-        // Maybe we already received data
-        if (this.remoteDescription) {
-            await this.handleRemoteDescription(this.remoteDescription)
-        }
-        await this.tryDequeueIceCandidates()
+        // Dummy data channel required so that the answerer knows we accept data channels
+        this.peer.createDataChannel("dummy")
     }
 
-    private onError(event: Event) {
-        this.logger?.debug(`Web Socket or WebRtcPeer Error`)
+    private sdpOfferOptions: WebRtcSessionOffer | null = null
+    private sdpAnswer: WebRtcSessionAnswer | null = null
 
-        console.error(`Web Socket or WebRtcPeer Error`, event)
-    }
+    async createOffer(options: TransportOptions): Promise<string> {
+        this.logger?.debug("Creating webrtc offer")
 
-    onsendmessage: ((message: StreamSignalingMessage) => void) | null = null
-    private sendMessage(message: StreamSignalingMessage) {
-        if (this.onsendmessage) {
-            this.onsendmessage(message)
-        } else {
-            this.logger?.debug("Failed to call onicecandidate because no handler is set")
+        let offer = await this.peer.createOffer()
+        if (offer.type != "offer") {
+            throw `WHEP offer is of type ${offer.type}`
         }
-    }
-    async onReceiveMessage(message: StreamSignalingMessage) {
-        if ("Description" in message) {
-            const description = message.Description;
-            await this.handleRemoteDescription({
-                type: description.ty as RTCSdpType,
-                sdp: description.sdp
-            })
-        } else if ("AddIceCandidate" in message) {
-            const candidate = message.AddIceCandidate
-            await this.addIceCandidate({
-                candidate: candidate.candidate,
-                sdpMid: candidate.sdp_mid,
-                sdpMLineIndex: candidate.sdp_mline_index,
-                usernameFragment: candidate.username_fragment
-            })
+
+        this.logger?.debug("Setting webrtc local description")
+        await this.peer.setLocalDescription(offer)
+
+        // Insert custom options
+        this.sdpOfferOptions = {
+            ...options
         }
+        const sdp = webrtcSessionOfferApply(offer.sdp ?? "", this.sdpOfferOptions)
+
+        this.logger?.debug(`successfully generated webrtc sdp with options ${JSON.stringify(this.sdpOfferOptions)}`)
+        console.debug("Client Sdp", sdp)
+
+        this.logger?.debug(`starting ice candidate sender`)
+        this.sendIceCandidates()
+
+        return sdp
     }
+    async setAnswer(response: WebRTCAnswer): Promise<void> {
+        console.debug("server sdp", JSON.stringify(response))
 
-    private remoteDescription: RTCSessionDescriptionInit | null = null
-    private async handleRemoteDescription(sdp: RTCSessionDescriptionInit | null) {
-        this.logger?.debug(`Received remote description: ${sdp?.type}`)
-
-        const remoteDescription = sdp
-        this.remoteDescription = remoteDescription
-        if (!this.peer) {
-            return
-        }
-        this.remoteDescription = null
-
-        if (remoteDescription) {
-            await this.peer.setRemoteDescription(remoteDescription)
-
-            if (remoteDescription.type == "offer") {
-                await this.peer.setLocalDescription()
-                const localDescription = this.peer.localDescription
-                if (!localDescription) {
-                    this.logger?.debug("Peer didn't have a localDescription whilst receiving an offer and trying to answer")
-                    return
-                }
-
-                this.logger?.debug(`Responding to offer description: ${localDescription.type}`)
-                this.sendMessage({
-                    Description: {
-                        ty: localDescription.type,
-                        sdp: localDescription.sdp ?? ""
-                    }
-                })
+        this.logger?.debug(`received whep response with location "${response.location}"`)
+        // Print ice candidates
+        for (const line of response.answerSdp.split("\r\n")) {
+            if (line.startsWith("a=candidate")) {
+                this.logger?.debug(`received remote ice candidate ${line.substring(2)}`)
             }
         }
+
+        this.location = response.location
+
+        this.sdpAnswer = webrtcSessionAnswerParse(response.answerSdp)
+        this.logger?.debug(`Server responded with extensions ${JSON.stringify(this.sdpAnswer)}`)
+
+        await this.peer.setRemoteDescription({
+            type: "answer",
+            sdp: response.answerSdp,
+        })
     }
 
-    private onIceCandidate(event: RTCPeerConnectionIceEvent) {
-        if (event.candidate) {
-            const candidate = event.candidate.toJSON()
-            this.logger?.debug(`Sending ice candidate: ${candidate.candidate}`)
-
-            this.sendMessage({
-                AddIceCandidate: {
-                    candidate: candidate.candidate ?? "",
-                    sdp_mid: candidate.sdpMid ?? null,
-                    sdp_mline_index: candidate.sdpMLineIndex ?? null,
-                    username_fragment: candidate.usernameFragment ?? null
-                }
-            })
-        } else {
-            this.logger?.debug("No new ice candidates")
-        }
-    }
-
-    private iceCandidates: Array<RTCIceCandidateInit> = []
-    private async addIceCandidate(candidate: RTCIceCandidateInit) {
-        this.logger?.debug(`Received ice candidate: ${candidate.candidate}`)
-
-        if (!this.peer) {
-            this.logger?.debug("Buffering ice candidate")
-
-            this.iceCandidates.push(candidate)
-            return
-        }
-        await this.tryDequeueIceCandidates()
-
-        await this.peer.addIceCandidate(candidate)
-    }
-    private async tryDequeueIceCandidates() {
-        if (!this.peer) {
-            this.logger?.debug("called tryDequeueIceCandidates without a peer")
-            return
+    private connectData: TransportConnectData | null = null
+    private async generateConnectData(): Promise<TransportConnectData> {
+        if (this.connectData) {
+            return this.connectData
         }
 
-        for (const candidate of this.iceCandidates) {
-            await this.peer.addIceCandidate(candidate)
+        if (!this.videoStream || !this.audioStream) {
+            throw `WebRTC WHEP response didn't contain a video and audio stream! Video: ${this.videoStream != null}, Audio: ${this.audioStream != null}`
         }
-        this.iceCandidates.length = 0
+        const codec = await this.findOutCodec()
+
+        const audioSettings = this.audioStream.getSettings()
+
+        this.connectData = {
+            capabilities: {
+                touch: false
+            },
+            videoType: "videotrack",
+            videoSetup: {
+                // Assume the requested parameters are correct
+                width: this.sdpOfferOptions?.width ?? -1,
+                height: this.sdpOfferOptions?.height ?? -1,
+                fps: this.sdpOfferOptions?.fps ?? -1,
+                codec,
+            },
+            audioType: "audiotrack",
+            audioSetup: {
+                channels: audioSettings.channelCount ?? 2,
+                sampleRate: audioSettings.sampleRate ?? 48000,
+                // TODO
+                streams: 0,
+                coupledStreams: 0,
+                samplesPerFrame: 0,
+                mapping: []
+            },
+            appName: this.sdpAnswer?.appName ?? "Unknown"
+        }
+        return this.connectData
     }
 
     private wasConnected = false
-    private onConnectionStateChange() {
-        if (!this.peer) {
-            this.logger?.debug("OnConnectionStateChange without a peer")
-            return
-        }
-
-        let type: null | "fatal" | "recover" = null
-
+    private onStateChange() {
         if (this.peer.connectionState == "connected") {
-            type = "recover"
-
-            if (this.onconnect) {
-                this.onconnect()
-            }
             this.wasConnected = true
-        } else if ((this.peer.connectionState == "failed" || this.peer.connectionState == "closed") && this.peer.iceGatheringState == "complete") {
-            type = "fatal"
-        }
 
-        if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
-            if (this.onclose) {
-                if (this.wasConnected) {
-                    this.onclose("failed")
-                } else {
-                    this.onclose("failednoconnect")
+            this.generateConnectData().then(connectData => {
+                if (this.onconnect) {
+                    this.onconnect(connectData)
                 }
-            }
-        }
+            })
+        } else if (this.peer.connectionState == "failed" || this.peer.connectionState == "closed") {
+            const shutdown = this.wasConnected ? "failed" : "failednoconnect"
 
-        this.logger?.debug(`Changing Peer State to ${this.peer.connectionState}`, {
-            type: type ?? undefined
-        })
-    }
-    private onSignalingStateChange() {
-        if (!this.peer) {
-            this.logger?.debug("OnSignalingStateChange without a peer")
-            return
-        }
-        this.logger?.debug(`Changing Peer Signaling State to ${this.peer.signalingState}`)
-    }
-    private onIceConnectionStateChange() {
-        if (!this.peer) {
-            this.logger?.debug("OnIceConnectionStateChange without a peer")
-            return
-        }
-        this.logger?.debug(`Changing Peer Ice State to ${this.peer.iceConnectionState}`)
-    }
-    private onIceGatheringStateChange() {
-        if (!this.peer) {
-            this.logger?.debug("OnIceGatheringStateChange without a peer")
-            return
-        }
-        this.logger?.debug(`Changing Peer Ice Gathering State to ${this.peer.iceGatheringState}`)
-
-        if (this.peer.iceConnectionState == "new" && this.peer.iceGatheringState == "complete") {
-            // we failed without connection
             if (this.onclose) {
-                this.onclose("failednoconnect")
+                this.onclose(shutdown)
             }
         }
     }
 
-    private channels: Array<TransportChannel | null> = []
-    private initChannels() {
-        if (!this.peer) {
-            this.logger?.debug("Failed to initialize channel without peer")
+    // -- Trickle Ice
+    private iceCandidateSendTimer: number | null = null
+    private pendingIceCandidates: Array<string> = []
+    private onIceCandidate(event: RTCPeerConnectionIceEvent) {
+        if (!event.candidate) {
+            // Ice Gathering finished
+            this.logger?.debug("ice gathering finished")
             return
         }
-        if (this.channels.length > 0) {
-            this.logger?.debug("Already initialized channels")
-            return
-        }
 
-        for (const channelRaw in TransportChannelId) {
-            const channel = channelRaw as TransportChannelIdKey
-
-            if (channel == "HOST_VIDEO") {
-                const channel: VideoTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"videotrack">(this.logger, "videotrack", "video", this.videoTrackHolder)
-                this.channels[TransportChannelId.HOST_VIDEO] = channel
-                continue
-            }
-            if (channel == "HOST_AUDIO") {
-                const channel: AudioTrackTransportChannel = new WebRTCInboundTrackTransportChannel<"audiotrack">(this.logger, "audiotrack", "audio", this.audioTrackHolder)
-                this.channels[TransportChannelId.HOST_AUDIO] = channel
-                continue
-            }
-
-            // All Data Channels are created by the server
-            const id = TransportChannelId[channel]
-            this.channels[id] = new WebRTCDataTransportChannel(channel, null)
+        const candidate = event.candidate.toJSON().candidate
+        if (candidate) {
+            this.pendingIceCandidates.push(candidate)
         }
     }
 
-    private videoTrackHolder: TrackHolder = { ontrack: null, track: null }
-    private videoReceiver: RTCRtpReceiver | null = null
+    private boundSendIceCandidates = this.sendIceCandidates.bind(this)
+    private async sendIceCandidates() {
+        this.iceCandidateSendTimer = null
+        if (this.iceCandidateSendTimer != null) {
+            globalObject().clearTimeout(this.iceCandidateSendTimer)
+        }
 
-    private audioTrackHolder: TrackHolder = { ontrack: null, track: null }
+        for (const candidate of this.pendingIceCandidates) {
+            this.logger?.debug(`sending ice candidate: ${candidate}`)
+        }
+
+        if (this.location && this.pendingIceCandidates.length > 0) {
+            const trickleIceSdpFrag = this.pendingIceCandidates.map(x => `a=${x}`).join("\r\n")
+
+            await fetchApi(this.api, this.location, "PATCH", {
+                noUrlModify: true,
+                trickleIceSdpFrag,
+                response: "ignore",
+            })
+
+            this.pendingIceCandidates = []
+        }
+
+        if (this.peer.iceGatheringState != "complete") {
+            this.iceCandidateSendTimer = globalObject().setTimeout(this.boundSendIceCandidates, 2000)
+        }
+    }
+
+    // -- Control Stream / Media
+    private onDataChannel(event: RTCDataChannelEvent) {
+        const channel = event.channel
+
+        this.logger?.debug(`received data channel with label: ${channel.label}`)
+
+        if (channel.label == "moonlight.control") {
+            const config = generateControlPacketConfig()
+
+            this.controlStream.setChannel(channel, config)
+        }
+    }
 
     private onTrack(event: RTCTrackEvent) {
+        event.receiver.jitterBufferTarget = 0
+        if ("playoutDelayHint" in event.receiver) {
+            event.receiver.playoutDelayHint = 0
+        }
         const track = event.track
 
-        const receiver = event.receiver
-        if (track.kind == "video") {
-            this.videoReceiver = receiver
-        }
-
-        receiver.jitterBufferTarget = 0
-        if ("playoutDelayHint" in receiver) {
-            receiver.playoutDelayHint = 0
-        }
-
-        this.logger?.debug(`Adding receiver: ${track.kind}, ${track.id}, ${track.label}`)
+        this.logger?.debug(`received track with label: ${track.label}, kind: ${track.kind}`)
 
         if (track.kind == "video") {
-            if ("contentHint" in track) {
-                track.contentHint = "motion"
-            }
+            track.contentHint = "motion"
 
-            this.videoTrackHolder.track = track
-            if (!this.videoTrackHolder.ontrack) {
-                throw "No video track listener registered!"
-            }
-            this.videoTrackHolder.ontrack()
+            this.videoStream = track
         } else if (track.kind == "audio") {
-            this.audioTrackHolder.track = track
-            if (!this.audioTrackHolder.ontrack) {
-                throw "No audio track listener registered!"
-            }
-            this.audioTrackHolder.ontrack()
+            this.audioStream = track
         }
     }
 
-    // Handle data channels created by the remote peer (server)
-    private onDataChannel(event: RTCDataChannelEvent) {
-        const remoteChannel = event.channel
-        const label = remoteChannel.label
+    // Video
+    private videoStream: MediaStreamTrack | null = null
 
-        this.logger?.debug(`Received remote data channel: ${label}`)
+    setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>;
+    setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>;
+    async setVideoPipeline(type: TransportVideoType, pipeline: unknown): Promise<void> {
+        if (!this.videoStream || !this.connectData) {
+            throw "the stream must be connected!"
+        }
 
-        // Map the channel label to the corresponding TransportChannelId
-        const channelKey = label.toUpperCase() as TransportChannelIdKey
-        if (channelKey in TransportChannelId) {
-            const id = TransportChannelId[channelKey]
-            const existingChannel = this.channels[id]
+        if (type == "videotrack") {
+            const trackPipeline = pipeline as (TrackVideoRenderer & VideoRenderer)
 
-            // If we already have a channel for this ID, replace its underlying RTCDataChannel
-            // with the remote one so we can receive messages from the server
-            if (existingChannel && existingChannel.type === "data") {
-                this.logger?.debug(`Replacing underlying channel for ${label} with remote channel`);
-                (existingChannel as WebRTCDataTransportChannel).replaceChannel(remoteChannel)
-            } else {
-                this.logger?.debug(`Creating new channel for ${label}`)
-                this.channels[id] = new WebRTCDataTransportChannel(label, remoteChannel)
+            trackPipeline.setTrack(this.videoStream)
+        } else if (type == "data") {
+            throw "unimplemented"
+        }
+    }
+
+    // Audio
+    private audioStream: MediaStreamTrack | null = null
+
+    setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
+    setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
+    async setAudioPipeline(type: TransportAudioType, pipeline: AudioPlayer): Promise<void> {
+        if (!this.audioStream || !this.connectData) {
+            throw "the stream must be connected!"
+        }
+
+        if (type == "audiotrack") {
+            const trackPipeline = pipeline as (TrackAudioPlayer & AudioPlayer)
+
+            trackPipeline.setTrack(this.audioStream)
+        } else if (type == "data") {
+            throw "unimplemented"
+        }
+    }
+
+    async close(): Promise<void> {
+        // Close the peer
+        this.peer.close()
+
+        // Delete the ice candidate send loop
+        globalObject().clearTimeout(this.iceCandidateSendTimer)
+        this.iceCandidateSendTimer = null
+
+        // Delete our current session on the server
+        if (this.location) {
+            try {
+                await fetchApi(this.api, this.location, "DELETE", {
+                    keepalive: true,
+                    noUrlModify: true,
+                    response: "ignore",
+                })
+            } catch (e) {
+                console.debug("failed to DELETE webrtc session", e)
             }
+        }
+    }
+
+    private async findOutCodec(): Promise<keyof VideoFormats> {
+        let tries = 0
+
+        while (true) {
+            const stats = await this.peer.getStats()
+            for (const [_key, value] of stats) {
+                // Video Stream
+                if ("type" in value && "kind" in value
+                    && value.type == "inbound-rtp" && value.kind == "video"
+                ) {
+
+                }
+            }
+            tries += 1
+            if (tries > 10) {
+                this.logger?.debug(`failed to determine codec using stats after ${tries} tries, assuming h264`)
+                return "h264"
+            }
+
+            await wait(100)
+        }
+    }
+
+    private lastTotalDecodeTime = 0
+    private lastFramesDecoded = 0
+    async getStats(): Promise<Record<string, StatValue>> {
+        const out: Record<string, StatValue> = {}
+
+        // Control Stream
+        // TODO
+
+        const stats = await this.peer.getStats()
+
+        for (const [_key, value] of stats) {
+            console.debug(value)
+
+            // Video Stream
+            if ("type" in value && "kind" in value
+                && value.type == "inbound-rtp" && value.kind == "video"
+            ) {
+                out.resolution = `Width: ${value?.frameWidth}, Height: ${value?.frameHeight}`
+
+                out.framesDecoded = value?.framesDecoded
+                out.framesDropped = value?.framesDropped
+                out.keyFramesDecoded = value?.keyFramesDecoded
+
+                out.packetsLost = value?.packetsLost
+                out.packetsReceived = value?.packetsReceived
+
+                out.nackCount = value?.nackCount
+                out.pliCount = value?.pliCount
+                out.firCount = value?.firCount
+
+                out.fecPacketsReceived = value?.fecPacketsReceived
+
+                if ("totalDecodeTime" in value && "framesDecoded" in value) {
+                    out.decodeTimePerFrameMs = (value.totalDecodeTime - this.lastTotalDecodeTime) / (value.framesDecoded - this.lastFramesDecoded) * 1000.0
+
+                    this.lastFramesDecoded = value.framesDecoded
+                    this.lastTotalDecodeTime = value.totalDecodeTime
+                }
+
+                out.currentFps = value?.framesPerSecond
+            }
+            if ("type" in value && "mimeType" in value && typeof value.mimeType == "string"
+                && value.type == "codec" && value.mimeType.startsWith("video/")
+            ) {
+                out.codec = value.mimeType.substring(6)
+                out.codecSdpFmtpLine = value?.sdpFmtpLine
+            }
+
+            // Audio Stream
+        }
+
+        return out
+    }
+}
+
+class WebRtcControlStream implements IControlStream {
+
+    private logger?: Logger
+
+    private config: ControlPacketConfig | null = null
+
+    private channel: RTCDataChannel | null = null
+    private mouseAbsolute: RTCDataChannel
+    private mouse: RTCDataChannel
+    private keysCompact: RTCDataChannel
+    private keys: RTCDataChannel
+    private touch: RTCDataChannel
+    private controller: RTCDataChannel
+
+    // Input Batching
+    private mouseState:
+        { x: number, y: number, referenceWidth: number, referenceHeight: number } |
+        { moveX: number, moveY: number }
+        = { moveX: 0, moveY: 0 }
+    private mouseScrollX = 0
+    private mouseScrollY = 0
+
+    private remoteKeyStates: Set<number> = new Set()
+    private currentPressedKeys: Set<number> = new Set()
+    private keyStatesSequenceNumber = 0
+
+    private controllerStates: Array<boolean> = []
+
+    // Buffering
+    private packetBuffer: Array<ControlPacket> = []
+
+    constructor(peer: RTCPeerConnection, logger?: Logger) {
+        this.logger = logger
+
+        for (let i = 0; i < 16; i++) {
+            this.controllerStates.push(false)
+        }
+
+        this.mouseAbsolute = peer.createDataChannel("moonlight.control.mouseAbsolute", {
+            ordered: false,
+            maxRetransmits: 0,
+        })
+        this.mouseAbsolute.bufferedAmountLowThreshold = this.maxBufferedAmount(this.mouseAbsolute)
+
+        this.mouse = peer.createDataChannel("moonlight.control.mouse", {
+            ordered: false,
+            maxPacketLifeTime: 30,
+        })
+        this.mouse.bufferedAmountLowThreshold = this.maxBufferedAmount(this.mouse)
+
+        this.keysCompact = peer.createDataChannel("moonlight.control.keysCompact", {
+            ordered: false,
+            maxRetransmits: 0,
+        })
+        this.keysCompact.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keysCompact)
+
+        this.keys = peer.createDataChannel("moonlight.control.keys")
+        this.keys.bufferedAmountLowThreshold = this.maxBufferedAmount(this.keys)
+
+        this.touch = peer.createDataChannel("moonlight.control.touch")
+        this.touch.bufferedAmountLowThreshold = this.maxBufferedAmount(this.touch)
+
+        this.controller = peer.createDataChannel("moonlight.control.controller", {
+            ordered: false,
+            maxRetransmits: 0,
+        })
+        this.controller.bufferedAmountLowThreshold = this.maxBufferedAmount(this.controller)
+
+        // Hook into frame loop for sending packets
+        this.sendBatchedInputs()
+    }
+
+    private maxBufferedAmount(channel: RTCDataChannel): number {
+        switch (channel) {
+            case this.mouseAbsolute:
+            case this.mouse:
+            case this.keysCompact:
+            case this.keys:
+                return 512
+            case this.controller:
+                return 4 * 512
+            case this.touch:
+                return 16 * 1024
+            case this.channel:
+                return 16 * 1024
+            default:
+                throw "tried to get the max buffered amount of an unknown data channel"
+        }
+    }
+
+    setChannel(channel: RTCDataChannel | null, config?: ControlPacketConfig): void {
+        if (channel && config) {
+            this.channel = channel
+
+            this.config = config
+
+            this.channel.binaryType = "arraybuffer"
+
+            this.channel.addEventListener("open", this.boundTrySendBufferedPackets)
+            this.channel.addEventListener("bufferedamountlow", this.boundTrySendBufferedPackets)
+            this.channel.addEventListener("message", this.boundMessage)
+
+            this.channel.bufferedAmountLowThreshold = this.maxBufferedAmount(this.channel)
+
+            this.trySendBufferedPackets()
         } else {
-            this.logger?.debug(`Unknown remote data channel: ${label}`)
+            this.channel?.removeEventListener("open", this.boundTrySendBufferedPackets)
+            this.channel?.removeEventListener("bufferedamountlow", this.boundTrySendBufferedPackets)
+            this.channel?.removeEventListener("message", this.boundMessage)
+
+            this.channel = null
         }
     }
 
-    async setupHostVideo(_setup: TransportVideoSetup): Promise<VideoCodecSupport> {
-        // TODO: check transport type
+    onreceive: ((packet: ControlPacket) => void) | null = null
 
-        let capabilities
-        if ("getCapabilities" in RTCRtpReceiver && (capabilities = RTCRtpReceiver.getCapabilities("video"))) {
-            const codecs = emptyVideoCodecs()
+    private boundMessage = this.onMessage.bind(this)
+    private onMessage(event: MessageEvent) {
+        if (!this.config) {
+            throw "packet config not configured, but a packet was received"
+        }
 
-            for (const codec in codecs) {
-                const supportRequirements = CAPABILITIES_CODECS[codec]
+        const packet = controlPacketDeserialize(this.config, PacketDirection.ClientBound, event.data)
 
-                if (!supportRequirements) {
+        if (packet && this.onreceive) {
+            this.onreceive(packet)
+        }
+    }
+
+    send(input: ClientInputEvent): void {
+        const LI_ROT_UNKNOWN = 65535
+        const LI_TILT_UNKNOWN = 255
+        const MC_HEADER_B = 0x001A
+        const MC_MID_B = 0x0014
+        const MC_TAIL_A = 0x009C
+        const MC_TAIL_B = 0x0055
+
+        let controllerNumber
+        switch (input.tag) {
+            case ClientInputEvent_Tags.MouseMoveAbsolute:
+                this.mouseState = {
+                    x: input.inner.x,
+                    y: input.inner.y,
+                    referenceWidth: input.inner.referenceWidth,
+                    referenceHeight: input.inner.referenceHeight,
+                }
+                break
+            case ClientInputEvent_Tags.MouseMoveRelative:
+                if ("moveX" in this.mouseState) {
+                    this.mouseState.moveX += input.inner.deltaX
+                    this.mouseState.moveY += input.inner.deltaY
+                } else {
+                    this.mouseState = {
+                        moveX: input.inner.deltaX,
+                        moveY: input.inner.deltaY
+                    }
+                }
+                break
+            case ClientInputEvent_Tags.MouseScrollVertical:
+                this.mouseScrollY += input.inner.scrollY
+                break
+            case ClientInputEvent_Tags.MouseScrollHorizontal:
+                this.mouseScrollX += input.inner.scrollX
+                break
+            case ClientInputEvent_Tags.MouseButton:
+                let keyCode = null
+                switch (input.inner.button) {
+                    case MouseButton.Left:
+                        keyCode = StreamKeys.VK_LBUTTON
+                        break
+                    case MouseButton.Middle:
+                        keyCode = StreamKeys.VK_MBUTTON
+                        break
+                    case MouseButton.Right:
+                        keyCode = StreamKeys.VK_RBUTTON
+                        break
+                    case MouseButton.X1:
+                        keyCode = StreamKeys.VK_XBUTTON1
+                        break
+                    case MouseButton.X2:
+                        keyCode = StreamKeys.VK_XBUTTON2
+                        break
+                }
+
+                if (keyCode) {
+                    if (input.inner.action == MouseButtonAction.Press) {
+                        this.currentPressedKeys.add(keyCode)
+                    } else {
+                        this.currentPressedKeys.delete(keyCode)
+                    }
+                }
+
+                this.sendKeysCompact()
+                break
+            case ClientInputEvent_Tags.Keyboard:
+                if (input.inner.action == KeyAction.Down) {
+                    this.currentPressedKeys.add(input.inner.keyCode)
+                } else {
+                    this.currentPressedKeys.delete(input.inner.keyCode)
+                }
+
+                this.sendKeysCompact()
+                break
+            case ClientInputEvent_Tags.ControllerConnect:
+                controllerNumber = input.inner.controllerNumber % 16
+
+                this.controllerStates[controllerNumber] = true
+
+                this.sendRaw(new ControlPacket.ControllerArrival({
+                    controllerNumber,
+                    ty: input.inner.ty,
+                    supportedButtons: input.inner.supportedButtons,
+                    capabilities: input.inner.capabilities,
+                }))
+                break
+            case ClientInputEvent_Tags.ControllerState:
+                controllerNumber = input.inner.controllerNumber % 16
+
+                const controllerBitflags = createControllerPacketBitflags(input.inner.pressedButtons)
+
+                if (this.controllerStates[controllerNumber]) {
+                    this.trySendOn(this.controller, new ControlPacket.ControllerState({
+                        headerB: MC_HEADER_B,
+                        controllerNumber,
+                        activeGamepadMask: this.getControllerMask(),
+                        midB: MC_MID_B,
+                        buttonFlags: controllerBitflags & 0xFFFF,
+                        leftTrigger: Math.min(Math.max(input.inner.leftTrigger, 0), 1) * U8_MAX,
+                        rightTrigger: Math.min(Math.max(input.inner.rightTrigger, 0), 1) * U8_MAX,
+                        leftStickX: Math.min(Math.max(input.inner.leftStickX, -1), 1) * I16_MAX,
+                        leftStickY: Math.min(Math.max(input.inner.leftStickY, -1), 1) * I16_MAX,
+                        rightStickX: Math.min(Math.max(input.inner.rightStickX, -1), 1) * I16_MAX,
+                        rightStickY: Math.min(Math.max(input.inner.rightStickY, -1), 1) * I16_MAX,
+                        tailA: MC_TAIL_A,
+                        buttonFlags2: (controllerBitflags >> 16) & 0xFFFF,
+                        tailB: MC_TAIL_B,
+                    }))
+                } else {
+                    console.debug("cannot send state for controller that wasn't added")
+                }
+                break
+            case ClientInputEvent_Tags.ControllerDisconnect:
+                controllerNumber = input.inner.controllerNumber % 16
+
+                this.controllerStates[controllerNumber] = false
+
+                this.sendRaw(new ControlPacket.ControllerState({
+                    controllerNumber,
+                    activeGamepadMask: this.getControllerMask(),
+                    buttonFlags: 0,
+                    buttonFlags2: 0,
+                    headerB: 0,
+                    leftStickX: 0,
+                    leftStickY: 0,
+                    leftTrigger: 0,
+                    midB: 0,
+                    rightStickX: 0,
+                    rightStickY: 0,
+                    rightTrigger: 0,
+                    tailA: 0,
+                    tailB: 0,
+                }))
+                break
+            case ClientInputEvent_Tags.Touch:
+                this.trySendOn(this.touch, new ControlPacket.Touch({
+                    eventType: input.inner.eventType,
+                    reserved: 0,
+                    pointerId: input.inner.pointerId,
+                    x: input.inner.x,
+                    y: input.inner.y,
+                    rotation: input.inner.rotation ?? LI_ROT_UNKNOWN,
+                    contactAreaMajor: input.inner.contactAreaMajor,
+                    contactAreaMinor: input.inner.contactAreaMinor,
+                    pressureOrDistance: input.inner.pressureOrDistance,
+                }))
+                break
+            case ClientInputEvent_Tags.Pen:
+                this.sendRaw(new ControlPacket.Pen({
+                    eventType: input.inner.eventType,
+                    toolType: input.inner.toolType,
+                    buttons: input.inner.buttons,
+                    zero: 0,
+                    x: input.inner.x,
+                    y: input.inner.y,
+                    pressureOrDistance: input.inner.pressureOrDistance,
+                    rotation: input.inner.rotation ?? LI_ROT_UNKNOWN,
+                    tilt: input.inner.tilt ?? LI_TILT_UNKNOWN,
+                    zero2: 0,
+                    contactAreaMajor: input.inner.contactAreaMajor,
+                    contactAreaMinor: input.inner.contactAreaMinor,
+                }))
+                break
+            default:
+                throw "tried to send an unknown input to the server"
+        }
+    }
+
+    sendRaw(packet: ControlPacket): void {
+        this.packetBuffer.push(packet)
+
+        this.trySendBufferedPackets()
+    }
+
+    private boundTrySendBufferedPackets = this.trySendBufferedPackets.bind(this)
+    private trySendBufferedPackets() {
+        if (!this.channel) {
+            return
+        }
+
+        if (this.channel.readyState != "open") {
+            return
+        }
+
+        // Try to send packets
+        for (const packet of this.packetBuffer.splice(0)) {
+            this.trySendOn(this.channel, packet)
+        }
+    }
+
+    private boundSendBatchedInputs = this.sendBatchedInputs.bind(this)
+    private sendBatchedInputs() {
+        if (this.channel?.readyState == "closed") {
+            return
+        }
+        globalObject().requestAnimationFrame(this.boundSendBatchedInputs)
+
+        // -- Send mouse
+        if ("x" in this.mouseState) {
+            this.trySendOn(this.mouseAbsolute, new ControlPacket.MouseMoveAbsolute({
+                x: this.mouseState.x,
+                y: this.mouseState.y,
+                referenceWidth: this.mouseState.referenceWidth,
+                referenceHeight: this.mouseState.referenceHeight,
+                unused: 0,
+            }))
+        } else {
+            const notChanged = this.mouseState.moveX == 0 && this.mouseState.moveY == 0
+            const changed = !notChanged
+
+            if (changed) {
+                this.trySendOn(this.mouse, new ControlPacket.MouseMoveRelative({
+                    deltaX: this.mouseState.moveX,
+                    deltaY: this.mouseState.moveY
+                }))
+            }
+
+            this.mouseState = {
+                moveX: 0,
+                moveY: 0,
+            }
+        }
+
+        // -- Send Mouse Scroll
+        if (this.mouseScrollX != 0) {
+            this.trySendOn(this.mouseAbsolute, new ControlPacket.MouseHorizontalScroll({
+                scrollAmount: this.mouseScrollX
+            }))
+            this.mouseScrollX = 0
+        }
+        if (this.mouseScrollY != 0) {
+            this.trySendOn(this.mouseAbsolute, new ControlPacket.MouseScroll({
+                scrollAmount1: this.mouseScrollY,
+                scrollAmount2: this.mouseScrollY,
+                zero: 0,
+            }))
+            this.mouseScrollY = 0
+        }
+
+        this.sendKeysCompact()
+    }
+
+    private sendKeysCompact() {
+        // Get key modifiers for sending reliable keys as fallback
+        let modifiers = { alt: false, ctrl: false, meta: false, shift: false }
+        if (this.currentPressedKeys.has(StreamKeys.VK_SHIFT) || this.currentPressedKeys.has(StreamKeys.VK_LSHIFT) || this.currentPressedKeys.has(StreamKeys.VK_RSHIFT)) {
+            modifiers.shift = true
+        }
+        if (this.currentPressedKeys.has(StreamKeys.VK_LWIN) || this.currentPressedKeys.has(StreamKeys.VK_RWIN)) {
+            modifiers.meta = true
+        }
+        if (this.currentPressedKeys.has(StreamKeys.VK_CONTROL) || this.currentPressedKeys.has(StreamKeys.VK_LCONTROL) || this.currentPressedKeys.has(StreamKeys.VK_RCONTROL)) {
+            modifiers.ctrl = true
+        }
+        if (this.currentPressedKeys.has(StreamKeys.VK_MENU) || this.currentPressedKeys.has(StreamKeys.VK_LMENU) || this.currentPressedKeys.has(StreamKeys.VK_RMENU)) {
+            modifiers.alt = true
+        }
+
+        let keyStates = keyStatesEmpty()
+
+        // Go through pressed keys
+        for (const key of this.currentPressedKeys) {
+            if (keyStatesCanStore(keyStates, key)) {
+                keyStates = keyStatesSetPressed(keyStates, key, KeyAction.Down)
+            } else {
+                // only send reliable key press if the host doesn't know about it
+                if (this.remoteKeyStates.has(key)) {
                     continue
                 }
 
-                let supported = false
-                capabilityCodecLoop: for (const codecCapability of capabilities.codecs) {
-                    if (codecCapability.mimeType != supportRequirements.mimeType) {
-                        continue
-                    }
+                this.trySendOn(this.keys, new ControlPacket.Keyboard({
+                    action: KeyAction.Down,
+                    flags: { sunshineNonNormalized: false },
+                    keyCode: key,
+                    modifiers,
+                    zero: 0,
+                }))
 
-                    for (const fmtpLine of supportRequirements.fmtpLine) {
-                        if (!codecCapability.sdpFmtpLine?.includes(fmtpLine)) {
-                            continue capabilityCodecLoop
-                        }
-                    }
-
-                    supported = true
-                    break
-                }
-
-                codecs[codec] = supported
-            }
-
-            return codecs
-        } else {
-            return maybeVideoCodecs()
-        }
-    }
-
-    async setupHostAudio(_setup: TransportAudioSetup): Promise<void> {
-        // TODO: check transport type
-    }
-
-    getChannel(id: TransportChannelIdValue): TransportChannel {
-        const channel = this.channels[id]
-        if (!channel) {
-            this.logger?.debug("Failed to setup video without peer")
-            throw `Failed to get channel because it is not yet initialized, Id: ${id}`
-        }
-
-        return channel
-    }
-
-    onconnect: (() => void) | null = null
-
-    onclose: ((shutdown: TransportShutdown) => void) | null = null
-    async close(): Promise<void> {
-        this.logger?.debug("Closing WebRTC Peer")
-
-        this.peer?.close()
-    }
-
-    async getStats(): Promise<Record<string, StatValue>> {
-        const statsData: Record<string, StatValue> = {}
-
-        if (!this.videoReceiver) {
-            return {}
-        }
-        const stats = await this.videoReceiver.getStats()
-
-        console.debug("----------------- raw video stats -----------------")
-        for (const [key, value] of stats.entries()) {
-            console.debug("raw video stats", key, value)
-
-            if ("decoderImplementation" in value && value.decoderImplementation != null) {
-                statsData.decoderImplementation = value.decoderImplementation
-            }
-            if ("frameWidth" in value && value.frameWidth != null) {
-                statsData.videoWidth = value.frameWidth
-            }
-            if ("frameHeight" in value && value.frameHeight != null) {
-                statsData.videoHeight = value.frameHeight
-            }
-            if ("framesPerSecond" in value && value.framesPerSecond != null) {
-                statsData.webrtcFps = value.framesPerSecond
-            }
-
-            if ("jitterBufferDelay" in value && value.jitterBufferDelay != null) {
-                statsData.webrtcJitterBufferDelayMs = value.jitterBufferDelay
-            }
-            if ("jitterBufferTargetDelay" in value && value.jitterBufferTargetDelay != null) {
-                statsData.webrtcJitterBufferTargetDelayMs = value.jitterBufferTargetDelay
-            }
-            if ("jitterBufferMinimumDelay" in value && value.jitterBufferMinimumDelay != null) {
-                statsData.webrtcJitterBufferMinimumDelayMs = value.jitterBufferMinimumDelay
-            }
-            if ("jitter" in value && value.jitter != null) {
-                statsData.webrtcJitterMs = value.jitter
-            }
-            if ("totalDecodeTime" in value && value.totalDecodeTime != null) {
-                statsData.webrtcTotalDecodeTimeMs = value.totalDecodeTime
-            }
-            if ("totalAssemblyTime" in value && value.totalAssemblyTime != null) {
-                statsData.webrtcTotalAssemblyTimeMs = value.totalAssemblyTime
-            }
-            if ("totalProcessingDelay" in value && value.totalProcessingDelay != null) {
-                statsData.webrtcTotalProcessingDelayMs = value.totalProcessingDelay
-            }
-            if ("packetsReceived" in value && value.packetsReceived != null) {
-                statsData.webrtcPacketsReceived = value.packetsReceived
-            }
-            if ("packetsLost" in value && value.packetsLost != null) {
-                statsData.webrtcPacketsLost = value.packetsLost
-            }
-            if ("framesDropped" in value && value.framesDropped != null) {
-                statsData.webrtcFramesDropped = value.framesDropped
-            }
-            if ("keyFramesDecoded" in value && value.keyFramesDecoded != null) {
-                statsData.webrtcKeyFramesDecoded = value.keyFramesDecoded
-            }
-            if ("nackCount" in value && value.nackCount != null) {
-                statsData.webrtcNackCount = value.nackCount
+                this.remoteKeyStates.add(key)
             }
         }
 
-        return statsData
-    }
-}
+        // Make a copy to not delete while iterating
+        const remoteKeyStates = [...this.remoteKeyStates]
 
-type TrackHolder = {
-    ontrack: (() => void) | null
-    track: MediaStreamTrack | null
-}
+        for (const key of remoteKeyStates) {
+            if (!this.currentPressedKeys.has(key) && !keyStatesCanStore(keyStates, key)) {
+                this.trySendOn(this.keys, new ControlPacket.Keyboard({
+                    action: KeyAction.Up,
+                    flags: { sunshineNonNormalized: false },
+                    keyCode: key,
+                    modifiers,
+                    zero: 0,
+                }))
 
-// This receives track data
-class WebRTCInboundTrackTransportChannel<T extends string> implements TrackTransportChannel {
-    type: T
+                this.remoteKeyStates.delete(key)
+            }
+        }
 
-    canReceive: boolean = true
-    canSend: boolean = false
+        // Send key states
+        this.trySendOn(this.keysCompact, new ControlPacket.WebState({
+            sequenceNumber: this.keyStatesSequenceNumber,
+            keys: keyStates
+        }))
 
-    private logger: Logger | null
-
-    private label: string
-    private trackHolder: TrackHolder
-
-    constructor(logger: Logger | null, type: T, label: string, trackHolder: TrackHolder) {
-        this.logger = logger
-
-        this.type = type
-        this.label = label
-        this.trackHolder = trackHolder
-
-        this.trackHolder.ontrack = this.onTrack.bind(this)
-    }
-    setTrack(_track: MediaStreamTrack | null): void {
-        throw "WebRTCInboundTrackTransportChannel cannot addTrack"
+        if (this.keyStatesSequenceNumber >= U16_MAX - 1) {
+            this.keyStatesSequenceNumber = 0
+        }
+        this.keyStatesSequenceNumber += 1
     }
 
-    private onTrack() {
-        const track = this.trackHolder.track
-        if (!track) {
-            this.logger?.debug("WebRTC TrackHolder.track is null!")
+    private getControllerMask(): ActiveGamepads {
+        const gamepads: Record<string, boolean> = {}
+
+        for (let i = 0; i < 16; i++) {
+            gamepads[`gamepad${i + 1}`] = this.controllerStates[i]
+        }
+
+        return gamepads as ActiveGamepads
+    }
+
+    private trySendOn(channel: RTCDataChannel, packet: ControlPacket) {
+        if (!this.config) {
+            return
+        }
+        if (channel.readyState != "open") {
             return
         }
 
-        for (const listener of this.trackListeners) {
-            listener(track)
-        }
-    }
-
-
-    private trackListeners: Array<(track: MediaStreamTrack) => void> = []
-    addTrackListener(listener: (track: MediaStreamTrack) => void): void {
-        if (this.trackHolder.track) {
-            listener(this.trackHolder.track)
-        }
-        this.trackListeners.push(listener)
-    }
-    removeTrackListener(listener: (track: MediaStreamTrack) => void): void {
-        const index = this.trackListeners.indexOf(listener)
-        if (index != -1) {
-            this.trackListeners.splice(index, 1)
-        }
-    }
-}
-
-class WebRTCDataTransportChannel implements DataTransportChannel {
-    type: "data" = "data"
-
-    canReceive: boolean = true
-    canSend: boolean = true
-
-    private logger: Logger | null = null
-
-    private label: string
-    private channel: RTCDataChannel | null
-    private boundTryDequeueSendQueue: () => void
-    private boundOnMessage: (event: MessageEvent) => void
-
-    constructor(label: string, channel: RTCDataChannel | null, logger?: Logger) {
-        this.label = label
-        this.channel = channel
-        this.boundOnMessage = this.onMessage.bind(this)
-        this.boundTryDequeueSendQueue = this.tryDequeueSendQueue.bind(this)
-
-        this.logger = logger ?? null
-
-        this.channel?.addEventListener("message", this.boundOnMessage)
-    }
-
-    // Replace the underlying channel with a new one (e.g., from remote peer)
-    // This is used when we receive a data channel from the server that should
-    // replace our locally created one for receiving messages
-    replaceChannel(newChannel: RTCDataChannel): void {
-        // Remove listener from old channel
-        this.channel?.removeEventListener("open", this.boundTryDequeueSendQueue)
-        this.channel?.removeEventListener("message", this.boundOnMessage)
-        // Add listener to new channel
-        this.channel = newChannel
-        this.channel.addEventListener("open", this.boundTryDequeueSendQueue)
-        this.channel.addEventListener("message", this.boundOnMessage)
-    }
-
-    private sendQueue: Array<ArrayBuffer> = []
-    send(message: ArrayBuffer): void {
-        console.debug(this.label, message)
-
-        if (!this.channel || this.channel.readyState != "open") {
-            console.debug(`Tried sending packet to ${this.label} with readyState ${this.channel?.readyState}. Buffering it for the future.`)
-            // Make sure to copy the message
-            this.sendQueue.push(message.slice(0))
-        } else {
-            this.channel.send(message)
-        }
-    }
-    private tryDequeueSendQueue() {
-        if (!this.channel || this.channel.readyState != "open") {
+        if (channel.bufferedAmount > this.maxBufferedAmount(channel)) {
+            // Cannot send more packets because of buffered amount
+            // -> Drop the packet
             return
         }
 
-        for (const message of this.sendQueue.splice(0)) {
-            this.channel.send(message)
+        const buffer = controlPacketSerialize(this.config, packet)
+        if (buffer) {
+            channel.send(buffer)
         }
-    }
-
-    private onMessage(event: MessageEvent) {
-        const data = event.data
-        if (!(data instanceof ArrayBuffer)) {
-            console.warn(`received text data on webrtc channel ${this.label}`)
-            return
-        }
-
-        for (const listener of this.receiveListeners) {
-            listener(event.data)
-        }
-    }
-    private receiveListeners: Array<(data: ArrayBuffer) => void> = []
-    addReceiveListener(listener: (data: ArrayBuffer) => void): void {
-        this.receiveListeners.push(listener)
-    }
-    removeReceiveListener(listener: (data: ArrayBuffer) => void): void {
-        const index = this.receiveListeners.indexOf(listener)
-        if (index != -1) {
-            this.receiveListeners.splice(index, 1)
-        }
-    }
-    estimatedBufferedBytes(): number | null {
-        return this.channel?.bufferedAmount ?? null
     }
 }

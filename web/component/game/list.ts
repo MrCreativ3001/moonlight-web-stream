@@ -1,9 +1,8 @@
-import { Api, apiGetApps } from "../../api.js";
-import { App } from "../../api_bindings.js";
-import { showNotification } from "../notification.js";
-import { FetchListComponent } from "../fetch_list.js";
-import { ComponentEvent } from "../index.js";
-import { Game, GameCache, GameEventListener } from "./index.js";
+import { Api, apiGetApps } from "../../api"
+import { App } from "../../api_bindings"
+import { FetchListComponent } from "../fetch_list"
+import { ComponentEvent } from "../index"
+import { Game, GameCache, GameEventListener } from "./index"
 
 export class GameList extends FetchListComponent<App, Game> {
     private api: Api

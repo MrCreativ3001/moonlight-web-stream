@@ -1,0 +1,13 @@
+# Docs: https://jhugman.github.io/uniffi-bindgen-react-native/reference/config-yaml.html
+
+rust:
+  repo: https://github.com/MrCreativ3001/moonlight-common-rust.git
+  branch: cc7ec8c3b3063742f4941500dcb78650bd0a9b98
+  manifestPath: bindings/Cargo.toml
+
+web:
+  entrypoint: web/uniffi/entry.ts
+  tsBindings: web/uniffi
+  defaultFeatures: false
+  features: ["web"]
+  manifestPatchFile: ./Cargo.wasm.toml

@@ -58,7 +58,7 @@ function onTouchStart(event: TouchEvent) {
 
         const contextMenuEvent = new MouseEvent("contextmenu", eventInit)
 
-        timer = setTimeout(() => {
+        timer = window.setTimeout(() => {
             touch?.target.dispatchEvent(contextMenuEvent)
         }, RIGHT_CLICK_TIME_MS)
     }

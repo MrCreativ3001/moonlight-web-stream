@@ -387,7 +387,7 @@ input[type=number] {
 }
 
 .sidebar-overlay.sidebar-edge-left {
-    top: 50%;
+    top: var(--stream-video-middle);
     left: 0;
 }
 
@@ -397,7 +397,7 @@ input[type=number] {
 }
 
 .sidebar-overlay.sidebar-edge-right {
-    top: 50%;
+    top: var(--stream-video-middle);
     right: 0;
 }
 
@@ -840,7 +840,7 @@ input[type=number] {
 /** Stream */
 .video-stream {
     position: fixed;
-    top: var(--stream-video-top, 50%);
+    top: var(--stream-video-middle);
     left: 50%;
     transform: translate(-50%, -50%);
     max-width: 100vw;
@@ -901,11 +901,14 @@ canvas.video-stream {
     translate: 200vw 200vh;
 }
 
-.stream-keyboard-floating-button {
+.stream-keyboard-native {
     position: fixed;
-    top: var(--stream-keyboard-button-top, 50%);
+}
+
+.stream-keyboard-native button {
+    position: fixed;
+    bottom: 12px;
     right: 12px;
-    transform: translateY(-100%);
     width: 44px;
     height: 44px;
     z-index: 1000;
@@ -924,13 +927,14 @@ canvas.video-stream {
     will-change: transform;
 }
 
-.stream-keyboard-floating-button.visible {
+.stream-keyboard-native button.visible {
     display: flex;
 }
 
-.stream-keyboard-floating-button:active {
+.stream-keyboard-native button:active {
     opacity: 1;
-    transform: translateY(-100%) scale(0.95);
+    transition: none;
+    transform: none;
 }
 
 /* Prevent starting animation for elements */

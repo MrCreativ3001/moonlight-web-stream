@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, PutDefaultUserRequest, PutDefaultRoleRequest, GetDefaultRoleResponse, GetDefaultUserResponse, } from "./api_bindings"
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostLoginResponse, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, PutDefaultUserRequest, PutDefaultRoleRequest, GetDefaultRoleResponse, GetDefaultUserResponse, } from "./api_bindings"
 import { showNotification } from "./component/notification"
 import { showMessage, showModal } from "./component/modal/index"
 import { ApiUserPasswordPrompt } from "./component/modal/login"
@@ -20,6 +20,7 @@ function onError(error: any) {
         const response = error.getResponse()
         // 401 = Unauthorized
         if (response?.status == 401) {
+            setStoredBearer(null)
             window.location.reload()
         }
     }
@@ -28,10 +29,30 @@ function onError(error: any) {
 window.addEventListener("error", handleError)
 window.addEventListener("unhandledrejection", handleRejection)
 
+const BEARER_SESSION_STORAGE_KEY = "mlBearer"
+
+function getStoredBearer(): string | null {
+    try {
+        return sessionStorage.getItem(BEARER_SESSION_STORAGE_KEY)
+    } catch (_error) {
+        return null
+    }
+}
+
+function setStoredBearer(value: string | null) {
+    try {
+        if (value == null || value.length === 0) {
+            sessionStorage.removeItem(BEARER_SESSION_STORAGE_KEY)
+        } else {
+            sessionStorage.setItem(BEARER_SESSION_STORAGE_KEY, value)
+        }
+    } catch (_error) { }
+}
+
 export async function getApi(): Promise<Api> {
     const host_url = buildUrl("/api")
 
-    let api = { host_url, bearer: null, user: null, role: null }
+    let api = { host_url, bearer: getStoredBearer(), user: null, role: null }
 
     if (await apiAuthenticate(api)) {
         return api
@@ -51,7 +72,7 @@ export async function getApi(): Promise<Api> {
 export async function tryLogin(): Promise<Api | null> {
     const host_url = buildUrl("/api")
 
-    let api = { host_url, bearer: null, user: null, role: null }
+    let api = { host_url, bearer: getStoredBearer(), user: null, role: null }
 
     const prompt = new ApiUserPasswordPrompt()
     const userAuth = await showModal(prompt)
@@ -269,13 +290,16 @@ export async function fetchApi(api: Api, endpoint: string, method: string = GET,
 }
 
 export async function apiLogin(api: Api, request: PostLoginRequest): Promise<boolean> {
-    let response
-
     try {
-        response = await fetchApi(api, "/login", "post", {
+        const response = await fetchApi(api, "/login", "post", {
             json: request,
-            response: "ignore"
+            response: "json"
         })
+        const loginResponse = response as Partial<PostLoginResponse>
+        if (typeof loginResponse.session_token === "string" && loginResponse.session_token.length > 0) {
+            api.bearer = loginResponse.session_token
+            setStoredBearer(api.bearer)
+        }
     } catch (e) {
         if (e instanceof FetchError) {
             const response = e.getResponse()
@@ -293,11 +317,13 @@ export async function apiLogin(api: Api, request: PostLoginRequest): Promise<boo
 }
 
 export async function apiLogout(api: Api): Promise<boolean> {
-    let response
     try {
-        response = await fetchApi(api, "/logout", "post", { response: "ignore" })
+        await fetchApi(api, "/logout", "post", { response: "ignore" })
     } catch (e) {
         throw e
+    } finally {
+        api.bearer = null
+        setStoredBearer(null)
     }
 
     return true
@@ -313,7 +339,13 @@ export async function apiAuthenticate(api: Api, retryOnFail?: boolean): Promise<
         if (e instanceof FetchError) {
             const response = e.getResponse()
             if (response?.status == 401) {
+                api.bearer = null
+                setStoredBearer(null)
                 return false
+            } else if (response?.status == 409 && retryOnFail_ && api.bearer) {
+                api.bearer = null
+                setStoredBearer(null)
+                return await apiAuthenticate(api, false)
             } else if (response?.status == 409 && retryOnFail_) {
                 // 409 = Conflict, SessionTokenNotFound -> requires a new request
                 return await apiAuthenticate(api, false)

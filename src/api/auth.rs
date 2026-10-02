@@ -1,4 +1,4 @@
-use crate::api::bindings::PostLoginRequest;
+use crate::api::bindings::{PostLoginRequest, PostLoginResponse};
 use actix_web::{
     Error, FromRequest, HttpRequest, HttpResponse,
     body::MessageBody,
@@ -145,7 +145,9 @@ async fn login(
 
     Ok(HttpResponse::Ok()
         .cookie(build_cookie(&app, session_expiration, session_str))
-        .finish())
+        .json(PostLoginResponse {
+            session_token: session_str.to_string(),
+        }))
 }
 
 #[post("/logout")]

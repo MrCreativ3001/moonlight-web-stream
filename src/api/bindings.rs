@@ -26,6 +26,12 @@ pub struct PostLoginRequest {
     pub password: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, TS, Clone)]
+#[ts(export, export_to = EXPORT_PATH)]
+pub struct PostLoginResponse {
+    pub session_token: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, TS, Clone, Copy)]
 #[ts(export, export_to = EXPORT_PATH)]
 pub enum HostState {

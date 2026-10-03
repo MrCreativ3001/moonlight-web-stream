@@ -349,7 +349,7 @@ impl VideoChannel {
                             if packet.downcast_ref::<PictureLossIndication>().is_some() {
                                 debug!("got picture loss indication, set need idr flag");
                                 return Ok(VideoChannelEvent::SignalIdr);
-                            } else if let Some(ReceiverEstimatedMaximumBitrate { bitrate: _, .. }) =
+                            } else if let Some(ReceiverEstimatedMaximumBitrate { .. }) =
                                 packet.downcast_ref::<ReceiverEstimatedMaximumBitrate>()
                             {
                                 // TODO

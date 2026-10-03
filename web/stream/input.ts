@@ -974,7 +974,8 @@ export class StreamInput {
             accel: false,
             gyro: false,
             batteryState: false,
-            rgbLed: false
+            rgbLed: false,
+            dualTouchpad: false,
         }
 
         // Rumble capabilities

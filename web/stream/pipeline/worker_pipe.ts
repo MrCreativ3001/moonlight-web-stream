@@ -19,32 +19,49 @@ export interface WorkerReceiver extends Pipe {
 
 export class WorkerPipe implements WorkerReceiver {
     protected static async getInfoInternal(pipeline: Pipeline): Promise<PipeInfo> {
-        const worker = createPipelineWorker()
-        if (!worker) {
-            return {
-                environmentSupported: false
-            }
-        }
-
-        const sendMessage: ToWorkerMessage = { checkSupport: pipeline }
-        worker.postMessage(sendMessage)
-
-        const info = await new Promise<PipeInfo>((resolve, reject) => {
-            worker.onmessage = (event) => {
-                const message = event.data as ToMainMessage
-
-                if ("checkSupport" in message) {
-                    resolve(message.checkSupport)
-                } else if ("log" in message) {
-                    throw message.log
-                } else {
-                    throw "Failed to get info about worker pipeline because it returned a wrong message"
+        return new Promise(resolve => {
+            let worker: Worker | null = null
+            let done = false
+            const finish = (info: PipeInfo = { environmentSupported: false }) => {
+                if (done) return
+                done = true
+                clearTimeout(timer)
+                if (worker) {
+                    worker.onmessage = null
+                    worker.onerror = null
+                    worker.onmessageerror = null
+                    worker.terminate()
                 }
+                resolve(info && typeof info.environmentSupported == "boolean" ? info : { environmentSupported: false })
             }
-            worker.onerror = reject
-        })
+            const timer = setTimeout(() => finish(), 2500)
 
-        return info
+            try {
+                worker = createPipelineWorker()
+                if (!worker) {
+                    finish()
+                    return
+                }
+                // Install handlers before sending, including for synchronous replies.
+                worker.onmessage = event => {
+                    const message = event.data as ToMainMessage
+                    if (message && typeof message == "object" && "checkSupport" in message) {
+                        finish(message.checkSupport)
+                    }
+                    // Log messages during startup are not support responses.
+                }
+                const onError = (event: Event) => {
+                    event.preventDefault()
+                    finish()
+                }
+                worker.onerror = onError
+                worker.onmessageerror = onError
+                const sendMessage: ToWorkerMessage = { checkSupport: pipeline }
+                worker.postMessage(sendMessage)
+            } catch {
+                finish()
+            }
+        })
     }
 
     readonly implementationName: string

@@ -27,7 +27,6 @@ use moonlight_common::stream::video::{
 use moonlight_common::stream::{
     AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
 };
-use moonlight_common::webrtc::WebRTCParseError;
 use moonlight_common::webrtc::answer::WebRTCSessionAnswer;
 use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
@@ -275,8 +274,7 @@ pub async fn webrtc_post(
 
     debug!(req = ?req, session_description = ?session_description, "webrtc request");
 
-    let offer_sdp =
-        Session::parse(session_description.as_bytes()).map_err(WebRTCParseError::from)?;
+    let offer_sdp = Session::parse(session_description.as_bytes())?;
     let session = WebRTCSessionOffer::from_sdp(&offer_sdp)?;
     debug!(moonlight_session = ?session, "moonlight session extensions", );
 

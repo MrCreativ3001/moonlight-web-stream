@@ -6,10 +6,10 @@ use std::{
 };
 
 use moonlight_common::{
-    high::MoonlightClientError,
+    error::Error as MoonlightError,
     http::{
         ClientInfo,
-        client::{RequestError, async_client::RequestClient as _},
+        client::async_client::RequestClient as _,
         server_info::{ServerInfoEndpoint, ServerInfoRequest},
     },
 };
@@ -341,8 +341,7 @@ impl AuthenticatedUser {
 
         let unique_id = self.host_unique_id().await?;
 
-        let client = RequestClient::with_defaults()
-            .map_err(|err| MoonlightClientError::Backend(Box::new(err)))?;
+        let client = RequestClient::with_defaults()?;
 
         let info = match client
             .send_http::<ServerInfoEndpoint>(
@@ -356,10 +355,10 @@ impl AuthenticatedUser {
             .await
         {
             Ok(info) => info,
-            Err(err) if err.is_connect() => {
+            Err(MoonlightError::ConnectionFailed | MoonlightError::ConnectionTimeout) => {
                 return Err(AppError::HostNotFound);
             }
-            Err(err) => return Err(MoonlightClientError::Backend(Box::new(err)).into()),
+            Err(err) => return Err(err.into()),
         };
 
         let app = self.app.access()?;

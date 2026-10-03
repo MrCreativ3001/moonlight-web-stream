@@ -1,7 +1,7 @@
 import { Api, apiWebRTCConfiguration, apiWebRTCOffer } from "../api"
 import { Component } from "../component/index"
 import { Settings, TransportType } from "../component/settings_menu"
-import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings"
+import { ControlPacket, ControlPacket_Tags, TerminationReason_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings"
 import { wait } from "../util"
 import { AudioPlayer, AudioPlayerSetup } from "./audio/index"
 import { buildAudioPipeline } from "./audio/pipeline"
@@ -30,6 +30,7 @@ export type InfoEvent = CustomEvent<
     { type: "app", appName: string } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
     { type: "videoReady" } |
+    { type: "streamEnded" } |
     { type: "addDebugLine", line: string, additional?: LogMessageInfo }
 >
 export type InfoEventListener = (event: InfoEvent) => void
@@ -107,6 +108,8 @@ export class Stream implements Component {
     private eventTarget = new EventTarget()
 
     private transportOverride: TransportType | null = null
+    private stopped = false
+    private stopPromise: Promise<boolean> | null = null
 
     private videoRenderer: VideoRenderer | null = null
     private audioPlayer: AudioPlayer | null = null
@@ -164,20 +167,26 @@ export class Stream implements Component {
         const desiredTransport = this.transportOverride ?? this.settings.dataTransport
         this.debugLog(`Using transport: ${desiredTransport}`)
 
+        let shutdownReason: TransportShutdown | undefined
         if (desiredTransport == "auto") {
-            let shutdownReason = await this.tryWebRTCTransport()
+            shutdownReason = await this.tryWebRTCTransport()
 
-            if (shutdownReason == "failednoconnect") {
+            if (!this.stopped && shutdownReason == "failednoconnect") {
                 this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.", { type: "ifErrorDescription" })
-                await this.tryWebSocketTransport()
+                shutdownReason = await this.tryWebSocketTransport()
             }
         } else if (desiredTransport == "webrtc") {
-            await this.tryWebRTCTransport()
+            shutdownReason = await this.tryWebRTCTransport()
         } else if (desiredTransport == "websocket") {
-            await this.tryWebSocketTransport()
+            shutdownReason = await this.tryWebSocketTransport()
         }
 
-        this.debugLog("Tried all configured transport options but no connection was possible", { type: "fatal" })
+        if (this.stopped || shutdownReason == "disconnect") {
+            return
+        }
+        this.debugLog(shutdownReason == "failed"
+            ? "The stream connection was lost"
+            : "Tried all configured transport options but no connection was possible", { type: "fatal" })
     }
 
     private transport: Transport | null = null
@@ -555,16 +564,35 @@ export class Stream implements Component {
         return this.audioPlayer
     }
 
-    async stop(): Promise<boolean> {
-        // Stop transport
-        await this.transport?.close()
-
-        return true
+    stop(): Promise<boolean> {
+        this.stopped = true
+        return this.stopPromise ??= (async () => {
+            await this.transport?.close()
+            return true
+        })()
     }
 
     private boundReceivePacket = this.onReceivePacket.bind(this)
     private onReceivePacket(packet: ControlPacket) {
         switch (packet.tag) {
+            case ControlPacket_Tags.ServerTermination: {
+                if (this.stopped) {
+                    return
+                }
+                const reason = packet.inner.reason
+                const graceful = reason.tag == TerminationReason_Tags.Long && reason.inner[0] == 0x80030023
+                // Mark the stream stopped before closing its transport. Otherwise
+                // the close callback can trigger an error or start a fallback stream.
+                void this.stop().catch(error => console.debug("Failed to close ended stream", error))
+                if (graceful) {
+                    this.eventTarget.dispatchEvent(new CustomEvent("stream-info", {
+                        detail: { type: "streamEnded" }
+                    }))
+                } else {
+                    this.debugLog(`The host ended the stream (code 0x${reason.inner[0].toString(16)})`, { type: "fatalDescription" })
+                }
+                return
+            }
             case ControlPacket_Tags.HdrMode:
                 if (this.videoRenderer && this.videoRenderer.setHdrMode) {
                     this.videoRenderer?.setHdrMode(packet.inner.enabled, packet.inner.sunshine)

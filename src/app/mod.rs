@@ -15,10 +15,7 @@ use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
 use moonlight_common::{
     crypto::rustcrypto::{RustCryptoBackend, RustCryptoError},
-    high::{MoonlightClientError, StreamConfigError},
-    http::{ParseError, client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
-    stream::tokio::MoonlightStreamError,
-    webrtc::WebRTCParseError,
+    http::{client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
 };
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -99,10 +96,6 @@ pub enum AppError {
     UserNameEmpty,
     #[error("the authorization header is not a bearer")]
     BadRequest,
-    #[error("the host doesn't support the given config: {0}")]
-    StreamConfig(#[from] StreamConfigError),
-    #[error("failed to parse the given sdp: {0}")]
-    WebRTCParse(#[from] WebRTCParseError),
     // --
     #[error("rustcrypto error occured: {0}")]
     RustCrypto(#[from] RustCryptoError),
@@ -111,9 +104,9 @@ pub enum AppError {
     #[error("io error: {0}")]
     Io(#[from] io::Error),
     #[error("moonlight error: {0}")]
-    Moonlight(#[from] MoonlightClientError),
-    #[error("moonlight error: {0}")]
-    MoonlightStream(#[from] MoonlightStreamError),
+    Moonlight(#[from] moonlight_common::error::Error),
+    #[error("failed to parse the given sdp: {0}")]
+    WebRTCSdp(#[from] moonlight_common::webrtc::sdp::ParserError),
     #[error("webrtc: {0}")]
     WebRTC(#[from] webrtc::error::Error),
 }
@@ -163,20 +156,9 @@ impl ResponseError for AppError {
             Self::PasswordEmpty => HttpResponse::new(StatusCode::BAD_REQUEST),
             Self::UserNameEmpty => HttpResponse::new(StatusCode::BAD_REQUEST),
             Self::BadRequest => HttpResponse::new(StatusCode::BAD_REQUEST),
-            Self::StreamConfig(error) => {
-                HttpResponse::new(StatusCode::BAD_REQUEST).set_body(BoxBody::new(error.to_string()))
-            }
-            Self::WebRTCParse(error) => {
-                HttpResponse::new(StatusCode::BAD_REQUEST).set_body(BoxBody::new(error.to_string()))
-            }
-            Self::Moonlight(MoonlightClientError::Backend(err))
-                if let Some(err) = err.downcast_ref::<ParseError>() =>
-            {
-                HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR)
-                    .set_body(BoxBody::new(err.to_string()))
-            }
+            Self::WebRTCSdp(error) => HttpResponse::new(StatusCode::BAD_REQUEST)
+                .set_body(BoxBody::new(format!("{error}"))),
             Self::Moonlight(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
-            Self::MoonlightStream(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::WebRTC(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
             Self::Io(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
         }

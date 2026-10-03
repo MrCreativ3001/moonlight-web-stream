@@ -208,7 +208,15 @@ export class UrlVideoElementRenderer implements UrlVideoRenderer, VideoRenderer 
     async setup(setup: VideoRendererSetup) {
         this.size = [setup.width, setup.height]
     }
-    cleanup(): void { }
+    cleanup(): void {
+        this.videoElement.pause()
+        this.videoElement.removeAttribute("src")
+        this.videoElement.load()
+    }
+
+    getMediaElement(): HTMLVideoElement {
+        return this.videoElement
+    }
 
     setUrl(src: string): void {
         this.videoElement.src = src

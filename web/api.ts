@@ -175,7 +175,7 @@ export class FetchError extends Error {
             const response = responseOrError as Response
             const text = await response.text()
 
-            return new FetchError(`failed to fetch ${method} at ${endpoint} with "${response.statusText}"(${response?.status}) ${text ? `and response ${text}` : ""} ${reason ? `because of ${reason}` : ""}`)
+            return new FetchError(`failed to fetch ${method} at ${endpoint} with "${response.statusText}"(${response?.status}) ${text ? `and response ${text}` : ""} ${reason ? `because of ${reason}` : ""}`, response)
         } else if (type == "unknown") {
             const error = responseOrError as Error
             return new FetchError(`failed to fetch ${method} at ${endpoint} because of ${error}`)

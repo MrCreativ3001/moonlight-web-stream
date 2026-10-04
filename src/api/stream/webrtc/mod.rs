@@ -55,9 +55,9 @@ use webrtc::peer_connection::{
     register_default_interceptors,
 };
 
-use crate::api::stream::apply_role_restrictions;
 use crate::api::stream::webrtc::convert::into_webrtc_ice_candidate;
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
+use crate::api::stream::{PACKET_SIZE, apply_role_restrictions};
 use crate::app::App;
 use crate::app::host::HostId;
 use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
@@ -459,7 +459,7 @@ pub async fn webrtc_post(
         fps: session.fps,
         fps_x100: session.fps * 100,
         bitrate: session.bitrate,
-        packet_size: 2048,
+        packet_size: PACKET_SIZE,
         // There's not need to encrypt video
         encryption_flags: EncryptionFlags::AUDIO | EncryptionFlags::FOUNDATION_MICROPHONE,
         streaming_remotely: StreamingConfig::Auto,

@@ -12,6 +12,8 @@ use crate::api::bindings::StreamPermissions;
 pub mod web_socket;
 pub mod webrtc;
 
+const PACKET_SIZE: u32 = 1024;
+
 fn server_version() -> ServerVersion {
     ServerVersion::new(7, 0, 0, 0)
 }

@@ -12,6 +12,7 @@ import { requestKeyboardLock } from "./iframe"
 import "./polyfill/index"
 import { KeyboardModeChangeEvent, ScreenKeyboard, ScreenKeyboardListener, TextEvent } from "./keyboard"
 import { InfoEvent, Stream, StreamCapabilities } from "./stream/index"
+import { exitStreamPage } from "./stream/exit"
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input"
 import { emptyKeyModifiers } from "./stream/keyboard"
 import { LogMessageType } from "./stream/log"
@@ -335,6 +336,8 @@ class ViewerApp implements Component {
             this.sidebar.onCapabilitiesChange(data.capabilities)
 
             this.armFullscreenOnNextInteraction()
+        } else if (data.type == "streamEnded") {
+            exitStreamPage()
         }
     }
 
@@ -1079,11 +1082,7 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
                 }
             }
 
-            if (window.matchMedia('(display-mode: standalone)').matches) {
-                history.back()
-            } else {
-                window.close()
-            }
+            exitStreamPage()
 
         })
         this.buttonDiv.appendChild(this.exitStreamButton)

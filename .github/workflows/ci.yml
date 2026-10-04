@@ -12,6 +12,18 @@ permissions:
   contents: write
 
 jobs:
+  test-frontend:
+    name: Test browser stream lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
   test:
     name: Test x86_64-unknown-linux-gnu
     runs-on: ubuntu-latest

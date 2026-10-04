@@ -1,3 +1,4 @@
+import { queryPipeInfo } from "../pipeline/probe"
 import { UrlVideoElementRenderer, VideoElementRenderer } from "./video_element"
 import { VideoMediaStreamTrackProcessorPipe } from "./media_stream_track_processor_pipe"
 import { TrackVideoRenderer, VideoRenderer } from "./index"
@@ -109,7 +110,7 @@ async function queryPipelineInfo(pipeline: Pipeline, supportedCodecs: VideoForma
         }
     }
 
-    const rendererInfo = await pipeline.renderer.getInfo()
+    const rendererInfo = await queryPipeInfo(pipeline.renderer)
     if (!rendererInfo) {
         logger?.debug(`Failed to query info for video renderer ${pipeName(pipeline.renderer)}`)
         return {
@@ -188,7 +189,7 @@ export async function queryVideoPipelineInfo(type: "videotrack" | "data", settin
         // Print supported pipes
         const videoRendererInfoPromises = []
         for (const videoRenderer of VIDEO_RENDERERS) {
-            videoRendererInfoPromises.push(videoRenderer.getInfo().then(info => [pipeName(videoRenderer), info]))
+            videoRendererInfoPromises.push(queryPipeInfo(videoRenderer).then(info => [pipeName(videoRenderer), info]))
         }
         const videoRendererInfo = await Promise.all(videoRendererInfoPromises)
 
@@ -272,7 +273,7 @@ export async function buildVideoPipeline(type: string, settings: VideoPipelineOp
             }
         }
 
-        const rendererInfo = await pipeline.renderer.getInfo()
+        const rendererInfo = await queryPipeInfo(pipeline.renderer)
         if (!rendererInfo) {
             logger?.debug(`Failed to query info for video renderer ${pipeName(pipeline.renderer)}`)
             continue pipelineLoop

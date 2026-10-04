@@ -801,7 +801,7 @@ class ViewerApp implements Component {
             offset = this.getVideoOffsetWithCursor(cursor.y, streamRect.height, offset, visibleTop, visibleBottom)
         }
 
-        this.setStreamVideoOffset(offset)
+        this.setVideoPositionAndSize(offset, viewport.height)
     }
 
     private getVideoCenterOffset(visibleTop: number, visibleBottom: number): number {
@@ -839,7 +839,7 @@ class ViewerApp implements Component {
         return streamMiddle
     }
 
-    private setStreamVideoOffset(offset: number) {
+    private setVideoPositionAndSize(offset: number, height: number) {
         if (Math.abs(offset - this.streamVideoTopOffsetPx) < 1) {
             return
         }
@@ -849,6 +849,10 @@ class ViewerApp implements Component {
         document.documentElement.style.setProperty(
             "--stream-video-middle",
             `${offset}px`,
+        )
+        document.documentElement.style.setProperty(
+            "--stream-video-height",
+            `${height}px`,
         )
     }
 

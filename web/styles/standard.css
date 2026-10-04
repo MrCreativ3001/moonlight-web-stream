@@ -1238,9 +1238,7 @@ input[type=number] {
     left: 50%;
     transform: translate(-50%, -50%);
     max-width: 100vw;
-    max-height: 100vh;
-    min-width: 100vmin;
-    min-height: 100vmin;
+    max-height: var(--stream-video-height);
     width: auto;
     height: auto;
     outline: none;
@@ -1302,7 +1300,7 @@ canvas.video-stream {
 
 .stream-keyboard-native button {
     position: fixed;
-    bottom: 12px;
+    top: calc(var(--stream-video-middle) + (var(--stream-video-height) / 2) - 44px - 12px);
     right: 12px;
     width: 44px;
     height: 44px;

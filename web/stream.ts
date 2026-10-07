@@ -10,7 +10,7 @@ import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sideba
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n"
 import { requestKeyboardLock } from "./iframe"
 import "./polyfill/index"
-import { KeyboardModeEvent, KeyboardModeWillChangeEvent, ScreenKeyboard, TextEvent } from "./screen_keyboard"
+import { KeyboardModeChangeEvent, ScreenKeyboard, ScreenKeyboardListener, TextEvent } from "./keyboard"
 import { InfoEvent, Stream, StreamCapabilities } from "./stream/index"
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input"
 import { emptyKeyModifiers } from "./stream/keyboard"
@@ -18,6 +18,7 @@ import { LogMessageType } from "./stream/log"
 import { streamStatsToText } from "./stream/stats"
 import "./styles/index"
 import { LogLevel, uniffiInitAsync, Logger as UniffiLogger, setLogger as uniffiSetLogger } from "./uniffi/entry"
+import { NativeScreenKeyboard } from "./keyboard/native_keyboard"
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -160,6 +161,8 @@ class ViewerApp implements Component {
 
     private div = document.createElement("div")
 
+    private screenKeyboard: ScreenKeyboard
+
     private statsDiv = document.createElement("div")
     private localTouchCursorDiv = document.createElement("div")
     private stream: Stream
@@ -223,6 +226,12 @@ class ViewerApp implements Component {
         }, 100)
         this.div.appendChild(this.statsDiv)
         this.div.appendChild(this.localTouchCursorDiv)
+
+        // Configure Screen Keyboard
+        this.screenKeyboard = new NativeScreenKeyboard(I)
+
+        this.screenKeyboard.addListener(this.sidebar)
+        stopPropagationOn(this.screenKeyboard.getHiddenElement())
 
         // Configure stream
         this.previousMouseMode = this.inputConfig.mouseMode
@@ -330,7 +339,7 @@ class ViewerApp implements Component {
     }
 
     private focusInput() {
-        if (this.stream.getInput().getCurrentPredictedTouchAction() != "screenKeyboard" && !this.sidebar.getScreenKeyboard().isVisible()) {
+        if (this.stream.getInput().getCurrentPredictedTouchAction() != "screenKeyboard" && !this.screenKeyboard.isVisible()) {
             const inputElement = document.getElementById("input") as HTMLDivElement
             inputElement.focus()
         }
@@ -381,16 +390,10 @@ class ViewerApp implements Component {
 
     private onScreenKeyboardSetVisible(event: ScreenKeyboardSetVisibleEvent) {
         console.info(event.detail)
-        const screenKeyboard = this.sidebar.getScreenKeyboard()
+        const screenKeyboard = this.screenKeyboard
 
         const newShown = event.detail.visible
-        if (newShown != screenKeyboard.isVisible()) {
-            if (newShown) {
-                screenKeyboard.show()
-            } else {
-                screenKeyboard.hide()
-            }
-        }
+        screenKeyboard.setVisible(newShown)
     }
 
     // Input
@@ -562,7 +565,7 @@ class ViewerApp implements Component {
         window.requestAnimationFrame(this.onTouchUpdate.bind(this))
 
         this.stream.getInput().onTouchUpdate(this.getStreamRect())
-        this.updateKeyboardViewportVideoOffset()
+        this.updateVideoOffset()
         this.renderLocalTouchCursor()
     }
     onTouchMove(event: TouchEvent) {
@@ -770,115 +773,100 @@ class ViewerApp implements Component {
         this.localTouchCursorDiv.style.top = `${rect.top + localCursorState.y * rect.height}px`
     }
 
-    // -- Keyboard Mode
-    private keyboardViewportBaselineHeight: number | null = null
-    private streamVideoTopOffsetPx: number = 0
+    // -- On Screen Keyboard + Local Touch Viewport
+    private streamVideoTopOffsetPx = -100000
+    private keyboardHeight = 0
 
-    onScreenKeyboardModeWillChange(event: KeyboardModeWillChangeEvent) {
-        if (event.detail.enabled) {
-            this.captureKeyboardViewportBaseline()
-        }
+    onScreenKeyboardModeChange(event: KeyboardModeChangeEvent) {
+        this.keyboardHeight = event.detail.keyboardHeight
+
+        this.updateVideoOffset()
     }
 
-    private captureKeyboardViewportBaseline() {
-        this.keyboardViewportBaselineHeight = window.visualViewport?.height ?? null
-        this.streamVideoTopOffsetPx = 0
-        this.applyStreamVideoTopOffset()
-        this.updateKeyboardFloatingButtonPosition()
-    }
-    resetKeyboardViewportVideoOffset() {
-        this.keyboardViewportBaselineHeight = null
-        this.streamVideoTopOffsetPx = 0
-        this.applyStreamVideoTopOffset()
-        this.resetKeyboardFloatingButtonPosition()
-    }
-    private updateKeyboardViewportVideoOffset() {
-        this.updateKeyboardFloatingButtonPosition()
+    private updateVideoOffset() {
+        const viewport = this.screenKeyboard.getVisibleViewport()
 
-        const screenKeyboard = this.sidebar.getScreenKeyboard()
-        const visualViewport = window.visualViewport
-        const baselineHeight = this.keyboardViewportBaselineHeight
-        const localCursorState = this.stream.getInput().getLocalCursorState()
-
-        if (!screenKeyboard.isVisible() || !visualViewport || baselineHeight == null) {
-            if (this.streamVideoTopOffsetPx != 0 && !screenKeyboard.isVisible()) {
-                this.resetKeyboardViewportVideoOffset()
-            }
+        if (!viewport) {
             return
         }
 
-        const viewportShrink = baselineHeight - visualViewport.height
-        if (viewportShrink < 80) {
-            if (this.streamVideoTopOffsetPx != 0) {
-                this.streamVideoTopOffsetPx = 0
-                this.applyStreamVideoTopOffset()
-            }
-            return
-        }
-
+        // get video offset
+        const visibleTop = viewport.top
+        const visibleBottom = visibleTop + viewport.height - this.keyboardHeight
         const streamRect = this.getStreamRect()
-        if (streamRect.width <= 0 || streamRect.height <= 0) {
+        const cursor = this.stream.getInput().getLocalCursorState()
+
+        let offset = this.getVideoCenterOffset(visibleTop, visibleBottom)
+        if (cursor.visible) {
+            offset = this.getVideoOffsetWithCursor(cursor.y, streamRect.height, offset, visibleTop, visibleBottom)
+        }
+
+        this.setVideoPositionAndSize(offset, viewport.height)
+    }
+
+    private getVideoCenterOffset(visibleTop: number, visibleBottom: number): number {
+        const visibleHeight = visibleBottom - visibleTop
+        const visibleMiddle = visibleTop + visibleHeight / 2
+
+        return visibleMiddle
+    }
+    private getVideoOffsetWithCursor(
+        cursorY: number,
+        streamHeight: number,
+        streamMiddle: number,
+        visibleTop: number,
+        visibleBottom: number,
+    ): number {
+        const safeMargin = Math.min(100, streamHeight * 0.2)
+        const scaledCursorY = cursorY * streamHeight
+
+        const streamHeightHalf = streamHeight / 2
+        const streamTop = streamMiddle - streamHeightHalf
+        const absoluteCursorY = streamTop + scaledCursorY
+
+        if (absoluteCursorY < visibleTop + safeMargin) {
+            const targetY = visibleTop + safeMargin
+
+            return streamMiddle + (targetY - absoluteCursorY)
+        }
+
+        if (absoluteCursorY > visibleBottom - safeMargin) {
+            const targetY = visibleBottom - safeMargin
+
+            return streamMiddle + (targetY - absoluteCursorY)
+        }
+
+        return streamMiddle
+    }
+
+    private setVideoPositionAndSize(offset: number, height: number) {
+        if (Math.abs(offset - this.streamVideoTopOffsetPx) < 1) {
             return
         }
 
-        const visibleTop = visualViewport.offsetTop
-        const visibleBottom = visualViewport.offsetTop + visualViewport.height
+        this.streamVideoTopOffsetPx = offset
 
-        let newTopOffsetPx = this.streamVideoTopOffsetPx
-        if (localCursorState.visible) {
-            let delta = 0
-
-            const safeMargin = Math.min(100, visualViewport.height * 0.25)
-            const cursorY = streamRect.top + localCursorState.y * streamRect.height
-
-            if (cursorY < visibleTop + safeMargin) {
-                delta = visibleTop + safeMargin - cursorY
-            } else if (cursorY > visibleBottom - safeMargin) {
-                delta = visibleBottom - safeMargin - cursorY
-            }
-
-            newTopOffsetPx += delta
-        } else {
-            const screenTopToVideoTop = visualViewport.height - streamRect.height
-            if (screenTopToVideoTop > 0) {
-                newTopOffsetPx = visibleTop - screenTopToVideoTop
-            }
-        }
-
-        if (Math.abs(newTopOffsetPx - this.streamVideoTopOffsetPx) >= 1) {
-            this.streamVideoTopOffsetPx = newTopOffsetPx
-            this.applyStreamVideoTopOffset()
-        }
+        document.documentElement.style.setProperty(
+            "--stream-video-middle",
+            `${offset}px`,
+        )
+        document.documentElement.style.setProperty(
+            "--stream-video-height",
+            `${height}px`,
+        )
     }
-    private applyStreamVideoTopOffset() {
-        if (Math.abs(this.streamVideoTopOffsetPx) < 0.5) {
-            document.documentElement.style.removeProperty("--stream-video-top")
-            return
-        }
 
-        document.documentElement.style.setProperty("--stream-video-top", `calc(50% + ${this.streamVideoTopOffsetPx}px)`)
-    }
-    private updateKeyboardFloatingButtonPosition() {
-        const screenKeyboard = this.sidebar.getScreenKeyboard()
-        const visualViewport = window.visualViewport
-        if (!screenKeyboard.isVisible() || !visualViewport) {
-            this.resetKeyboardFloatingButtonPosition()
-            return
-        }
-
-        const bottomInset = Math.min(16, visualViewport.height * 0.08)
-        const buttonTop = visualViewport.offsetTop + visualViewport.height - bottomInset
-        document.documentElement.style.setProperty("--stream-keyboard-button-top", `${buttonTop}px`)
-    }
-    private resetKeyboardFloatingButtonPosition() {
-        document.documentElement.style.removeProperty("--stream-keyboard-button-top")
+    getScreenKeyboard(): ScreenKeyboard {
+        return this.screenKeyboard
     }
 
     mount(parent: HTMLElement): void {
         parent.appendChild(this.div)
+        parent.appendChild(this.screenKeyboard.getHiddenElement())
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
+        parent.removeChild(this.screenKeyboard.getHiddenElement())
     }
 
     getStreamRect(): DOMRect {
@@ -1000,7 +988,7 @@ class ConnectionInfoModal implements Modal<void> {
     }
 }
 
-class ViewerSidebar implements Component, Sidebar {
+class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
     private app: ViewerApp
 
     private div = document.createElement("div")
@@ -1010,8 +998,6 @@ class ViewerSidebar implements Component, Sidebar {
     private sendKeycodeButton = document.createElement("button")
 
     private keyboardButton = document.createElement("button")
-    private floatingKeyboardButton = document.createElement("button")
-    private screenKeyboard = new ScreenKeyboard()
 
     private lockMouseButton = document.createElement("button")
     private fullscreenButton = document.createElement("button")
@@ -1025,7 +1011,7 @@ class ViewerSidebar implements Component, Sidebar {
     constructor(app: ViewerApp) {
         this.app = app
 
-        // Configure divs
+        // -- Configure divs
         this.div.classList.add("sidebar-stream")
 
         this.buttonDiv.classList.add("sidebar-stream-buttons")
@@ -1052,31 +1038,13 @@ class ViewerSidebar implements Component, Sidebar {
         })
         this.buttonDiv.appendChild(this.lockMouseButton)
 
-        // Pop up keyboard
+        // Screen Keyboard Buttons
         this.keyboardButton.innerText = I.stream.keyboard
         this.keyboardButton.addEventListener("click", async () => {
             setSidebarExtended(false)
-            this.screenKeyboard.show()
+            this.app.getScreenKeyboard().setVisible(true)
         })
         this.buttonDiv.appendChild(this.keyboardButton)
-
-        this.floatingKeyboardButton.innerText = "⌨×"
-        this.floatingKeyboardButton.title = I.stream.hideKeyboard
-        this.floatingKeyboardButton.ariaLabel = I.stream.hideKeyboard
-        this.floatingKeyboardButton.classList.add("stream-keyboard-floating-button")
-        this.floatingKeyboardButton.addEventListener("click", event => {
-            event.preventDefault()
-            event.stopPropagation()
-            this.screenKeyboard.hide()
-        })
-        stopPropagationOn(this.floatingKeyboardButton)
-        this.screenKeyboard.addKeyDownListener(this.onKeyDown.bind(this))
-        this.screenKeyboard.addKeyUpListener(this.onKeyUp.bind(this))
-        this.screenKeyboard.addTextListener(this.onText.bind(this))
-        this.screenKeyboard.addKeyboardModeWillChangeListener(this.app.onScreenKeyboardModeWillChange.bind(this.app))
-        this.screenKeyboard.addKeyboardModeListener(this.onKeyboardModeChange.bind(this))
-        this.div.appendChild(this.screenKeyboard.getHiddenElement())
-
 
         // Fullscreen
         this.fullscreenButton.innerText = I.stream.fullscreen
@@ -1151,27 +1119,18 @@ class ViewerSidebar implements Component, Sidebar {
         this.touchMode.setOptionEnabled("touch", capabilities.touch)
     }
 
-    getScreenKeyboard(): ScreenKeyboard {
-        return this.screenKeyboard
-    }
-
     // -- Keyboard
-    private onText(event: TextEvent) {
+    onText(event: TextEvent) {
         this.app.getStream()?.getInput().sendText(event.detail.text)
     }
-    private onKeyDown(event: KeyboardEvent) {
+    onKeyDown(event: KeyboardEvent) {
         this.app.getStream()?.getInput().onKeyDown(event)
     }
-    private onKeyUp(event: KeyboardEvent) {
+    onKeyUp(event: KeyboardEvent) {
         this.app.getStream()?.getInput().onKeyUp(event)
     }
-    private onKeyboardModeChange(event: KeyboardModeEvent) {
-        if (event.detail.enabled) {
-            this.floatingKeyboardButton.classList.add("visible")
-        } else {
-            this.floatingKeyboardButton.classList.remove("visible")
-            this.app.resetKeyboardViewportVideoOffset()
-        }
+    onKeyboardModeChange(event: KeyboardModeChangeEvent): void {
+        this.app.onScreenKeyboardModeChange(event)
     }
 
     // -- Mouse Mode
@@ -1197,14 +1156,9 @@ class ViewerSidebar implements Component, Sidebar {
 
     mount(parent: HTMLElement): void {
         parent.appendChild(this.div)
-        const appRoot = document.getElementById("root")
-            ; (appRoot ?? document.body).appendChild(this.floatingKeyboardButton)
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
-        if (this.floatingKeyboardButton.parentElement) {
-            this.floatingKeyboardButton.parentElement.removeChild(this.floatingKeyboardButton)
-        }
     }
 }
 
@@ -1259,7 +1213,7 @@ class SendKeycodeModal extends FormModal<number> {
 }
 
 // Stop propagation so the stream doesn't get it
-function stopPropagationOn(element: HTMLElement) {
+export function stopPropagationOn(element: HTMLElement) {
     element.addEventListener("keydown", onStopPropagation)
     element.addEventListener("keyup", onStopPropagation)
     element.addEventListener("keypress", onStopPropagation)

@@ -5,7 +5,7 @@ use crate::api::{
         StreamStatsClientboundMessage, StreamStatsServerboundMessage, WebSocketChannel,
         WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse,
     },
-    stream::apply_role_restrictions,
+    stream::{PACKET_SIZE, apply_role_restrictions},
 };
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
@@ -154,7 +154,7 @@ async fn handle_ws(
         fps: stream_request.fps,
         fps_x100: stream_request.fps * 100,
         bitrate: stream_request.bitrate,
-        packet_size: 2048,
+        packet_size: PACKET_SIZE,
         encryption_flags: EncryptionFlags::AUDIO | EncryptionFlags::FOUNDATION_MICROPHONE,
         streaming_remotely: StreamingConfig::Auto,
         sops: true,

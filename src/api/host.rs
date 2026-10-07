@@ -10,9 +10,7 @@ use actix_web::{
     web::{Data, Json, Query},
 };
 use futures::future::try_join_all;
-use moonlight_common::{
-    crypto::rustcrypto::RustCryptoBackend, high::MoonlightClientError, http::pair::PairPin,
-};
+use moonlight_common::{crypto::rustcrypto::RustCryptoBackend, http::pair::PairPin};
 use tracing::warn;
 
 use crate::{
@@ -151,7 +149,7 @@ async fn delete_host(
 /// Maps a pairing failure onto the reason communicated to the client, plus a
 /// human-readable detail string.
 fn pair_fail_reason(err: &AppError) -> (PairFailReason, Option<String>) {
-    use moonlight_common::http::pair::client::ClientPairingError;
+    use moonlight_common::error::Error as MoonlightError;
 
     let reason = match err {
         AppError::PairingInProgress => PairFailReason::PairingInProgress,
@@ -160,13 +158,9 @@ fn pair_fail_reason(err: &AppError) -> (PairFailReason, Option<String>) {
         AppError::HostPaired => PairFailReason::AlreadyPaired,
         AppError::HostNotFound => PairFailReason::HostUnreachable,
         AppError::Moonlight(err) => match err {
-            MoonlightClientError::Pairing(ClientPairingError::FailedWrongPin) => {
-                PairFailReason::PinIncorrect
-            }
-            MoonlightClientError::Pairing(ClientPairingError::FailedAlreadyInProgress) => {
-                PairFailReason::PairingInProgress
-            }
-            MoonlightClientError::Offline | MoonlightClientError::Backend(_) => {
+            MoonlightError::PairingFailedWrongPin => PairFailReason::PinIncorrect,
+            MoonlightError::PairingFailedAlreadyInProgress => PairFailReason::PairingInProgress,
+            MoonlightError::ConnectionFailed | MoonlightError::ConnectionTimeout => {
                 PairFailReason::HostUnreachable
             }
             _ => PairFailReason::Internal,
@@ -278,7 +272,7 @@ pub async fn cancel_host(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use moonlight_common::http::pair::client::ClientPairingError;
+    use moonlight_common::error::Error as MoonlightError;
 
     fn reason_of(err: AppError) -> PairFailReason {
         pair_fail_reason(&err).0
@@ -307,19 +301,21 @@ mod tests {
     #[test]
     fn moonlight_pairing_errors_map_to_their_reason() {
         assert_eq!(
-            reason_of(AppError::Moonlight(MoonlightClientError::Pairing(
-                ClientPairingError::FailedWrongPin
-            ))),
+            reason_of(AppError::Moonlight(MoonlightError::PairingFailedWrongPin)),
             PairFailReason::PinIncorrect
         );
         assert_eq!(
-            reason_of(AppError::Moonlight(MoonlightClientError::Pairing(
-                ClientPairingError::FailedAlreadyInProgress
-            ))),
+            reason_of(AppError::Moonlight(
+                MoonlightError::PairingFailedAlreadyInProgress
+            )),
             PairFailReason::PairingInProgress
         );
         assert_eq!(
-            reason_of(AppError::Moonlight(MoonlightClientError::Offline)),
+            reason_of(AppError::Moonlight(MoonlightError::ConnectionFailed)),
+            PairFailReason::HostUnreachable
+        );
+        assert_eq!(
+            reason_of(AppError::Moonlight(MoonlightError::ConnectionTimeout)),
             PairFailReason::HostUnreachable
         );
     }

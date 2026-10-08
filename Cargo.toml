@@ -24,6 +24,7 @@ rustls = { version = "0.23.40", default-features = false, features = [
 ] }
 actix-files = "0.6.6"
 actix-ws = "0.4.0"
+socket2 = { version = "0.6.5", features = ["all"] }
 
 # Moonlight
 # Make sure to keep the ubrn.config.yaml repo the same as this

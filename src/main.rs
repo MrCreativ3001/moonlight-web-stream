@@ -3,9 +3,11 @@ use rustls::{
     ServerConfig,
     pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
 };
+use socket2::{Domain, Protocol, Socket, Type};
 use std::{
     fs::OpenOptions,
     io::{self, IsTerminal},
+    net::{SocketAddr, TcpListener},
     path::PathBuf,
     str::FromStr,
 };
@@ -316,10 +318,39 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
             .with_no_client_auth()
             .with_single_cert(certificate_chain, private_key)?;
 
-        server.bind_rustls_0_23(bind_address, config)?.run().await?;
+        server
+            .listen_rustls_0_23(bind_listener(bind_address)?, config)?
+            .run()
+            .await?;
     } else {
-        server.bind(bind_address)?.run().await?;
+        server.listen(bind_listener(bind_address)?)?.run().await?;
     }
 
     Ok(())
+}
+
+/// The maximum amount of data that may wait unsent in the kernel send buffer of a connection.
+///
+/// Without a limit the kernel buffers up to several MB, which is seconds of video for a slow
+/// web socket client. Limiting it makes that backlog wait in the web socket sender instead,
+/// where it is measured and dropped (see `api::stream::web_socket`).
+#[cfg(any(target_os = "linux", target_os = "android"))]
+const MAX_UNSENT_BYTES: u32 = 128 * 1024;
+
+/// Creates the listener like [`HttpServer::bind`] does, and limits the unsent data of the
+/// accepted connections to `MAX_UNSENT_BYTES` where supported. Accepted connections inherit it.
+fn bind_listener(address: SocketAddr) -> io::Result<TcpListener> {
+    let socket = Socket::new(
+        Domain::for_address(address),
+        Type::STREAM,
+        Some(Protocol::TCP),
+    )?;
+    #[cfg(not(windows))]
+    socket.set_reuse_address(true)?;
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    socket.set_tcp_notsent_lowat(MAX_UNSENT_BYTES)?;
+    socket.bind(&address.into())?;
+    socket.listen(1024)?;
+
+    Ok(socket.into())
 }

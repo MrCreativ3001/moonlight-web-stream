@@ -1,4 +1,11 @@
-use std::{pin::pin, sync::Arc, time::Duration};
+use std::{
+    pin::pin,
+    sync::{
+        Arc, Mutex, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 use crate::api::{
     bindings::{
@@ -42,8 +49,115 @@ use crate::{
     app::{AppError, host::HostId, user::AuthenticatedUser},
 };
 
+/// How long the message the sending task is writing may have been queued before
+/// video frames are dropped. Measuring the age of the queue instead of its size
+/// means a single large frame that was just queued does not count as a backlog.
+const MAX_QUEUE_DELAY_MS: u64 = 250;
+const MAX_QUEUE_DELAY: Duration = Duration::from_millis(MAX_QUEUE_DELAY_MS);
+/// Queue delay that has to be reached again before video frames are sent again.
+const RESUME_QUEUE_DELAY: Duration = Duration::from_millis(MAX_QUEUE_DELAY_MS / 4);
+/// Minimum time between two idr requests while video frames are being dropped.
+/// Requesting an idr for every dropped idr would make the host encode a keyframe
+/// for almost every frame, which wastes bandwidth and does not recover any faster.
+const IDR_RE_REQUEST_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Decides whether a video frame can be sent to the client or has to be
+/// dropped because the client cannot keep up.
+///
+/// The queue delay is how long the message the sending task is currently
+/// writing has been queued: it grows while the client is not reading. When it
+/// exceeds the limit, video frames are dropped until the queue has drained and
+/// an idr frame arrives that the client can resume decoding with.
+struct VideoBacklog {
+    /// Shared with the sending task so video that is already queued is dropped too.
+    dropping_video: Arc<AtomicBool>,
+    dropping_since: Instant,
+    dropped_frames: u32,
+    last_idr_request_at: Instant,
+}
+
+/// What to do with a video frame that is about to be queued for the client.
+enum VideoFrameDecision {
+    /// The client is keeping up, send the frame.
+    Send,
+    /// The client is too far behind, drop the frame.
+    Drop {
+        /// Whether a new idr frame has to be requested from the host.
+        request_idr: bool,
+    },
+}
+
+impl VideoBacklog {
+    fn new(dropping_video: Arc<AtomicBool>) -> Self {
+        let now = Instant::now();
+
+        Self {
+            dropping_video,
+            dropping_since: now,
+            dropped_frames: 0,
+            last_idr_request_at: now,
+        }
+    }
+
+    /// Returns whether video frames are currently being dropped.
+    fn is_dropping(&self) -> bool {
+        self.dropping_video.load(Ordering::Relaxed)
+    }
+
+    /// Decides what to do with the next video frame. `is_idr` has to be set for
+    /// a key frame, `queue_delay` is how long the message currently being sent
+    /// has been queued, and `now` is the time the frame arrived.
+    fn on_frame(
+        &mut self,
+        is_idr: bool,
+        queue_delay: Duration,
+        now: Instant,
+    ) -> VideoFrameDecision {
+        if self.is_dropping() {
+            if !is_idr || queue_delay > RESUME_QUEUE_DELAY {
+                self.dropped_frames += 1;
+
+                // Only ask for a new idr once the queue has drained. Asking
+                // for one for every idr that arrives while the queue is still
+                // being drained makes the host encode a keyframe for nearly
+                // every frame, and all of them get dropped anyway.
+                if queue_delay <= RESUME_QUEUE_DELAY
+                    && now.duration_since(self.last_idr_request_at) >= IDR_RE_REQUEST_INTERVAL
+                {
+                    self.last_idr_request_at = now;
+                    return VideoFrameDecision::Drop { request_idr: true };
+                }
+
+                return VideoFrameDecision::Drop { request_idr: false };
+            }
+
+            info!(
+                dropped_for_ms = now.duration_since(self.dropping_since).as_millis() as u64,
+                dropped_frames = self.dropped_frames,
+                "web socket client caught up, resuming video"
+            );
+            self.dropping_video.store(false, Ordering::Relaxed);
+        } else if queue_delay > MAX_QUEUE_DELAY {
+            warn!(
+                queue_delay_ms = queue_delay.as_millis() as u64,
+                queue_delay_limit_ms = MAX_QUEUE_DELAY_MS,
+                "web socket client is behind, dropping video until the next idr"
+            );
+            self.dropping_video.store(true, Ordering::Relaxed);
+            self.dropping_since = now;
+            self.dropped_frames = 1;
+            self.last_idr_request_at = now;
+
+            return VideoFrameDecision::Drop { request_idr: true };
+        }
+
+        VideoFrameDecision::Send
+    }
+}
+
 enum WsData {
     Bytes(Bytes),
+    Video(Bytes),
     Text(String),
 }
 
@@ -180,6 +294,10 @@ async fn handle_ws(
     let server_codec_mode_support = host.server_codec_mode_support().await?;
     settings.adjust_for_server(server_version, &gfe_version, server_codec_mode_support)?;
 
+    // Drop video for clients that cannot keep up with the stream.
+    let dropping_video = Arc::new(AtomicBool::new(false));
+    let video_backlog = VideoBacklog::new(dropping_video.clone());
+
     // encryption
     let aes_key = AesKey::new_random(&RustCryptoBackend)?;
     let aes_iv = AesIv::new_random(&RustCryptoBackend)?;
@@ -222,20 +340,30 @@ async fn handle_ws(
     info!(response = ?response, "sending response to client");
 
     let (mut ws_channel_sender, mut ws_channel_receiver) = unbounded_channel();
+
+    // When the message the sending task is currently writing was queued, None while idle.
+    let sending_queued_at: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+
+    let sending_queued_at_sender = sending_queued_at.clone();
+    let dropping_video_sender = dropping_video.clone();
     spawn(
         async move {
-            while let Some(data) = ws_channel_receiver.recv().await {
-                match data {
-                    WsData::Bytes(bytes) => {
-                        if ws_sender.binary(bytes).await.is_err() {
-                            break;
-                        }
-                    }
-                    WsData::Text(text) => {
-                        if ws_sender.text(text).await.is_err() {
-                            break;
-                        }
-                    }
+            while let Some((queued_at, data)) = ws_channel_receiver.recv().await {
+                if let WsData::Video(_) = &data
+                    && dropping_video_sender.load(Ordering::Relaxed)
+                {
+                    continue;
+                }
+
+                set_sending_queued_at(&sending_queued_at_sender, Some(queued_at));
+                let result = match data {
+                    WsData::Bytes(bytes) | WsData::Video(bytes) => ws_sender.binary(bytes).await,
+                    WsData::Text(text) => ws_sender.text(text).await,
+                };
+                set_sending_queued_at(&sending_queued_at_sender, None);
+
+                if result.is_err() {
+                    break;
                 }
             }
 
@@ -248,7 +376,16 @@ async fn handle_ws(
     send_ws_message(&mut ws_channel_sender, response);
 
     // main loop
-    if let Err(err) = ws_loop(ws_channel_sender, ws_receiver, stream, control_config).await {
+    if let Err(err) = ws_loop(
+        ws_channel_sender,
+        sending_queued_at,
+        video_backlog,
+        ws_receiver,
+        stream,
+        control_config,
+    )
+    .await
+    {
         error!(error = %err, "web socket main loop errored, closing stream");
     }
 
@@ -256,7 +393,9 @@ async fn handle_ws(
 }
 
 async fn ws_loop(
-    mut ws_sender: UnboundedSender<WsData>,
+    mut ws_sender: UnboundedSender<(Instant, WsData)>,
+    sending_queued_at: Arc<Mutex<Option<Instant>>>,
+    mut video_backlog: VideoBacklog,
     mut ws_receiver: MessageStream,
     mut stream: MoonlightStream,
     control_config: ControlPacketConfig,
@@ -286,7 +425,7 @@ async fn ws_loop(
 
                         buffer[0] = WebSocketChannel::AUDIO;
 
-                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
+                        let _ = queue_ws_data(&ws_sender, WsData::Bytes(buffer.into()));
                     }
                     MoonlightStreamEvent::Video(VideoStreamEvent::SignalIdr) => {
                         if let Err(err)=  stream.send_raw(ControlPacket::RequestIdr) {
@@ -298,22 +437,35 @@ async fn ws_loop(
                             continue;
                         }
 
+                        // TODO: make frame type from video packet public, 2==Idr
+                        let is_idr = frame.metadata().frame_type.serialize() == 2;
+                        let now = Instant::now();
+                        let queue_delay = get_sending_queued_at(&sending_queued_at)
+                            .map_or(Duration::ZERO, |queued_at| now.duration_since(queued_at));
+
+                        if let VideoFrameDecision::Drop { request_idr } =
+                            video_backlog.on_frame(is_idr, queue_delay, now)
+                        {
+                            if request_idr
+                                && let Err(err) = stream.send_raw(ControlPacket::RequestIdr)
+                            {
+                                warn!(error = %err, "failed to request idr after dropping video frames");
+                            }
+
+                            continue;
+                        }
+
                         // TODO: avoid using payloading and depayloading the frame like this
                         let mut buffer = vec![0; 1 + 5 + frame.raw().len()];
                         buffer[(1 + 5)..].copy_from_slice(frame.raw());
 
                         buffer[0] = WebSocketChannel::VIDEO;
-                        // TODO: make frame type from video packet public, 2==Idr
-                        buffer[1] = if frame.metadata().frame_type.serialize() == 2 {
-                            1
-                        } else {
-                            0
-                        };
+                        buffer[1] = if is_idr { 1 } else { 0 };
                         buffer[2..6].copy_from_slice(
                             &(frame.metadata().timestamp.as_micros() as u32).to_be_bytes(),
                         );
 
-                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
+                        let _ = queue_ws_data(&ws_sender, WsData::Video(buffer.into()));
                     }
                     MoonlightStreamEvent::Control(ControlStreamEvent::Packet(packet)) => {
                         let mut buffer = vec![0; ControlPacket::MAX_SIZE + 1];
@@ -326,7 +478,7 @@ async fn ws_loop(
                             .unwrap();
 
                         buffer.truncate(1 + packet_len);
-                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
+                        let _ = queue_ws_data(&ws_sender, WsData::Bytes(buffer.into()));
                     }
                     _ => {}
                 }
@@ -411,8 +563,29 @@ async fn ws_loop(
     Ok(())
 }
 
+fn set_sending_queued_at(sending_queued_at: &Mutex<Option<Instant>>, value: Option<Instant>) {
+    *sending_queued_at
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = value;
+}
+
+fn get_sending_queued_at(sending_queued_at: &Mutex<Option<Instant>>) -> Option<Instant> {
+    *sending_queued_at
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+fn queue_ws_data(sender: &UnboundedSender<(Instant, WsData)>, data: WsData) -> bool {
+    if let Err(err) = sender.send((Instant::now(), data)) {
+        warn!(error = %err, "failed to send web socket message");
+        return false;
+    }
+
+    true
+}
+
 fn send_ws_message(
-    sender: &mut UnboundedSender<WsData>,
+    sender: &mut UnboundedSender<(Instant, WsData)>,
     message: WebSocketClientboundMessage,
 ) -> bool {
     trace!(message = ?message, "sending text message to client");
@@ -425,10 +598,149 @@ fn send_ws_message(
         }
     };
 
-    if let Err(err) = sender.send(WsData::Text(text)) {
-        warn!(error = %err, "failed to send web socket message");
-        return false;
+    queue_ws_data(sender, WsData::Text(text))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ms(ms: u64) -> Duration {
+        Duration::from_millis(ms)
     }
 
-    true
+    /// Creates a backlog policy with a fresh start time.
+    fn backlog() -> (VideoBacklog, Instant) {
+        (
+            VideoBacklog::new(Arc::new(AtomicBool::new(false))),
+            Instant::now(),
+        )
+    }
+
+    #[test]
+    fn sends_frames_while_the_queue_delay_is_at_the_limit() {
+        let (mut backlog, now) = backlog();
+
+        assert!(matches!(
+            backlog.on_frame(false, MAX_QUEUE_DELAY, now),
+            VideoFrameDecision::Send
+        ));
+        assert!(!backlog.is_dropping());
+    }
+
+    #[test]
+    fn sends_frames_while_a_large_frame_was_just_queued() {
+        let (mut backlog, now) = backlog();
+
+        // A large frame that was queued right before this one is no backlog.
+        assert!(matches!(
+            backlog.on_frame(false, Duration::ZERO, now),
+            VideoFrameDecision::Send
+        ));
+        assert!(!backlog.is_dropping());
+    }
+
+    #[test]
+    fn starts_dropping_and_requests_an_idr_when_the_queue_delay_is_too_large() {
+        let (mut backlog, now) = backlog();
+
+        assert!(matches!(
+            backlog.on_frame(true, MAX_QUEUE_DELAY + ms(1), now),
+            VideoFrameDecision::Drop { request_idr: true }
+        ));
+        assert!(backlog.is_dropping());
+    }
+
+    #[test]
+    fn keeps_dropping_until_the_queue_drained_and_an_idr_arrives() {
+        let (mut backlog, now) = backlog();
+
+        assert!(matches!(
+            backlog.on_frame(true, MAX_QUEUE_DELAY + ms(1), now),
+            VideoFrameDecision::Drop { .. }
+        ));
+
+        // Still dropping, so no idr request yet: the last one was just sent.
+        assert!(matches!(
+            backlog.on_frame(false, Duration::ZERO, now),
+            VideoFrameDecision::Drop { request_idr: false }
+        ));
+        assert!(backlog.is_dropping());
+
+        // An idr while the queue has not drained is dropped, and asking for
+        // another one would just make the host encode another keyframe.
+        assert!(matches!(
+            backlog.on_frame(
+                true,
+                RESUME_QUEUE_DELAY + ms(1),
+                now + IDR_RE_REQUEST_INTERVAL
+            ),
+            VideoFrameDecision::Drop { request_idr: false }
+        ));
+        assert!(backlog.is_dropping());
+
+        // Once the queue has drained, the idr is used to resume.
+        assert!(matches!(
+            backlog.on_frame(true, RESUME_QUEUE_DELAY, now + IDR_RE_REQUEST_INTERVAL),
+            VideoFrameDecision::Send
+        ));
+        assert!(!backlog.is_dropping());
+    }
+
+    #[test]
+    fn re_requests_an_idr_after_the_interval_once_the_queue_drained() {
+        let (mut backlog, now) = backlog();
+
+        assert!(matches!(
+            backlog.on_frame(false, MAX_QUEUE_DELAY + ms(1), now),
+            VideoFrameDecision::Drop { request_idr: true }
+        ));
+
+        // The queue has drained but the interval has not passed yet.
+        assert!(matches!(
+            backlog.on_frame(false, Duration::ZERO, now + IDR_RE_REQUEST_INTERVAL - ms(1)),
+            VideoFrameDecision::Drop { request_idr: false }
+        ));
+
+        assert!(matches!(
+            backlog.on_frame(false, Duration::ZERO, now + IDR_RE_REQUEST_INTERVAL),
+            VideoFrameDecision::Drop { request_idr: true }
+        ));
+
+        // Rate limited again.
+        assert!(matches!(
+            backlog.on_frame(
+                false,
+                Duration::ZERO,
+                now + IDR_RE_REQUEST_INTERVAL * 2 - ms(1)
+            ),
+            VideoFrameDecision::Drop { request_idr: false }
+        ));
+
+        assert!(matches!(
+            backlog.on_frame(false, Duration::ZERO, now + IDR_RE_REQUEST_INTERVAL * 2),
+            VideoFrameDecision::Drop { request_idr: true }
+        ));
+    }
+
+    #[test]
+    fn does_not_re_request_an_idr_while_the_queue_has_not_drained() {
+        let (mut backlog, now) = backlog();
+
+        assert!(matches!(
+            backlog.on_frame(false, MAX_QUEUE_DELAY + ms(1), now),
+            VideoFrameDecision::Drop { request_idr: true }
+        ));
+
+        // Even after the interval, no new idr is requested while the message
+        // being sent has been queued longer than the resume delay.
+        assert!(matches!(
+            backlog.on_frame(
+                false,
+                RESUME_QUEUE_DELAY + ms(1),
+                now + Duration::from_secs(1)
+            ),
+            VideoFrameDecision::Drop { request_idr: false }
+        ));
+    }
 }

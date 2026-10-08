@@ -8,6 +8,12 @@ import { videoDecoderCodecInBand } from "./codec_level"
 import { CodecStreamTranslator, H264StreamVideoTranslator, H265StreamVideoTranslator, VIDEO_DECODER_CODECS_OUT_OF_BAND } from "./annex_b_translator"
 import { DataVideoRenderer, FrameVideoRenderer, VideoDecodeUnit, VideoRendererSetup } from "./index"
 
+const CATCH_UP_BACKLOG_MS = 500
+const CATCH_UP_LIVE_BACKLOG_MS = 150
+const CATCH_UP_GRACE_MS = 1500
+const CATCH_UP_MAX_MS = 1000
+const IDR_RETRY_MS = 2000
+
 export const VIDEO_DECODER_CODECS_IN_BAND: Record<keyof VideoFormats, string> = {
     // avc1 = out of band config, avc3 = in band with sps, pps, idr
     "h264": "avc3.42E01E",
@@ -191,7 +197,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
 
         this.logger?.debug(`VideoDecoder config: ${JSON.stringify(this.config)}`)
 
-        this.reset()
+        this.reset(false)
 
         this.decoderSetupFinished = true
 
@@ -203,6 +209,13 @@ export class VideoDecoderPipe implements DataVideoRenderer {
     private decoderSetupFinished = false
     private requestedIdr = false
     private needsKeyFrame = true
+    private resyncing = false
+    private resyncStartedAt = 0
+    private lastResumeAt = 0
+    private lastIdrRequestAt = 0
+    private latestTimestampUs = 0
+    private clockBaseTsUs: number | null = null
+    private clockBaseWallMs = 0
 
     private bufferedUnits: Array<VideoDecodeUnit> = []
     submitDecodeUnit(unit: VideoDecodeUnit): void {
@@ -223,8 +236,20 @@ export class VideoDecoderPipe implements DataVideoRenderer {
             }
         }
 
+        this.noteVideoUnit(unit.timestampMicroseconds)
+
+        if (this.resyncing) {
+            // We are behind on a stall and dropping to live: drop everything, including key frames.
+            // pollRequestIdr() leaves this state and requests a key frame once frames are arriving
+            // at (roughly) realtime again.
+            return
+        }
 
         if (this.translator) {
+            if (unit.type != "key" && this.needsKeyFrame) {
+                return
+            }
+
             const value = this.translator.submitDecodeUnit(unit)
             if (value.error) {
                 this.errored = true
@@ -249,6 +274,13 @@ export class VideoDecoderPipe implements DataVideoRenderer {
                 this.requestedIdr = false
             }
 
+            if (unit.type == "key") {
+                if (this.needsKeyFrame) {
+                    this.resumeFromKeyFrame(unit.timestampMicroseconds)
+                }
+                this.needsKeyFrame = false
+            }
+
             const encodedChunk = new EncodedVideoChunk({
                 type: unit.type,
                 timestamp: unit.timestampMicroseconds,
@@ -259,6 +291,9 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         } else {
             if (unit.type != "key" && this.needsKeyFrame) {
                 return
+            }
+            if (unit.type == "key" && this.needsKeyFrame) {
+                this.resumeFromKeyFrame(unit.timestampMicroseconds)
             }
             this.needsKeyFrame = false
             this.requestedIdr = false
@@ -274,34 +309,92 @@ export class VideoDecoderPipe implements DataVideoRenderer {
         }
     }
 
-    private reset() {
-        if (!this.translator) {
-            this.decoder.reset()
-            this.needsKeyFrame = true
+    private noteVideoUnit(timestampUs: number) {
+        if (this.clockBaseTsUs === null || timestampUs < this.clockBaseTsUs) {
+            this.clockBaseTsUs = timestampUs
+            this.clockBaseWallMs = Date.now()
+            this.latestTimestampUs = timestampUs
+            return
+        }
 
+        if (timestampUs > this.latestTimestampUs) {
+            this.latestTimestampUs = timestampUs
+        }
+    }
+
+    private videoBacklogMs(): number {
+        if (this.clockBaseTsUs === null) {
+            return 0
+        }
+
+        const streamElapsedMs = (this.latestTimestampUs - this.clockBaseTsUs) / 1000
+        const wallElapsedMs = Date.now() - this.clockBaseWallMs
+
+        return Math.max(0, wallElapsedMs - streamElapsedMs)
+    }
+
+    private resumeFromKeyFrame(timestampUs: number) {
+        this.lastResumeAt = Date.now()
+        this.clockBaseTsUs = timestampUs
+        this.clockBaseWallMs = this.lastResumeAt
+        this.latestTimestampUs = Math.max(this.latestTimestampUs, timestampUs)
+    }
+
+    private reset(resync = true) {
+        this.decoder.reset()
+        this.needsKeyFrame = true
+        this.resyncing = resync
+
+        if (!this.translator) {
             if (this.config) {
                 this.decoder.configure(this.config)
             } else {
                 this.logger?.debug("Failed to configure VideoDecoder because of missing config", { type: "fatal" })
             }
-        } else if (this.config) {
-            this.translator.setBaseConfig(this.config)
+        } else {
+            const config = this.translator.getCurrentConfig()
+
+            if (config?.description) {
+                this.decoder.configure(config)
+            }
         }
     }
 
     pollRequestIdr(): boolean {
         let requestIdr = false
 
-        const estimatedQueueDelayMs = this.decoder.decodeQueueSize * 1000 / this.fps
-        if (estimatedQueueDelayMs > 200 && this.decoder.decodeQueueSize > 2) {
-            // We have more than 200ms second backlog in the decoder
-            // -> This decoder is ass, request idr, flush that decoder
+        const now = Date.now()
+        const estimatedQueueDelayMs = this.fps > 0 ? this.decoder.decodeQueueSize * 1000 / this.fps : 0
+        const totalBacklogMs = this.videoBacklogMs() + estimatedQueueDelayMs
 
-            if (!this.requestedIdr) {
+        if (this.resyncing) {
+            if (totalBacklogMs < CATCH_UP_LIVE_BACKLOG_MS) {
+                // We caught up with the live edge, get a key frame to resume decoding
+                this.resyncing = false
                 requestIdr = true
-                this.reset()
+
+                console.debug(`Catch-up done, video is realtime again (backlog ${totalBacklogMs.toFixed(0)}ms), requesting idr`)
+            } else if (now - this.resyncStartedAt > CATCH_UP_MAX_MS) {
+                // The backlog doesn't drain, e.g. the connection is slower than the stream.
+                // Resume anyway: the key frame becomes the new realtime reference.
+                this.resyncing = false
+                requestIdr = true
+
+                console.debug(`Catch-up timed out, video is still behind by ${totalBacklogMs.toFixed(0)}ms, requesting idr`)
             }
-            console.debug(`Requesting idr because of decode queue size(${this.decoder.decodeQueueSize}) and estimated delay of the queue: ${estimatedQueueDelayMs}`)
+        } else if (!this.needsKeyFrame && now - this.lastResumeAt > CATCH_UP_GRACE_MS && totalBacklogMs > CATCH_UP_BACKLOG_MS) {
+            // We are behind and playing catch-up: drop to live instead.
+            // Not while waiting for a key frame: nothing is decoded then, and the key frame resets the backlog.
+            // No idr request yet: it would arrive behind the backlog and get dropped again anyway.
+            this.reset()
+            this.resyncStartedAt = now
+
+            console.debug(`Resyncing to live because video is behind by ${totalBacklogMs.toFixed(0)}ms (decoder queue ${estimatedQueueDelayMs.toFixed(0)}ms)`)
+        }
+
+        if (!this.resyncing && this.needsKeyFrame && this.requestedIdr && now - this.lastIdrRequestAt > IDR_RETRY_MS) {
+            // We didn't receive the key frame we asked for, ask again
+            requestIdr = true
         }
 
         if ("pollRequestIdr" in this.base && typeof this.base.pollRequestIdr == "function") {
@@ -312,6 +405,7 @@ export class VideoDecoderPipe implements DataVideoRenderer {
 
         if (requestIdr) {
             this.requestedIdr = true
+            this.lastIdrRequestAt = now
         }
 
         return requestIdr

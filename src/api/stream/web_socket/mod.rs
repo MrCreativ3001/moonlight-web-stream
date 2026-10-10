@@ -5,7 +5,10 @@ use crate::api::{
         StreamStatsClientboundMessage, StreamStatsServerboundMessage, WebSocketChannel,
         WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse,
     },
-    stream::{PACKET_SIZE, apply_role_restrictions},
+    stream::{
+        PACKET_SIZE, apply_role_restrictions,
+        web_socket::delay_controller::{DelayController, DelayState},
+    },
 };
 use actix_web::{Error, HttpRequest, HttpResponse, get, rt::spawn, web::Payload};
 use actix_ws::{Message, MessageStream, Session};
@@ -33,7 +36,7 @@ use moonlight_common::{
 use tokio::{
     select,
     sync::mpsc::{UnboundedSender, unbounded_channel},
-    time::{interval, sleep},
+    time::{Instant, interval, sleep},
 };
 use tracing::{Instrument, debug, debug_span, error, info, instrument, trace, warn};
 
@@ -42,7 +45,12 @@ use crate::{
     app::{AppError, host::HostId, user::AuthenticatedUser},
 };
 
+const IDR_WAIT_TIME: Duration = Duration::from_millis(500);
+
+mod delay_controller;
+
 enum WsData {
+    Ping(Bytes),
     Bytes(Bytes),
     Text(String),
 }
@@ -236,6 +244,11 @@ async fn handle_ws(
                             break;
                         }
                     }
+                    WsData::Ping(bytes) => {
+                        if ws_sender.ping(&bytes).await.is_err() {
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -245,7 +258,10 @@ async fn handle_ws(
     );
 
     // send response
-    send_ws_message(&mut ws_channel_sender, response);
+    if !send_ws_message(&mut ws_channel_sender, response) {
+        error!("failed to send web socket stream response");
+        return Err(AppError::StreamClosed);
+    }
 
     // main loop
     if let Err(err) = ws_loop(ws_channel_sender, ws_receiver, stream, control_config).await {
@@ -263,12 +279,19 @@ async fn ws_loop(
 ) -> Result<(), AppError> {
     let mut relay_stats_ticker = pin!(interval(Duration::from_secs(1)));
 
+    let mut ping_ticker = pin!(interval(Duration::from_millis(200)));
+    let mut delay_controller = DelayController::default();
+    let mut warned_congestion = false;
+
+    let mut waiting_for_idr_since: Option<Instant> = None;
     let mut ws_stopped = false;
 
     loop {
         if !stream.is_alive() {
             break;
         }
+
+        delay_controller.update(Instant::now());
 
         select! {
             // drive the moonlight stream forward
@@ -286,7 +309,14 @@ async fn ws_loop(
 
                         buffer[0] = WebSocketChannel::AUDIO;
 
-                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
+                        if matches!(delay_controller.delay_state(), DelayState::Severe) {
+                            trace!("dropping audio packet because of congestion");
+                            continue;
+                        }
+
+                        if ws_sender.send(WsData::Bytes(buffer.into())).is_err() {
+                            warn!("failed to relay audio packet");
+                        }
                     }
                     MoonlightStreamEvent::Video(VideoStreamEvent::SignalIdr) => {
                         if let Err(err)=  stream.send_raw(ControlPacket::RequestIdr) {
@@ -298,13 +328,28 @@ async fn ws_loop(
                             continue;
                         }
 
+                        // TODO: make frame type from video packet public, 2==Idr
+                        let is_idr = frame.metadata().frame_type.serialize() == 2;
+
+                        if let Some(wait_idr_since) = waiting_for_idr_since {
+                            if is_idr {
+                                debug!("got idr");
+
+                                waiting_for_idr_since = None;
+                            } else {
+                                if wait_idr_since.elapsed() >= IDR_WAIT_TIME && let Err(err) = stream.send_raw(ControlPacket::RequestIdr) {
+                                    warn!(error = %err, "failed to request idr");
+                                }
+                                continue;
+                            }
+                        }
+
                         // TODO: avoid using payloading and depayloading the frame like this
                         let mut buffer = vec![0; 1 + 5 + frame.raw().len()];
                         buffer[(1 + 5)..].copy_from_slice(frame.raw());
 
                         buffer[0] = WebSocketChannel::VIDEO;
-                        // TODO: make frame type from video packet public, 2==Idr
-                        buffer[1] = if frame.metadata().frame_type.serialize() == 2 {
+                        buffer[1] = if is_idr {
                             1
                         } else {
                             0
@@ -313,7 +358,14 @@ async fn ws_loop(
                             &(frame.metadata().timestamp.as_micros() as u32).to_be_bytes(),
                         );
 
-                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
+                        if matches!(delay_controller.delay_state(), DelayState::Congested | DelayState::Severe) {
+                            trace!(delay_state = ?delay_controller.delay_state(), "dropping video packet because of congestion, requesting and waiting for idr");
+                            waiting_for_idr_since = Some(Instant::now());
+                        }
+
+                        if ws_sender.send(WsData::Bytes(buffer.into())).is_err() {
+                            warn!("failed to relay video packet");
+                        }
                     }
                     MoonlightStreamEvent::Control(ControlStreamEvent::Packet(packet)) => {
                         let mut buffer = vec![0; ControlPacket::MAX_SIZE + 1];
@@ -326,9 +378,27 @@ async fn ws_loop(
                             .unwrap();
 
                         buffer.truncate(1 + packet_len);
-                        let _ = ws_sender.send(WsData::Bytes(buffer.into()));
+
+                        if ws_sender.send(WsData::Bytes(buffer.into())).is_err() {
+                            warn!(packet = ?packet, "failed to relay control packet");
+                        }
                     }
                     _ => {}
+                }
+            }
+            // delay controller
+            _ = ping_ticker.tick() => {
+                let bytes = delay_controller.on_ping_send(Instant::now());
+
+                if matches!(delay_controller.delay_state(), DelayState::Congested | DelayState::Severe) && !warned_congestion {
+                    warn!(delay_state = ?delay_controller.delay_state(), average_delay = ?delay_controller.average_delay(), "web socket stream has delay, to reduce backlog audio could be temporarly disabled");
+                    warned_congestion = true;
+                } else {
+                    warned_congestion = false;
+                }
+
+                if ws_sender.send(WsData::Ping(bytes)).is_err() {
+                    warn!("failed to send ping");
                 }
             }
             // relay stats
@@ -392,6 +462,9 @@ async fn ws_loop(
                         {
                             send_ws_message(&mut ws_sender, WebSocketClientboundMessage::Stats(StreamStatsClientboundMessage::Pong(id)));
                         }
+                    }
+                    Message::Pong(bytes) => {
+                        delay_controller.on_pong_receive(&bytes, Instant::now());
                     }
                     Message::Close(_) => {
                         // The client closed the web socket. Stop the host stream,

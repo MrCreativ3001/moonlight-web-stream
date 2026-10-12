@@ -41,7 +41,7 @@
     "html-webpack-plugin": "5.6.8",
     "style-loader": "4.0.0",
     "ts-loader": "9.6.2",
-    "typescript": "7.0.2",
+    "typescript": "5.9.3",
     "uniffi-bindgen-react-native": "0.31.0-6",
     "webpack": "5.111.1",
     "webpack-cli": "7.2.3"

@@ -935,6 +935,78 @@ canvas.video-stream {
     transform: none;
 }
 
+.stream-keyboard-simulated {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+
+    display: flex;
+    flex-direction: column;
+
+    background-color: rgba(51, 51, 51, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 5px 5px 0 0;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.stream-keyboard-simulated.hidden {
+    display: none;
+}
+
+.stream-keyboard-simulated>div {
+    width: 100%;
+    box-sizing: border-box;
+
+    display: flex;
+    flex-direction: row;
+    justify-content: space-evenly;
+}
+
+.stream-keyboard-simulated-key {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 3px;
+    padding: 12px 4px;
+
+    background-color: #424242;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    box-shadow: none;
+
+    font-family: sans-serif;
+    font-size: 1rem;
+    font-weight: 400;
+    text-shadow: none;
+
+    cursor: pointer;
+    transform: none;
+    transition: none !important;
+    animation: none !important;
+}
+
+.stream-keyboard-simulated-key:hover,
+.stream-keyboard-simulated-key:active {
+    background-color: #555555;
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: none;
+    transform: none !important;
+}
+
+.stream-keyboard-simulated-key:active {
+    background-color: #666666;
+}
+
+.stream-keyboard-simulated-key.toggle-on {
+    background-color: #3f51b5;
+    color: #ffffff;
+    border-color: #7986cb;
+    box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.2);
+}
+
 /* Prevent starting animation for elements */
 .prevent-start-transition {
     transition: none;

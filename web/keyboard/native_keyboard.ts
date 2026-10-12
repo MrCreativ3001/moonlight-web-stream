@@ -51,7 +51,7 @@ export class NativeScreenKeyboard implements ScreenKeyboard {
         document.addEventListener("click", this.refocusIfEnabled.bind(this))
     }
 
-    getHiddenElement() {
+    getElement() {
         return this.root
     }
 

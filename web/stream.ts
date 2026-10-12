@@ -10,7 +10,7 @@ import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sideba
 import { adoptRoleDefaultLanguage, getCurrentLanguage, getTranslations, Language, normalizeLanguage } from "./i18n"
 import { requestKeyboardLock } from "./iframe"
 import "./polyfill/index"
-import { KeyboardModeChangeEvent, ScreenKeyboard, ScreenKeyboardListener, TextEvent } from "./keyboard"
+import { KeyboardModeChangeEvent, likelyHasNativeOnScreenKeyboard, ScreenKeyboard, ScreenKeyboardListener, TextEvent } from "./keyboard"
 import { InfoEvent, Stream, StreamCapabilities } from "./stream/index"
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input"
 import { emptyKeyModifiers } from "./stream/keyboard"
@@ -19,6 +19,7 @@ import { streamStatsToText } from "./stream/stats"
 import "./styles/index"
 import { LogLevel, uniffiInitAsync, Logger as UniffiLogger, setLogger as uniffiSetLogger } from "./uniffi/entry"
 import { NativeScreenKeyboard } from "./keyboard/native_keyboard"
+import { SimulatedKeyboard } from "./keyboard/simulated_keyboard"
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -228,10 +229,14 @@ class ViewerApp implements Component {
         this.div.appendChild(this.localTouchCursorDiv)
 
         // Configure Screen Keyboard
-        this.screenKeyboard = new NativeScreenKeyboard(I)
+        if (likelyHasNativeOnScreenKeyboard()) {
+            this.screenKeyboard = new NativeScreenKeyboard(I)
+        } else {
+            this.screenKeyboard = new SimulatedKeyboard()
+        }
 
         this.screenKeyboard.addListener(this.sidebar)
-        stopPropagationOn(this.screenKeyboard.getHiddenElement())
+        stopPropagationOn(this.screenKeyboard.getElement())
 
         // Configure stream
         this.previousMouseMode = this.inputConfig.mouseMode
@@ -862,11 +867,11 @@ class ViewerApp implements Component {
 
     mount(parent: HTMLElement): void {
         parent.appendChild(this.div)
-        parent.appendChild(this.screenKeyboard.getHiddenElement())
+        parent.appendChild(this.screenKeyboard.getElement())
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
-        parent.removeChild(this.screenKeyboard.getHiddenElement())
+        parent.removeChild(this.screenKeyboard.getElement())
     }
 
     getStreamRect(): DOMRect {

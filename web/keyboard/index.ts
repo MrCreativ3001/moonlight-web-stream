@@ -18,7 +18,7 @@ export interface ScreenKeyboardListener {
 
 export interface ScreenKeyboard {
     /// The main element for the keyboard
-    getHiddenElement(): HTMLElement
+    getElement(): HTMLElement
 
     /// If the keyboard is currently visible
     isVisible(): boolean
@@ -31,4 +31,17 @@ export interface ScreenKeyboard {
     // -- Events
     addListener(listener: ScreenKeyboardListener): void
     removeListener(listener: ScreenKeyboardListener): void
+}
+
+export function likelyHasNativeOnScreenKeyboard(): boolean {
+    let hasTouch = false
+    if (navigator.maxTouchPoints != null) {
+        hasTouch = navigator.maxTouchPoints > 0;
+    }
+
+    const hasCoarsePointer = window.matchMedia(
+        "(pointer: coarse)"
+    ).matches;
+
+    return hasTouch && hasCoarsePointer
 }

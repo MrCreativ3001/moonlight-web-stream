@@ -10,7 +10,9 @@ use tracing::{debug, trace, warn};
 const LATENCY_WINDOW: Duration = Duration::from_secs(10);
 const PING_TIMEOUT: Duration = Duration::from_secs(5);
 
-const CONGESTED_THRESHOLD: Duration = Duration::from_millis(150);
+// Thresholds for the queue delay: the round trip above the lowest round trip in the window.
+// Comparing against the lowest round trip keeps links with a high base latency from looking congested.
+const CONGESTED_THRESHOLD: Duration = Duration::from_millis(100);
 const SEVERE_THRESHOLD: Duration = Duration::from_millis(500);
 
 #[derive(Debug)]
@@ -84,32 +86,100 @@ impl DelayController {
         }
     }
 
-    pub fn delay_state(&self) -> DelayState {
-        let Some(average_delay) = self.average_delay() else {
-            // No values present -> too much congestion
-            return DelayState::Severe;
-        };
+    pub fn delay_state(&self, now: Instant) -> DelayState {
+        let queue_delay = self.queue_delay(now);
 
-        if average_delay >= SEVERE_THRESHOLD {
+        if queue_delay >= SEVERE_THRESHOLD {
             DelayState::Severe
-        } else if average_delay >= CONGESTED_THRESHOLD {
+        } else if queue_delay >= CONGESTED_THRESHOLD {
             DelayState::Congested
         } else {
             DelayState::Normal
         }
     }
-    pub fn average_delay(&self) -> Option<Duration> {
-        if self.rtts.is_empty() {
-            return None;
-        }
 
-        let average_delay_secs = self
-            .rtts
-            .iter()
-            .map(|(_, rtt)| rtt.as_secs_f64())
-            .sum::<f64>()
-            / self.rtts.len() as f64;
+    /// How much longer than the lowest round trip in the window the current round trip is.
+    /// This is the time data waits in queues on the way to the client.
+    pub fn queue_delay(&self, now: Instant) -> Duration {
+        let base = self.base_rtt().unwrap_or_default();
 
-        Some(Duration::from_secs_f64(average_delay_secs))
+        // A ping that has not been answered yet is at least as late as it is old,
+        // so a growing backlog is noticed before its pong arrives.
+        self.latest_rtt()
+            .max(self.oldest_unanswered(now))
+            .saturating_sub(base)
+    }
+
+    /// The client stopped answering pings: the oldest unanswered ping is well past the latest round trip.
+    pub fn is_stalled(&self, now: Instant) -> bool {
+        self.oldest_unanswered(now) > self.latest_rtt() + CONGESTED_THRESHOLD
+    }
+
+    fn oldest_unanswered(&self, now: Instant) -> Duration {
+        self.pings
+            .values()
+            .filter_map(|sent| now.checked_duration_since(*sent))
+            .max()
+            .unwrap_or_default()
+    }
+
+    fn latest_rtt(&self) -> Duration {
+        self.rtts.back().map(|(_, rtt)| *rtt).unwrap_or_default()
+    }
+
+    fn base_rtt(&self) -> Option<Duration> {
+        self.rtts.iter().map(|(_, rtt)| *rtt).min()
+    }
+
+    /// Takes the latest round trip as the new base round trip. Used when the round trip stays high
+    /// although nothing is queued anymore, which means the latency of the link itself changed.
+    pub fn rebase(&mut self) {
+        let len = self.rtts.len();
+        self.rtts.drain(..len.saturating_sub(1));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(controller: &mut DelayController, sent: Instant, rtt_ms: u64) -> Instant {
+        let id = controller.on_ping_send(sent);
+        let received = sent + Duration::from_millis(rtt_ms);
+        controller.on_pong_receive(&id, received);
+        received
+    }
+
+    #[test]
+    fn queue_delay_is_relative_to_lowest_rtt() {
+        let mut controller = DelayController::default();
+        let start = Instant::now();
+
+        // A high but steady latency link is not congested.
+        let now = sample(&mut controller, start, 220);
+        assert!(matches!(controller.delay_state(now), DelayState::Normal));
+
+        // A round trip 300ms above the base is.
+        let now = sample(&mut controller, now, 520);
+        assert!(matches!(controller.delay_state(now), DelayState::Congested));
+
+        // After a rebase the latest round trip is the new base.
+        controller.rebase();
+        assert!(matches!(controller.delay_state(now), DelayState::Normal));
+    }
+
+    #[test]
+    fn unanswered_ping_counts_as_delay() {
+        let mut controller = DelayController::default();
+        let start = Instant::now();
+        let now = sample(&mut controller, start, 20);
+
+        controller.on_ping_send(now);
+        assert!(matches!(
+            controller.delay_state(now + Duration::from_millis(600)),
+            DelayState::Severe
+        ));
+        assert!(controller.is_stalled(now + Duration::from_millis(600)));
+        assert!(!controller.is_stalled(now + Duration::from_millis(50)));
     }
 }

@@ -119,11 +119,7 @@ export class WebSocketTransport implements Transport {
                 this.controlStream.onRawPacket(view.subarray(1))
             } else if (channel == WebSocketChannel.VIDEO) {
                 this.videoPipeline?.submitPacket(view.subarray(1))
-                if (this.videoPipeline && "pollRequestIdr" in this.videoPipeline && typeof this.videoPipeline.pollRequestIdr == "function" && this.videoPipeline.pollRequestIdr()) {
-                    this.logger?.debug("requesting idr")
-
-                    this.controlStream.sendRaw(new ControlPacket.RequestIdr())
-                }
+                this.requestIdrIfNeeded()
             } else if (channel == WebSocketChannel.AUDIO) {
                 this.audioPipeline?.submitPacket(view.subarray(1))
             }
@@ -161,6 +157,15 @@ export class WebSocketTransport implements Transport {
     }
 
     private videoPipeline: DataPipe | null = null
+    private videoWatchdogInterval: number | null = null
+
+    private requestIdrIfNeeded() {
+        if (this.videoPipeline && "pollRequestIdr" in this.videoPipeline && typeof this.videoPipeline.pollRequestIdr == "function" && this.videoPipeline.pollRequestIdr()) {
+            this.logger?.debug("requesting idr")
+
+            this.controlStream.sendRaw(new ControlPacket.RequestIdr())
+        }
+    }
 
     setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>
     setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>
@@ -170,6 +175,7 @@ export class WebSocketTransport implements Transport {
         }
 
         this.videoPipeline = pipeline as (DataPipe & AudioPlayer)
+        this.videoWatchdogInterval ??= globalObject().setInterval(() => this.requestIdrIfNeeded(), 250)
     }
 
     private audioPipeline: (DataPipe & AudioPlayer) | null = null
@@ -248,6 +254,10 @@ export class WebSocketTransport implements Transport {
 
     private dispatchedClosed: boolean = false
     async close(): Promise<void> {
+        if (this.videoWatchdogInterval != null) {
+            globalObject().clearInterval(this.videoWatchdogInterval)
+            this.videoWatchdogInterval = null
+        }
         this.ws.close()
         if (!this.dispatchedClosed && this.onclose) {
             if (this.wasConnected) {

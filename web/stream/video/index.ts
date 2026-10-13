@@ -78,6 +78,9 @@ export interface UrlVideoRenderer extends Pipe {
     // static readonly type = "videourl"
 
     setUrl(src: string): void
+
+    // Optional playback access for MSE history retention and live-edge recovery.
+    getMediaElement?(): HTMLVideoElement
 }
 
 export interface FrameVideoRenderer extends Pipe {

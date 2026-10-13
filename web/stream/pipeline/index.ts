@@ -1,3 +1,4 @@
+import { queryPipeInfo } from "./probe"
 import { AudioBufferPipe } from "../audio/audio_buffer_pipe"
 import { AudioContextTrackPipe } from "../audio/audio_context_track_pipe"
 import { OpusAudioDecoderPipe } from "../audio/opus_decoder_pipe"
@@ -118,7 +119,7 @@ async function gatherPipeInfoInternal(): Promise<Map<PipeStatic, PipeInfo>> {
 
     const all: Array<PipeStatic> = pipes()
     for (const pipe of all) {
-        promises.push(pipe.getInfo().then(info => {
+        promises.push(queryPipeInfo(pipe).then(info => {
             map.set(pipe, info)
         }))
     }

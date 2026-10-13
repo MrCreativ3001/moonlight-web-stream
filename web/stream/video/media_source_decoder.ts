@@ -9,6 +9,10 @@ import { DataVideoRenderer, UrlVideoRenderer, VideoDecodeUnit, VideoRendererSetu
 
 // auto download an mp4 file containing all data until a media source error occured, testing only
 const DEBUG_FILE = false
+const MAX_PENDING_BYTES = 16 * 1024 * 1024
+const MAX_PENDING_SEGMENTS = 256
+const HISTORY_SECONDS = 5
+const KEYFRAME_INTERVAL_MS = 5000
 
 export class MediaSourceDecoder implements DataVideoRenderer {
     static readonly pipeName = "MediaSourceDecoder"
@@ -44,7 +48,16 @@ export class MediaSourceDecoder implements DataVideoRenderer {
     private url = URL.createObjectURL(this.mediaSource)
     private translator: H264StreamVideoTranslator
 
-    private onReadyPromise: Promise<void>
+    private cancelSourceOpen: () => void = () => {}
+    private closed = false
+    private pendingBytes = 0
+    private keyframes: number[] = []
+    private trimmedBefore = 0
+    private quotaRetries = 0
+    private lastIdrAt = performance.now()
+    private lastSeekAt = -Infinity
+    private readonly onSourceBufferError = (event: Event) => this.onError(event)
+    private readonly onSourceBufferUpdateEnd = () => this.onUpdateEnd()
 
     private videoSize: [number, number] | null = null
     private frameDuration = 0
@@ -61,24 +74,45 @@ export class MediaSourceDecoder implements DataVideoRenderer {
         this.base = base
         this.translator = new H264StreamVideoTranslator(logger)
 
-        this.onReadyPromise = new Promise((resolve, reject) => {
-            this.mediaSource.addEventListener("sourceopen", () => {
-                resolve()
-            })
-        })
-
         addPipePassthrough(this)
+    }
+
+    private waitForSourceOpen(): Promise<boolean> {
+        // Start the deadline when attached, not while an unused pipeline waits
+        // for the user or the stream handshake.
+        return new Promise(resolve => {
+            let done = false
+            const finish = (opened: boolean) => {
+                if (done) return
+                done = true
+                clearTimeout(timer)
+                this.mediaSource.removeEventListener("sourceopen", onOpen)
+                this.mediaSource.removeEventListener("sourceclose", onClose)
+                this.cancelSourceOpen = () => {}
+                resolve(opened)
+            }
+            const onOpen = () => finish(true)
+            const onClose = () => finish(false)
+            const timer = setTimeout(onClose, 5000)
+            this.cancelSourceOpen = onClose
+            this.mediaSource.addEventListener("sourceopen", onOpen)
+            this.mediaSource.addEventListener("sourceclose", onClose)
+            if (this.mediaSource.readyState == "open") onOpen()
+        })
     }
 
     async setup(setup: VideoRendererSetup): Promise<void> {
         this.logger?.debug("The stream may experience increased latency, as modern browser APIs are not currently supported.", { type: "informError" })
 
+        if (this.closed) throw new Error("MediaSource was closed before setup")
         this.base.setUrl(this.url)
 
         this.videoSize = [setup.width, setup.height]
         this.frameDuration = 1_000_000 / setup.fps
 
-        await this.onReadyPromise
+        if (!await this.waitForSourceOpen() || this.closed) {
+            throw new Error("MediaSource did not open before setup ended")
+        }
 
         if ("setup" in this.base && typeof this.base.setup == "function") {
             return await this.base.setup(...arguments)
@@ -91,17 +125,13 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             `video/mp4; codecs="${codec}"`
         )
 
-        this.sourceBuffer.addEventListener("error", this.onError.bind(this))
-        this.sourceBuffer.addEventListener("updateend", this.onUpdateEnd.bind(this))
+        this.sourceBuffer.addEventListener("error", this.onSourceBufferError)
+        this.sourceBuffer.addEventListener("updateend", this.onSourceBufferUpdateEnd)
     }
 
 
     private onError(event: Event) {
-        this.errored = true
-        this.logger?.debug(`Error whilst decoding using MediaSourceExtension at sequenceNumber ${this.sequenceNumber}`, { type: "fatalDescription" })
-        if (event instanceof ErrorEvent) {
-            this.logger?.debug(`${event.error}`, { type: "fatal" })
-        }
+        this.fail(`MediaSource reported a decoding error at sequenceNumber ${this.sequenceNumber}`)
 
         if (DEBUG_FILE && this.debugBuffer) {
             download(this.debugBuffer, "file.mp4", "video/mp4")
@@ -112,19 +142,19 @@ export class MediaSourceDecoder implements DataVideoRenderer {
         this.tryAppendDecodeUnit()
     }
 
-    private buffers: Array<Uint8Array<ArrayBuffer>> = []
+    private buffers: Array<{ data: Uint8Array<ArrayBuffer>, keyframeTime?: number }> = []
     private needIdr = true
 
     private droppedFrames = 0
 
     submitDecodeUnit(unit: VideoDecodeUnit): void {
-        if (this.errored) {
+        if (this.errored || this.closed) {
             return
         }
 
         const value = this.translator.submitDecodeUnit(unit)
         if (value.error) {
-            this.errored = true
+            this.fail("Failed to translate video for MediaSource")
             return
         }
 
@@ -159,7 +189,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             const initSegment = new ByteBuffer(2000, false)
             putVideoInitSegment(initSegment, 1_000_000, 1, width, height, configure.description)
             initSegment.flip()
-            this.buffers.push(initSegment.getRemainingBuffer())
+            if (!this.enqueue(initSegment.getRemainingBuffer())) return
 
             const idrSegment = new ByteBuffer(400 + unit.data.byteLength, false)
             putVideoFrameSegment(
@@ -172,7 +202,7 @@ export class MediaSourceDecoder implements DataVideoRenderer {
                 chunk
             )
             idrSegment.flip()
-            this.buffers.push(idrSegment.getRemainingBuffer())
+            if (!this.enqueue(idrSegment.getRemainingBuffer(), 0)) return
 
             this.needIdr = false
             this.droppedFrames = 0
@@ -194,52 +224,120 @@ export class MediaSourceDecoder implements DataVideoRenderer {
                 chunk
             )
             segment.flip()
-            this.buffers.push(segment.getRemainingBuffer())
-
-            console.debug("pushed video frame segment")
+            if (!this.enqueue(segment.getRemainingBuffer(),
+                unit.type == "key" ? (this.sequenceNumber - 1) * this.frameDuration / 1_000_000 : undefined)) return
 
         }
         this.tryAppendDecodeUnit()
     }
 
+    private fail(reason: string) {
+        this.errored = true
+        this.buffers.length = 0
+        this.pendingBytes = 0
+        this.keyframes.length = 0
+        this.logger?.debug(reason, { type: "fatal" })
+    }
+
+    private enqueue(data: Uint8Array<ArrayBuffer>, keyframeTime?: number): boolean {
+        if (this.buffers.length >= MAX_PENDING_SEGMENTS || this.pendingBytes + data.byteLength > MAX_PENDING_BYTES) {
+            // Dropping an arbitrary dependent frame would corrupt the remaining GOP.
+            this.fail("MediaSource pending video exceeded its buffer limit")
+            return false
+        }
+        this.buffers.push({ data, keyframeTime })
+        this.pendingBytes += data.byteLength
+        return true
+    }
+
+    private recoverLiveEdge() {
+        const video = this.base.getMediaElement?.()
+        const ranges = this.sourceBuffer?.buffered
+        const now = performance.now()
+        if (!video || !ranges?.length || video.paused || video.seeking || video.readyState < 2 || now - this.lastSeekAt < 2000) return
+        const end = ranges.end(ranges.length - 1)
+        const start = ranges.start(ranges.length - 1)
+        if (end - video.currentTime > 0.8 && end - start > 0.2) {
+            // Seek within decoded media; preserve compressed-frame dependencies.
+            video.currentTime = Math.max(start, end - 0.15)
+            this.lastSeekAt = now
+        }
+    }
+
+    private evictHistory(retainSeconds = HISTORY_SECONDS): boolean {
+        const video = this.base.getMediaElement?.()
+        const source = this.sourceBuffer
+        if (!video || !source || source.updating) return false
+        const before = video.currentTime - retainSeconds
+        let boundary = this.trimmedBefore
+        for (const keyframe of this.keyframes) {
+            if (keyframe <= before) boundary = keyframe
+        }
+        if (boundary <= this.trimmedBefore) return false
+        // Only appended random-access frames qualify. Leave the retained keyframe
+        // intact even if the browser removes dependent samples after the endpoint.
+        source.remove(0, Math.max(0, boundary - 0.000001))
+        this.trimmedBefore = boundary
+        this.keyframes = this.keyframes.filter(keyframe => keyframe >= boundary)
+        return true
+    }
+
     private tryAppendDecodeUnit() {
-        while (true) {
-            if (this.errored) {
-                return
+        const source = this.sourceBuffer
+        if (this.errored || this.closed || !source || source.updating) return
+
+        try {
+            this.recoverLiveEdge()
+            if (this.evictHistory()) return
+        } catch {
+            this.fail("MediaSource failed to recover buffered playback")
+            return
+        }
+
+        const unit = this.buffers[0]
+        if (!unit) return
+        try {
+            source.appendBuffer(unit.data)
+        } catch (error) {
+            if (error instanceof DOMException && error.name == "QuotaExceededError") {
+                this.quotaRetries += 1
+                try {
+                    // Under quota pressure retain at least a played second and
+                    // retry the identical segment after the removal's updateend.
+                    if (this.quotaRetries <= 2 && this.evictHistory(1)) return
+                } catch { /* Report a single fatal error below. */ }
             }
-
-            if (!this.sourceBuffer) {
-                // We are currently constructing a source buffer
-                return
+            this.fail("MediaSource could not append video after safe history eviction")
+            return
+        }
+        this.buffers.shift()
+        this.pendingBytes -= unit.data.byteLength
+        this.quotaRetries = 0
+        if (unit.keyframeTime !== undefined) {
+            const previous = this.keyframes[this.keyframes.length - 1]
+            // Keep sparse known boundaries. Recording every all-intra frame in
+            // a capped list would lose every boundary older than five seconds.
+            if (previous === undefined || unit.keyframeTime - previous >= 1) {
+                this.keyframes.push(unit.keyframeTime)
+                if (this.keyframes.length > 128) this.keyframes.shift()
             }
+        }
 
-            if (this.sourceBuffer.updating) {
-                return
-            }
-
-            if (this.buffers.length == 0) {
-                return
-            }
-
-            const [unit] = this.buffers.splice(0, 1)
-
-            this.sourceBuffer.appendBuffer(unit)
-
-            if (DEBUG_FILE) {
-                if (!this.debugBuffer) {
-                    this.debugBuffer = new Uint8Array(0)
-                }
-                const oldBuffer = this.debugBuffer
-
-                this.debugBuffer = new Uint8Array(oldBuffer.length + unit.length)
-                this.debugBuffer.set(oldBuffer)
-                this.debugBuffer.set(unit, oldBuffer.length)
-            }
+        if (DEBUG_FILE) {
+            const oldBuffer = this.debugBuffer ?? new Uint8Array(0)
+            this.debugBuffer = new Uint8Array(oldBuffer.length + unit.data.length)
+            this.debugBuffer.set(oldBuffer)
+            this.debugBuffer.set(unit.data, oldBuffer.length)
         }
     }
 
     pollRequestIdr(): boolean {
-        let requestIdr = false
+        if (this.closed || this.errored) return false
+        // Keep random-access boundaries available even on an otherwise static stream.
+        const now = performance.now()
+        let requestIdr = this.sequenceNumber > 0 && now - this.lastIdrAt >= KEYFRAME_INTERVAL_MS
+        if (requestIdr) this.lastIdrAt = now
+        this.tryAppendDecodeUnit()
 
         if (this.droppedFrames > 60) {
             requestIdr = true
@@ -258,10 +356,27 @@ export class MediaSourceDecoder implements DataVideoRenderer {
     }
 
     cleanup() {
+        if (this.closed) return
+        this.closed = true
+        this.cancelSourceOpen()
+        this.buffers.length = 0
+        this.pendingBytes = 0
+        this.keyframes.length = 0
+        this.debugBuffer = null
+        if (this.sourceBuffer) {
+            this.sourceBuffer.removeEventListener("error", this.onSourceBufferError)
+            this.sourceBuffer.removeEventListener("updateend", this.onSourceBufferUpdateEnd)
+            if (this.mediaSource.readyState == "open") {
+                try {
+                    if (this.sourceBuffer.updating) this.sourceBuffer.abort()
+                    this.mediaSource.removeSourceBuffer(this.sourceBuffer)
+                } catch { /* The browser may already have detached the buffer. */ }
+            }
+            this.sourceBuffer = null
+        }
         if ("cleanup" in this.base && typeof this.base.cleanup == "function") {
             this.base.cleanup(...arguments)
         }
-
         URL.revokeObjectURL(this.url)
     }
 

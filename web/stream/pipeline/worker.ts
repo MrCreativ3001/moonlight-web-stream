@@ -1,3 +1,4 @@
+import { queryPipeInfo } from "./probe"
 import { Logger, LogMessageType } from "../log"
 import { andVideoCodecs } from "../video"
 import { buildPipeline, getPipe, Pipe, PipeInfo, pipeName } from "./index"
@@ -57,7 +58,7 @@ async function onMessage(message: ToWorkerMessage) {
                 pipelineInfo.environmentSupported = false
                 break
             }
-            const pipeInfo = await pipe.getInfo()
+            const pipeInfo = await queryPipeInfo(pipe)
 
             if (!pipeInfo.environmentSupported) {
                 pipelineInfo.environmentSupported = false

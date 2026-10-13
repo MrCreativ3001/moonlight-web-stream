@@ -22,6 +22,8 @@
     "url": "This is required for uniffi-bindgen-react-native"
   },
   "scripts": {
+    "test": "node --test tests/frontend/*.test.mjs",
+    "typecheck": "tsc --noEmit",
     "dev": "npm run prebuild && webpack --watch --mode=development",
     "build": "npm run prebuild && webpack --mode=production",
     "prebuild": "npm run generate-bindings && npm run build-moonlight-common",

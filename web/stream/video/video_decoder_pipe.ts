@@ -1,3 +1,4 @@
+import { boundedProbe } from "../pipeline/probe"
 import { VideoFormats } from "../../uniffi/moonlight_common_bindings"
 import { globalObject } from "../../util"
 import { Logger } from "../log"
@@ -24,6 +25,10 @@ export const VIDEO_DECODER_CODECS_IN_BAND: Record<keyof VideoFormats, string> = 
     "av1High10444": "av01.0.08M.10"
 }
 
+function queryVideoConfig(config: VideoDecoderConfig): Promise<VideoDecoderSupport> {
+    return boundedProbe(() => VideoDecoder.isConfigSupported(config), 1000, { supported: false, config })
+}
+
 async function detectCodecs(): Promise<VideoFormats> {
     if (!("isConfigSupported" in VideoDecoder)) {
         const codecs = emptyVideoCodecs()
@@ -40,13 +45,10 @@ async function detectCodecs(): Promise<VideoFormats> {
         const codec = codec2 as keyof VideoFormats
 
         promises.push((async () => {
-            const supportedInBand = await VideoDecoder.isConfigSupported({
-                codec: VIDEO_DECODER_CODECS_IN_BAND[codec]
-            })
-
-            const supportedOutOfBand = await VideoDecoder.isConfigSupported({
-                codec: VIDEO_DECODER_CODECS_OUT_OF_BAND[codec]
-            })
+            const [supportedInBand, supportedOutOfBand] = await Promise.all([
+                queryVideoConfig({ codec: VIDEO_DECODER_CODECS_IN_BAND[codec] }),
+                queryVideoConfig({ codec: VIDEO_DECODER_CODECS_OUT_OF_BAND[codec] })
+            ])
 
             codecs[codec] = supportedInBand.supported || supportedOutOfBand.supported ? true : false
         })())
@@ -59,7 +61,7 @@ async function detectCodecs(): Promise<VideoFormats> {
     return codecs
 }
 async function getIfConfigSupported(config: VideoDecoderConfig): Promise<VideoDecoderConfig | null> {
-    const supported = await VideoDecoder.isConfigSupported(config)
+    const supported = await queryVideoConfig(config)
     if (supported.supported) {
         return config
     }

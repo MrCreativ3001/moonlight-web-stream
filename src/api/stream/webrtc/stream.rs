@@ -1,4 +1,4 @@
-use std::{future::pending, sync::Arc};
+use std::{future::pending, sync::Arc, time::Duration};
 
 use moonlight_common::stream::{
     control::{
@@ -111,6 +111,17 @@ pub async fn webrtc_loop(
                         video_channel.on_frame(frame);
                     }
                     MoonlightStreamEvent::Control(ControlStreamEvent::Packet(packet)) => {
+                        if let ControlPacket::ServerTermination { reason } = &packet {
+                            info!(?reason, "relaying host termination to browser");
+                            control_channel.send(packet);
+                            // Keep SCTP alive until the viewer has received the message
+                            // and closed the channel. Closing the peer immediately can
+                            // discard the queued termination packet, especially over WAN.
+                            let _ = tokio::time::timeout(Duration::from_secs(5), async {
+                                while let Ok(ControlChannelEvent::Packet(_)) = control_channel.drive().await {}
+                            }).await;
+                            return Ok(());
+                        }
                         if let ControlPacket::HdrMode { enabled, sunshine } = &packet {
                             video_channel.set_hdr_enabled(*enabled, *sunshine);
                         }

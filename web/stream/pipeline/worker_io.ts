@@ -38,7 +38,7 @@ class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer
         } else if ("videoFrame" in message) {
             this.submitFrame(message.videoFrame)
         } else if ("data" in message) {
-            this.submitPacket(message.data)
+            this.submitData(message.data)
         } else if ("track" in message) {
             this.setTrack(message.track)
         } else if ("videoData" in message) {
@@ -54,7 +54,7 @@ class WorkerReceiverPipe implements WorkerReceiver, DataPipe, FrameVideoRenderer
     setup(_setup: VideoRendererSetup): void { }
     cleanup(): void { }
     submitFrame(_frame: VideoFrame): void { }
-    submitPacket(_buffer: Uint8Array): void { }
+    submitData(_buffer: Uint8Array): void { }
     setTrack(_track: MediaStreamTrack): void { }
     submitDecodeUnit(_unit: VideoDecodeUnit): void { }
 }
@@ -108,7 +108,7 @@ class WorkerSenderPipe implements DataPipe, FrameVideoRenderer, TrackVideoRender
     submitFrame(videoFrame: VideoFrame): void {
         this.getBase().onWorkerMessage({ videoFrame }, [videoFrame])
     }
-    submitPacket(data: Uint8Array): void {
+    submitData(data: Uint8Array): void {
         // we don't know if we own this data, so we cannot transfer
         this.getBase().onWorkerMessage({ data })
     }

@@ -33,7 +33,7 @@ export class DepacketizeVideoPipe implements DataPipe {
         addPipePassthrough(this)
     }
 
-    submitPacket(buffer: Uint8Array) {
+    submitData(buffer: Uint8Array) {
         this.buffer.reset()
 
         this.buffer.putU8Array(buffer.slice(0, 5))

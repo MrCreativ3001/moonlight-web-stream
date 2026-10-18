@@ -118,14 +118,14 @@ export class WebSocketTransport implements Transport {
             if (channel == WebSocketChannel.CONTROL) {
                 this.controlStream.onRawPacket(view.subarray(1))
             } else if (channel == WebSocketChannel.VIDEO) {
-                this.videoPipeline?.submitPacket(view.subarray(1))
+                this.videoPipeline?.submitData(view.subarray(1))
                 if (this.videoPipeline && "pollRequestIdr" in this.videoPipeline && typeof this.videoPipeline.pollRequestIdr == "function" && this.videoPipeline.pollRequestIdr()) {
                     this.logger?.debug("requesting idr")
 
                     this.controlStream.sendRaw(new ControlPacket.RequestIdr())
                 }
             } else if (channel == WebSocketChannel.AUDIO) {
-                this.audioPipeline?.submitPacket(view.subarray(1))
+                this.audioPipeline?.submitData(view.subarray(1))
             }
         }
     }

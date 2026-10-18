@@ -1,11 +1,4 @@
-use std::{
-    pin::pin,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
+use std::{pin::pin, sync::Arc, time::Duration};
 
 use crate::api::{
     bindings::{
@@ -246,16 +239,11 @@ async fn handle_ws(
     });
     info!(response = ?response, "sending response to client");
 
-    // Set while video is dropped, so video that is already queued is dropped too.
-    let dropping_video = Arc::new(AtomicBool::new(false));
-    let dropping_video_sender = dropping_video.clone();
-
     let (mut ws_channel_sender, mut ws_channel_receiver) = unbounded_channel();
     spawn(
         async move {
             while let Some(data) = ws_channel_receiver.recv().await {
                 match data {
-                    WsData::Video(_) if dropping_video_sender.load(Ordering::Relaxed) => {}
                     WsData::Bytes(bytes) | WsData::Video(bytes) => {
                         if ws_sender.binary(bytes).await.is_err() {
                             break;
@@ -286,15 +274,7 @@ async fn handle_ws(
     }
 
     // main loop
-    if let Err(err) = ws_loop(
-        ws_channel_sender,
-        ws_receiver,
-        stream,
-        control_config,
-        dropping_video,
-    )
-    .await
-    {
+    if let Err(err) = ws_loop(ws_channel_sender, ws_receiver, stream, control_config).await {
         error!(error = %err, "web socket main loop errored, closing stream");
     }
 
@@ -306,13 +286,13 @@ async fn ws_loop(
     mut ws_receiver: MessageStream,
     mut stream: MoonlightStream,
     control_config: ControlPacketConfig,
-    dropping_video: Arc<AtomicBool>,
 ) -> Result<(), AppError> {
     let mut relay_stats_ticker = pin!(interval(Duration::from_secs(1)));
 
     let mut ping_ticker = pin!(interval(Duration::from_millis(100)));
     let mut delay_controller = DelayController::default();
 
+    let mut dropping_video = false; // dropping by default to get rtt
     let mut dropping_video_since: Option<Instant> = None;
     let mut last_idr_request = Instant::now();
     let mut resumed_at = Instant::now();
@@ -382,7 +362,7 @@ async fn ws_loop(
 
                                 dropping_video_since = None;
                                 resumed_at = now;
-                                dropping_video.store(false, Ordering::Relaxed);
+                                dropping_video = false;
                             } else {
                                 // Only request an idr once the queue has drained, an earlier one would be dropped too.
                                 if caught_up && now.duration_since(last_idr_request) >= IDR_REQUEST_INTERVAL {
@@ -402,7 +382,11 @@ async fn ws_loop(
                             warn!(queue_delay = ?delay_controller.queue_delay(now), "web socket client is behind, dropping video until it caught up");
 
                             dropping_video_since = Some(now);
-                            dropping_video.store(true, Ordering::Relaxed);
+                            dropping_video = true;
+                            continue;
+                        }
+
+                        if dropping_video {
                             continue;
                         }
 

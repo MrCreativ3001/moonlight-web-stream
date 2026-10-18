@@ -1,6 +1,7 @@
 import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, ServerType, VideoFormats } from "../../uniffi/moonlight_common_bindings"
 import { AudioPlayer, AudioPlayerSetup, TrackAudioPlayer } from "../audio/index"
 import { StreamCapabilities } from "../index"
+import { OutputPipeStatic, Pipe, Pipeline } from "../pipeline"
 import { DataPipe } from "../pipeline/pipes"
 import { StatValue } from "../stats"
 import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index"
@@ -50,11 +51,8 @@ export interface Transport {
     close(): Promise<void>
 
     // -- Only allowed after onconnect was called
-    setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>
-    setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>
-
-    setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
-    setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
+    connectVideoPipeline(pipeline: Pipeline): Promise<Pipe>
+    connectAudioPipeline(pipeline: Pipeline): Promise<Pipe>
 
     getStats(): Promise<Record<string, StatValue>>
 }

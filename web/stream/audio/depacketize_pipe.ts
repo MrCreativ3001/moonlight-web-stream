@@ -12,7 +12,7 @@ export class DepacketizeAudioPipe implements DataPipe {
     }
 
     static readonly baseType = "audiodata"
-    static readonly type = "wsdata"
+    static readonly type = "data"
 
     readonly implementationName: string
 

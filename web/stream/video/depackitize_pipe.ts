@@ -9,7 +9,7 @@ export class DepacketizeVideoPipe implements DataPipe {
     static readonly pipeName = "DepacketizeVideoPipe"
 
     static readonly baseType = "videodata"
-    static readonly type = "wsdata"
+    static readonly type = "data"
 
     static async getInfo(): Promise<PipeInfo> {
         // no link

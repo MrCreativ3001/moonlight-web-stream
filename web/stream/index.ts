@@ -4,7 +4,6 @@ import { Settings, TransportType } from "../component/settings_menu"
 import { ControlPacket, ControlPacket_Tags, VideoFormats } from "../uniffi/moonlight_common_bindings"
 import { wait } from "../util"
 import { AudioPlayer, AudioPlayerSetup } from "./audio/index"
-import { buildAudioPipeline } from "./audio/pipeline"
 import { defaultStreamInputConfig, StreamInput } from "./input"
 import { Logger, LogMessageInfo } from "./log"
 import { gatherPipeInfo, pipeName } from "./pipeline/index"
@@ -14,8 +13,9 @@ import { WebSocketTransport } from "./transport/web_socket"
 import { WebRTCTransport } from "./transport/webrtc"
 import { allVideoCodecs, andVideoCodecs, emptyVideoCodecs, hasAnyCodec } from "./video"
 import { VideoRenderer, VideoRendererSetup } from "./video/index"
-import { buildVideoPipeline, queryVideoPipelineInfo, VideoPipelineOptions } from "./video/pipeline"
+import { querySupportedDataVideoCodecs, selectVideoPipeline, VideoPipelineOptions } from "./video/pipeline"
 import { StreamPermissions } from "../api_bindings"
+import { selectAudioPipeline } from "./audio/pipeline"
 
 export type ExecutionEnvironment = {
     main: boolean
@@ -198,7 +198,7 @@ export class Stream implements Component {
     private async createTransportOptions(): Promise<TransportOptions | null> {
         const codecHint = getVideoCodecHint(this.settings)
 
-        const dataCodecs = await this.queryVideoCodecs("data")
+        const dataCodecs = await this.queryDataVideoCodecs()
 
         if (!hasAnyCodec(codecHint)) {
             this.debugLog("Couldn't find any supported video format. Change the codec option to H264 in the settings if you're unsure which codecs are supported.", { type: "fatalDescription" })
@@ -389,7 +389,7 @@ export class Stream implements Component {
         codecSupport[connectData.videoSetup.codec] = true
 
         // Create pipelines
-        await Promise.all([
+        const [gotVideoRenderer, _gotAudioPlayer] = await Promise.all([
             this.createVideoRenderer(connectData.videoType, connectData.videoSetup),
             this.createAudioPlayer(connectData.audioType, connectData.audioSetup)
         ])
@@ -400,11 +400,17 @@ export class Stream implements Component {
         const audioPipelineName = `${connectData.audioType} (transport) -> ${this.audioPlayer?.implementationName} (player)`
         this.debugLog(`Using audio pipeline: ${audioPipelineName}`)
 
+        if (!gotVideoRenderer) {
+            this.logger.debug("Failed to start stream because no compatible video renderer was found", { type: "fatalDescription" })
+            // TODO: make this error cleaner
+            throw "error"
+        }
+
         this.stats.setVideoPipeline(videoPipelineName, this.videoRenderer)
         this.stats.setAudioPipeline(audioPipelineName, this.audioPlayer)
     }
 
-    private async queryVideoCodecs(type: "videotrack" | "data"): Promise<VideoFormats> {
+    private async queryDataVideoCodecs(): Promise<VideoFormats> {
         const codecHint = getVideoCodecHint(this.settings)
 
         const videoSettings: VideoPipelineOptions = {
@@ -414,8 +420,8 @@ export class Stream implements Component {
             canvasVsync: this.settings.canvasVsync
         }
 
-        const info = await queryVideoPipelineInfo(type, videoSettings, this.logger)
-        if (!info) {
+        const codecs = await querySupportedDataVideoCodecs(videoSettings, this.logger)
+        if (!codecs) {
             this.logger.debug("failed to query video pipelines for information! Disabling high codecs. This could lead to no video being visible!")
             const baseCodecs = {
                 h264: true,
@@ -433,7 +439,7 @@ export class Stream implements Component {
             videoSettings.supportedVideoCodecs = andVideoCodecs(codecHint, baseCodecs)
         }
 
-        return info?.supportedVideoCodecs ?? emptyVideoCodecs()
+        return codecs
     }
     private async createVideoRenderer(videoType: TransportVideoType, videoSetup: VideoRendererSetup): Promise<boolean> {
         if (this.videoRenderer) {
@@ -458,39 +464,15 @@ export class Stream implements Component {
             canvasVsync: this.settings.canvasVsync
         }
 
-        let pipelineCodecSupport
-        if (videoType == "videotrack") {
-            const { videoRenderer, supportedCodecs, error } = await buildVideoPipeline("videotrack", videoSettings, this.logger)
-
-            if (error) {
-                return false
-            }
-            pipelineCodecSupport = supportedCodecs
-
-            videoRenderer.mount(this.divElement)
-
-            await videoRenderer.setup(videoSetup)
-            await this.transport.setVideoPipeline("videotrack", videoRenderer)
-
-            this.videoRenderer = videoRenderer
-        } else if (videoType == "data") {
-            const { videoRenderer, supportedCodecs, error } = await buildVideoPipeline("data", videoSettings, this.logger)
-
-            if (error) {
-                return false
-            }
-            pipelineCodecSupport = supportedCodecs
-
-            videoRenderer.mount(this.divElement)
-
-            await videoRenderer.setup(videoSetup)
-            await this.transport.setVideoPipeline("data", videoRenderer)
-
-            this.videoRenderer = videoRenderer
-        } else {
-            this.debugLog(`Failed to create video pipeline with transport channel of type ${videoType} (${this.transport.implementationName})`)
+        const pipeline = await selectVideoPipeline(videoType, videoSettings, this.logger)
+        if (!pipeline) {
             return false
         }
+
+        this.videoRenderer = await this.transport.connectVideoPipeline(pipeline) as VideoRenderer
+
+        this.videoRenderer.mount(this.divElement)
+        await this.videoRenderer.setup(videoSetup)
 
         return true
     }
@@ -507,36 +489,15 @@ export class Stream implements Component {
             return false
         }
 
-        if (audioType == "audiotrack") {
-            const { audioPlayer, error } = await buildAudioPipeline("audiotrack", {}, this.logger)
-
-            if (error) {
-                return false
-            }
-
-            audioPlayer.mount(this.divElement)
-            await audioPlayer.setup(audioSetup)
-
-            await this.transport.setAudioPipeline("audiotrack", audioPlayer)
-
-            this.audioPlayer = audioPlayer
-        } else if (audioType == "data") {
-            const { audioPlayer, error } = await buildAudioPipeline("data", {}, this.logger)
-
-            if (error) {
-                return false
-            }
-
-            audioPlayer.mount(this.divElement)
-            await audioPlayer.setup(audioSetup)
-
-            await this.transport.setAudioPipeline("data", audioPlayer)
-
-            this.audioPlayer = audioPlayer
-        } else {
-            this.debugLog(`Cannot find audio pipeline for transport type "${audioType}"`)
+        const pipeline = await selectAudioPipeline(audioType, {}, this.logger)
+        if (!pipeline) {
             return false
         }
+
+        this.audioPlayer = await this.transport.connectAudioPipeline(pipeline) as AudioPlayer
+
+        this.audioPlayer.mount(this.divElement)
+        await this.audioPlayer.setup(audioSetup)
 
         return true
     }

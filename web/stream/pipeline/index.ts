@@ -33,19 +33,20 @@ export type PipeInfo = {
 }
 
 export interface PipeInfoStatic {
+    readonly pipeName: string
+
     getInfo(): Promise<PipeInfo>
 }
 export interface PipeStatic extends PipeInfoStatic, InputPipeStatic {
-    readonly pipeName: string
     readonly type: string
 
     new(base: any, logger?: Logger): Pipe
 }
 
-export interface InputPipeStatic {
+export interface InputPipeStatic extends PipeInfoStatic {
     readonly baseType: string
 }
-export interface OutputPipeStatic {
+export interface OutputPipeStatic extends PipeInfoStatic {
     readonly type: string
 
     new(logger?: Logger, options?: unknown): Pipe
@@ -53,10 +54,17 @@ export interface OutputPipeStatic {
 
 export type Pipeline = {
     pipes: Array<string | PipeStatic>
+    output?: PipeInfoStatic & OutputPipeStatic
 }
 
 export function pipelineToString(pipeline: Pipeline): string {
-    return pipeline.pipes.map(pipe => pipeName(pipe)).join(" -> ")
+    let string = pipeline.pipes.map(pipe => pipeName(pipe)).join(" -> ")
+
+    if (pipeline.output) {
+        string += ` -> ${pipeName(pipeline.output)}`
+    }
+
+    return string
 }
 
 export function pipeName(pipe: string | { pipeName: string }): string {
@@ -76,9 +84,31 @@ export function getPipe(pipe: string | PipeStatic): PipeStatic | null {
     }
 }
 
-export function buildPipeline(base: OutputPipeStatic, pipeline: Pipeline, logger?: Logger, rendererOptions?: unknown): Pipe | null {
-    let previousPipeStatic: OutputPipeStatic | PipeStatic = base
-    let pipe = new base(logger, rendererOptions)
+export function pipelineInputType(pipeline: Pipeline, logger?: Logger): string | null {
+    if (pipeline.pipes[0]) {
+        const pipe = getPipe(pipeline.pipes[0])
+        if (!pipe) {
+            logger?.debug(`Failed to find input type for pipeline ${pipelineToString(pipeline)}`)
+            return null
+        }
+        return pipeline.pipes[0] && pipe.type
+    }
+    if (pipeline.output) {
+        return pipeline.output.type
+    }
+
+    return null
+}
+
+export function buildPipeline(pipeline: Pipeline, logger?: Logger, rendererOptions?: unknown): Pipe | null {
+    let previousPipeStatic: OutputPipeStatic | PipeStatic | null = null
+    let pipe = null
+    if (pipeline.output) {
+        const base = pipeline.output
+
+        previousPipeStatic = base
+        pipe = new base(logger, rendererOptions)
+    }
 
     for (let index = pipeline.pipes.length - 1; index >= 0; index--) {
         const currentPipeValue = pipeline.pipes[index]

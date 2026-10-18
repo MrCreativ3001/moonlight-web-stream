@@ -31,6 +31,22 @@ export function allVideoCodecs(): VideoFormats {
     }
 }
 
+export function orVideoCodecs(a: VideoFormats, b: VideoFormats): VideoFormats {
+    const output: any = {}
+
+    for (const codec2 in a) {
+        const codec = codec2 as keyof VideoFormats
+        const supportedA = a[codec]
+        const supportedB = b[codec]
+
+        let supported = supportedA || supportedB
+
+        output[codec] = supported
+    }
+
+    return output
+}
+
 export function andVideoCodecs(a: VideoFormats, b: VideoFormats): VideoFormats {
     const output: any = {}
 

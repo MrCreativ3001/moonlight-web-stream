@@ -6,6 +6,7 @@ import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
 import { I16_MAX, U16_MAX, U8_MAX } from "../buffer"
 import { createControllerPacketBitflags } from "../gamepad"
 import { Logger } from "../log"
+import { buildPipeline, getPipe, Pipe, Pipeline, pipelineInputType } from "../pipeline"
 import { DataPipe } from "../pipeline/pipes"
 import { StatValue } from "../stats"
 import { TrackVideoRenderer, VideoRenderer } from "../video/index"
@@ -240,18 +241,19 @@ export class WebRTCTransport implements Transport {
     // Video
     private videoStream: MediaStreamTrack | null = null
 
-    setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>;
-    setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>;
-    async setVideoPipeline(type: TransportVideoType, pipeline: unknown): Promise<void> {
+    async connectVideoPipeline(pipeline: Pipeline): Promise<Pipe> {
         if (!this.videoStream || !this.connectData) {
             throw "the stream must be connected!"
         }
 
-        if (type == "videotrack") {
-            const trackPipeline = pipeline as (TrackVideoRenderer & VideoRenderer)
+        const inputType = pipelineInputType(pipeline)
+
+        if (inputType == "videotrack") {
+            const trackPipeline = buildPipeline(pipeline) as TrackVideoRenderer
 
             trackPipeline.setTrack(this.videoStream)
-        } else if (type == "data") {
+            return trackPipeline
+        } else {
             throw "unimplemented"
         }
     }
@@ -259,18 +261,19 @@ export class WebRTCTransport implements Transport {
     // Audio
     private audioStream: MediaStreamTrack | null = null
 
-    setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
-    setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
-    async setAudioPipeline(type: TransportAudioType, pipeline: AudioPlayer): Promise<void> {
+    async connectAudioPipeline(pipeline: Pipeline): Promise<Pipe> {
         if (!this.audioStream || !this.connectData) {
             throw "the stream must be connected!"
         }
 
-        if (type == "audiotrack") {
-            const trackPipeline = pipeline as (TrackAudioPlayer & AudioPlayer)
+        const inputType = pipelineInputType(pipeline)
+
+        if (inputType == "audiotrack") {
+            const trackPipeline = buildPipeline(pipeline) as TrackAudioPlayer
 
             trackPipeline.setTrack(this.audioStream)
-        } else if (type == "data") {
+            return trackPipeline
+        } else {
             throw "unimplemented"
         }
     }

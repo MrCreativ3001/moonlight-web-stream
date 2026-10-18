@@ -4,6 +4,7 @@ import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDese
 import { globalObject } from "../../util"
 import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
 import { Logger } from "../log"
+import { buildPipeline, getPipe, OutputPipeStatic, Pipe, Pipeline, pipelineInputType, pipelineToString } from "../pipeline"
 import { DataPipe } from "../pipeline/pipes"
 import { StatValue } from "../stats"
 import { createSupportedVideoFormatsBits, getSelectedVideoCodec } from "../video"
@@ -162,29 +163,36 @@ export class WebSocketTransport implements Transport {
 
     private videoPipeline: DataPipe | null = null
 
-    setVideoPipeline(type: "videotrack", pipeline: (TrackVideoRenderer & VideoRenderer)): Promise<void>
-    setVideoPipeline(type: "data", pipeline: (DataPipe & VideoRenderer)): Promise<void>
-    async setVideoPipeline(type: TransportVideoType, pipeline: unknown): Promise<void> {
-        if (type != "data") {
-            throw `invalid web socket video pipeline type ${type}`
-        }
-
-        this.videoPipeline = pipeline as (DataPipe & AudioPlayer)
-    }
-
-    private audioPipeline: (DataPipe & AudioPlayer) | null = null
-
-    setAudioPipeline(type: "audiotrack", pipeline: (TrackAudioPlayer & AudioPlayer)): Promise<void>
-    setAudioPipeline(type: "data", pipeline: (DataPipe & AudioPlayer)): Promise<void>
-    async setAudioPipeline(type: TransportAudioType, pipeline: unknown): Promise<void> {
+    async connectVideoPipeline(pipeline: Pipeline): Promise<Pipe> {
         if (!this.connectData) {
             throw "web socket stream not yet connected!"
         }
-        if (type != "data") {
-            throw `invalid web socket audio pipeline type ${type}`
+
+        const inputType = pipelineInputType(pipeline)
+        if (inputType != "data") {
+            this.logger?.debug(`invalid web socket video pipeline ${pipelineToString(pipeline)}`, { type: "fatalDescription" })
+            throw "error"
         }
 
-        this.audioPipeline = pipeline as (DataPipe & AudioPlayer)
+        this.videoPipeline = buildPipeline(pipeline) as DataPipe
+        return this.videoPipeline
+    }
+
+    private audioPipeline: DataPipe | null = null
+
+    async connectAudioPipeline(pipeline: Pipeline): Promise<Pipe> {
+        if (!this.connectData) {
+            throw "web socket stream not yet connected!"
+        }
+
+        const inputType = pipelineInputType(pipeline)
+        if (inputType != "data") {
+            this.logger?.debug(`invalid web socket audio pipeline type ${pipelineToString(pipeline)}`, { type: "fatalDescription" })
+            throw "error"
+        }
+
+        this.audioPipeline = buildPipeline(pipeline) as DataPipe
+        return this.audioPipeline
     }
 
     private relayStats: { rttMs: number, rttVarianceMs: number } | null = null

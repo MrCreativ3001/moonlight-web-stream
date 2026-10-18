@@ -1,22 +1,18 @@
-import { AudioPlayer, TrackAudioPlayer } from "./index"
 import { AudioDecoderPipe } from "./audio_decoder_pipe"
 import { AudioElementPlayer } from "./audio_element"
 import { AudioMediaStreamTrackGeneratorPipe } from "./media_stream_track_generator_pipe"
 import { Logger } from "../log"
-import { buildPipeline, gatherPipeInfo, OutputPipeStatic, PipeInfoStatic, pipeName, PipeStatic } from "../pipeline/index"
+import { gatherPipeInfo, getPipe, OutputPipeStatic, PipeInfoStatic, Pipeline, pipelineInputType, pipelineToString, pipeName } from "../pipeline/index"
 import { OpusAudioDecoderPipe } from "./opus_decoder_pipe"
 import { AudioBufferPipe as AudioPcmBufferPipe } from "./audio_buffer_pipe"
 import { ContextDestinationNodeAudioPlayer } from "./audio_context_destination"
 import { AudioContextTrackPipe } from "./audio_context_track_pipe"
 import { DepacketizeAudioPipe } from "./depacketize_pipe"
-import { DataPipe } from "../pipeline/pipes"
 
 const AUDIO_PLAYERS: Array<AudioPlayerStatic> = [
     AudioElementPlayer,
     ContextDestinationNodeAudioPlayer
 ]
-
-type PipelineResult<T> = { audioPlayer: T, error: false } | { audioPlayer: null, error: true }
 
 interface AudioPlayerStatic extends PipeInfoStatic, OutputPipeStatic {
     readonly pipeName: string
@@ -25,23 +21,18 @@ interface AudioPlayerStatic extends PipeInfoStatic, OutputPipeStatic {
 export type AudioPipelineOptions = {
 }
 
-type Pipeline = { input: string, pipes: Array<PipeStatic>, player: AudioPlayerStatic }
-
 const PIPELINES: Array<Pipeline> = [
     // Convert track -> audio_element, All Browsers
-    { input: "audiotrack", pipes: [], player: AudioElementPlayer },
+    { pipes: [], output: AudioElementPlayer },
     // Convert data -> audio_sample -> track (MediaStreamTrackGenerator) -> audio_element, Chromium
-    { input: "data", pipes: [DepacketizeAudioPipe, AudioDecoderPipe, AudioMediaStreamTrackGeneratorPipe], player: AudioElementPlayer },
+    { pipes: [DepacketizeAudioPipe, AudioDecoderPipe, AudioMediaStreamTrackGeneratorPipe], output: AudioElementPlayer },
     // Convert data -> audio_sample -> audio_sample_pcm -> audio_context_element -> audio_element, Safari / Firefox
-    { input: "data", pipes: [DepacketizeAudioPipe, OpusAudioDecoderPipe, AudioPcmBufferPipe, AudioContextTrackPipe], player: AudioElementPlayer },
+    { pipes: [DepacketizeAudioPipe, OpusAudioDecoderPipe, AudioPcmBufferPipe, AudioContextTrackPipe], output: AudioElementPlayer },
     // Convert data -> audio_sample -> audio_sample_pcm -> audio_context_element -> audio_element, Safari / Firefox
-    { input: "data", pipes: [DepacketizeAudioPipe, OpusAudioDecoderPipe, AudioPcmBufferPipe], player: ContextDestinationNodeAudioPlayer },
+    { pipes: [DepacketizeAudioPipe, OpusAudioDecoderPipe, AudioPcmBufferPipe], output: ContextDestinationNodeAudioPlayer },
 ]
 
-export function buildAudioPipeline(type: "audiotrack", settings: AudioPipelineOptions, logger?: Logger): Promise<PipelineResult<TrackAudioPlayer & AudioPlayer>>
-export function buildAudioPipeline(type: "data", settings: AudioPipelineOptions, logger?: Logger): Promise<PipelineResult<DataPipe & AudioPlayer>>
-
-export async function buildAudioPipeline(type: string, settings: AudioPipelineOptions, logger?: Logger): Promise<PipelineResult<AudioPlayer>> {
+export async function selectAudioPipeline(type: string, settings: AudioPipelineOptions, logger?: Logger): Promise<Pipeline | null> {
     const pipesInfo = await gatherPipeInfo()
 
     if (logger) {
@@ -66,13 +57,20 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
     let pipelines = PIPELINES
 
     pipelineLoop: for (const pipeline of pipelines) {
-        if (pipeline.input != type) {
+        const inputType = pipelineInputType(pipeline)
+        if (inputType != type) {
             continue
         }
 
         // Check if supported
         for (const pipe of pipeline.pipes) {
-            const pipeInfo = pipesInfo.get(pipe)
+            const pipeStatic = getPipe(pipe)
+            if (!pipeStatic) {
+                logger?.debug(`Failed to find pipe ${pipeName(pipe)} whilst querying video pipeline info`)
+                continue
+            }
+
+            const pipeInfo = pipesInfo.get(pipeStatic)
             if (!pipeInfo) {
                 logger?.debug(`Failed to query info for audio pipe ${pipeName(pipe)}`)
                 continue pipelineLoop
@@ -83,9 +81,9 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
             }
         }
 
-        const playerInfo = await pipeline.player.getInfo()
+        const playerInfo = await pipeline.output?.getInfo()
         if (!playerInfo) {
-            logger?.debug(`Failed to query info for audio player ${pipeName(pipeline.player)}`)
+            logger?.debug(`Failed to query info for audio player ${pipelineToString(pipeline)}`)
             continue pipelineLoop
         }
 
@@ -93,16 +91,9 @@ export async function buildAudioPipeline(type: string, settings: AudioPipelineOp
             continue pipelineLoop
         }
 
-        // Build that pipeline
-        const audioPlayer = buildPipeline(pipeline.player, { pipes: pipeline.pipes }, logger)
-        if (!audioPlayer) {
-            logger?.debug("Failed to build audio pipeline")
-            return { audioPlayer: null, error: true }
-        }
-
-        return { audioPlayer: audioPlayer as AudioPlayer, error: false }
+        return pipeline
     }
 
     logger?.debug("No supported audio player found!")
-    return { audioPlayer: null, error: true }
+    return null
 }

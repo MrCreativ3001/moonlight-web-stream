@@ -24,6 +24,13 @@ let currentPipeline: WorkerReceiver | null = null
 let canvasPipe: WorkerOffscreenCanvasSendPipe | null = null
 
 class WorkerMessageSender implements WorkerReceiver {
+    static async getInfo(): Promise<PipeInfo> {
+        return {
+            environmentSupported: true
+        }
+    }
+    static readonly pipeName: string = "worker_output"
+
     static readonly type: string = "workerinput"
 
     readonly implementationName: string = "worker_output"
@@ -81,8 +88,9 @@ async function onMessage(message: ToWorkerMessage) {
         logger.debug(`Trying to build pipeline in worker, Pipes: ${JSON.stringify(message.createPipeline.pipes)}`)
 
         const pipeline = message.createPipeline
+        pipeline.output = WorkerMessageSender
 
-        const newPipeline = buildPipeline(WorkerMessageSender, pipeline, logger)
+        const newPipeline = buildPipeline(pipeline, logger)
         if (newPipeline && "onWorkerMessage" in newPipeline && typeof newPipeline.onWorkerMessage == "function") {
             currentPipeline = newPipeline as WorkerReceiver
         } else {

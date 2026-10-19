@@ -174,7 +174,7 @@ export class WebSocketTransport implements Transport {
             throw "error"
         }
 
-        this.videoPipeline = buildPipeline(pipeline) as DataPipe
+        this.videoPipeline = await buildPipeline(pipeline, this.logger) as DataPipe
         return this.videoPipeline
     }
 
@@ -191,7 +191,7 @@ export class WebSocketTransport implements Transport {
             throw "error"
         }
 
-        this.audioPipeline = buildPipeline(pipeline) as DataPipe
+        this.audioPipeline = await buildPipeline(pipeline, this.logger) as DataPipe
         return this.audioPipeline
     }
 

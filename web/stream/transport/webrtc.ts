@@ -249,7 +249,7 @@ export class WebRTCTransport implements Transport {
         const inputType = pipelineInputType(pipeline)
 
         if (inputType == "videotrack") {
-            const trackPipeline = buildPipeline(pipeline) as TrackVideoRenderer
+            const trackPipeline = await buildPipeline(pipeline, this.logger) as TrackVideoRenderer
 
             trackPipeline.setTrack(this.videoStream)
             return trackPipeline
@@ -269,7 +269,7 @@ export class WebRTCTransport implements Transport {
         const inputType = pipelineInputType(pipeline)
 
         if (inputType == "audiotrack") {
-            const trackPipeline = buildPipeline(pipeline) as TrackAudioPlayer
+            const trackPipeline = await buildPipeline(pipeline, this.logger) as TrackAudioPlayer
 
             trackPipeline.setTrack(this.audioStream)
             return trackPipeline

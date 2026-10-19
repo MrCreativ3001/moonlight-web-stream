@@ -1,6 +1,6 @@
 import { Logger, LogMessageType } from "../log"
 import { andVideoCodecs } from "../video"
-import { buildPipeline, getPipe, Pipe, PipeInfo, pipeName } from "./index"
+import { buildPipelineNoCheck, getPipe, Pipe, PipeInfo, pipeName } from "./index"
 import { WorkerOffscreenCanvasSendPipe } from "./worker_io"
 import { WorkerReceiver } from "./worker_pipe"
 import { ToMainMessage, ToWorkerMessage, WorkerMessage } from "./worker_types"
@@ -90,7 +90,7 @@ async function onMessage(message: ToWorkerMessage) {
         const pipeline = message.createPipeline
         pipeline.output = WorkerMessageSender
 
-        const newPipeline = buildPipeline(pipeline, logger)
+        const newPipeline = buildPipelineNoCheck(pipeline, logger)
         if (newPipeline && "onWorkerMessage" in newPipeline && typeof newPipeline.onWorkerMessage == "function") {
             currentPipeline = newPipeline as WorkerReceiver
         } else {

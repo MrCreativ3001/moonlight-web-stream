@@ -100,7 +100,27 @@ export function pipelineInputType(pipeline: Pipeline, logger?: Logger): string |
     return null
 }
 
-export function buildPipeline(pipeline: Pipeline, logger?: Logger, rendererOptions?: unknown): Pipe | null {
+export async function buildPipeline(pipeline: Pipeline, logger?: Logger, rendererOptions?: unknown): Promise<Pipe | null> {
+    const pipesInfo = await gatherPipeInfo()
+    const pipes = pipeline.pipes.map(pipe => getPipe(pipe))
+
+    for (const pipe of pipes) {
+        if (!pipe) {
+            logger?.debug(`Failed to get a pipe inside pipeline ${pipelineToString(pipeline)}`)
+            return null
+        }
+
+        const pipeInfo = pipesInfo.get(pipe)
+        if (!pipeInfo?.environmentSupported) {
+            logger?.debug(`Failed to create pipeline ${pipelineToString(pipeline)} because pipe ${pipeName(pipe)} is not supported!`)
+            return null
+        }
+    }
+
+    return buildPipelineNoCheck(pipeline, logger, rendererOptions)
+}
+
+export function buildPipelineNoCheck(pipeline: Pipeline, logger?: Logger, rendererOptions?: unknown): Pipe | null {
     let previousPipeStatic: OutputPipeStatic | PipeStatic | null = null
     let pipe = null
     if (pipeline.output) {

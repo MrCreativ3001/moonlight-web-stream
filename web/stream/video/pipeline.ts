@@ -174,19 +174,23 @@ async function allSelectedVideoPipelines(settings: VideoPipelineOptions, logger?
 
     const outputPipelines = []
 
-    pipelineLoop: for (const pipeline of pipelines) {
+    for (const pipeline of pipelines) {
         const pipelineInfo = await queryVideoPipelineInfo(pipeline)
         const supportedCodecs = andVideoCodecs(pipelineInfo.supportedVideoCodecs ?? allVideoCodecs(), settings.supportedVideoCodecs)
 
+        if (!pipelineInfo.environmentSupported) {
+            continue
+        }
+
         if (!hasAnyCodec(supportedCodecs)) {
             logger?.debug(`Not using pipe ${pipelineToString(pipeline)} because it doesn't support any codec the user wants`)
-            continue pipelineLoop
+            continue
         }
 
         outputPipelines.push(pipeline)
     }
 
-    return pipelines
+    return outputPipelines
 }
 
 export async function querySupportedDataVideoCodecs(settings: VideoPipelineOptions, logger?: Logger): Promise<VideoFormats> {

@@ -6,7 +6,7 @@ import { wait } from "../util"
 import { AudioPlayer, AudioPlayerSetup } from "./audio/index"
 import { defaultStreamInputConfig, StreamInput } from "./input"
 import { Logger, LogMessageInfo } from "./log"
-import { gatherPipeInfo, pipeName } from "./pipeline/index"
+import { gatherPipeInfo, pipelineToString, pipeName } from "./pipeline/index"
 import { StreamStats } from "./stats"
 import { Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./transport/index"
 import { WebSocketTransport } from "./transport/web_socket"
@@ -468,6 +468,7 @@ export class Stream implements Component {
         if (!pipeline) {
             return false
         }
+        this.logger.debug(`Trying to build video pipeline ${pipelineToString(pipeline)}`)
 
         this.videoRenderer = await this.transport.connectVideoPipeline(pipeline) as VideoRenderer
 
@@ -493,6 +494,7 @@ export class Stream implements Component {
         if (!pipeline) {
             return false
         }
+        this.logger.debug(`Trying to build audio pipeline ${pipelineToString(pipeline)}`)
 
         this.audioPlayer = await this.transport.connectAudioPipeline(pipeline) as AudioPlayer
 

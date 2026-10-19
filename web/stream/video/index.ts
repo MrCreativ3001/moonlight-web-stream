@@ -78,6 +78,7 @@ export interface UrlVideoRenderer extends Pipe {
     // static readonly type = "videourl"
 
     setUrl(src: string): void
+    seekToLatest(): void
 }
 
 export interface FrameVideoRenderer extends Pipe {

@@ -67,6 +67,10 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             })
         })
 
+        if (document) {
+            document.addEventListener("visibilitychange", this.boundOnDocVisibilityChange)
+        }
+
         addPipePassthrough(this)
     }
 
@@ -109,11 +113,21 @@ export class MediaSourceDecoder implements DataVideoRenderer {
     }
 
     private onUpdateEnd() {
+        if (this.waitForIdrUpdateEnd) {
+            this.base.seekToLatest()
+            this.waitForIdrUpdateEnd = false
+        }
+
+        if (this.removeUntilSeconds != null) {
+            this.resetBuffer()
+        }
+
         this.tryAppendDecodeUnit()
     }
 
     private buffers: Array<Uint8Array<ArrayBuffer>> = []
     private needIdr = true
+    private waitForIdrUpdateEnd = true
 
     private droppedFrames = 0
 
@@ -175,8 +189,14 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             this.buffers.push(idrSegment.getRemainingBuffer())
 
             this.needIdr = false
+            this.waitForIdrUpdateEnd = true
             this.droppedFrames = 0
         } else {
+            if (unit.type == "key") {
+                this.needIdr = false
+                this.waitForIdrUpdateEnd = true
+            }
+
             if (this.needIdr) {
                 this.droppedFrames += 1
                 return
@@ -197,7 +217,6 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             this.buffers.push(segment.getRemainingBuffer())
 
             console.debug("pushed video frame segment")
-
         }
         this.tryAppendDecodeUnit()
     }
@@ -223,7 +242,14 @@ export class MediaSourceDecoder implements DataVideoRenderer {
 
             const [unit] = this.buffers.splice(0, 1)
 
-            this.sourceBuffer.appendBuffer(unit)
+            try {
+                this.sourceBuffer.appendBuffer(unit)
+            } catch (e) {
+                if (e instanceof Error && e.name == "QuotaExceededError") {
+                    this.resetBuffer()
+                }
+                console.error("appendBuffer failed", e);
+            }
 
             if (DEBUG_FILE) {
                 if (!this.debugBuffer) {
@@ -235,6 +261,48 @@ export class MediaSourceDecoder implements DataVideoRenderer {
                 this.debugBuffer.set(oldBuffer)
                 this.debugBuffer.set(unit, oldBuffer.length)
             }
+        }
+    }
+
+    private removeUntilSeconds: number | null = null
+
+    /// Clears all current sourceBuffer data and requests an idr
+    private resetBuffer() {
+        console.debug("resetting buffer")
+
+        if (!this.sourceBuffer) {
+            return
+        }
+
+        if (this.removeUntilSeconds == null || !this.sourceBuffer.updating) {
+            this.buffers = []
+            this.needIdr = true
+
+            // This will request an idr
+            this.droppedFrames = 100
+        }
+
+        if (!this.sourceBuffer.updating) {
+            let end = this.getCurrentTimeSeconds() - 1
+
+            if (this.removeUntilSeconds != null) {
+                end = this.removeUntilSeconds
+                this.removeUntilSeconds = null
+            }
+
+            end = Math.max(end, 0.1)
+            this.sourceBuffer.remove(0, end)
+        } else {
+            this.removeUntilSeconds = this.getCurrentTimeSeconds() - 1
+        }
+    }
+
+    /// The video doesn't continue when changing tabs
+    /// -> this leads to latency
+    private boundOnDocVisibilityChange = this.onDocVisiblityChange.bind(this)
+    private onDocVisiblityChange() {
+        if (document.visibilityState == "visible") {
+            this.resetBuffer()
         }
     }
 
@@ -262,11 +330,16 @@ export class MediaSourceDecoder implements DataVideoRenderer {
             this.base.cleanup(...arguments)
         }
 
+        document.removeEventListener("visibilitychange", this.boundOnDocVisibilityChange)
         URL.revokeObjectURL(this.url)
     }
 
     getBase(): Pipe | null {
         return this.base
+    }
+
+    private getCurrentTimeSeconds(): number {
+        return (this.sequenceNumber * this.frameDuration) / 1_000_000
     }
 }
 

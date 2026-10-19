@@ -214,6 +214,24 @@ export class UrlVideoElementRenderer implements UrlVideoRenderer, VideoRenderer 
         this.videoElement.src = src
     }
 
+    /// Needed for MediaSourceDecoder because it's possible to jump from one point to another without video data in the middle
+    seekToLatest() {
+        const buffered = this.videoElement.buffered
+
+        if (buffered.length === 0) {
+            return
+        }
+
+        const latestEnd = buffered.end(buffered.length - 1)
+        const target = Math.max(
+            buffered.start(buffered.length - 1),
+            latestEnd - 0.1,
+        )
+        console.trace({ buffered })
+
+        this.videoElement.currentTime = target
+    }
+
     pollRequestIdr(): boolean {
         return false
     }

@@ -99,6 +99,24 @@ export function pipelineInputType(pipeline: Pipeline, logger?: Logger): string |
 
     return null
 }
+export function pipelineOutputType(pipeline: Pipeline, logger?: Logger): string | null {
+    if (pipeline.output) {
+        return null
+    }
+
+    if (pipeline.pipes.length > 0) {
+        const lastIndex = pipeline.pipes.length - 1
+
+        const pipe = getPipe(pipeline.pipes[lastIndex])
+        if (!pipe) {
+            logger?.debug(`Failed to find output type for pipeline ${pipelineToString(pipeline)}`)
+            return null
+        }
+        return pipeline.pipes[lastIndex] && pipe.baseType
+    }
+
+    return null
+}
 
 export async function buildPipeline(pipeline: Pipeline, logger?: Logger, rendererOptions?: unknown): Promise<Pipe | null> {
     const pipesInfo = await gatherPipeInfo()
@@ -110,8 +128,13 @@ export async function buildPipeline(pipeline: Pipeline, logger?: Logger, rendere
             return null
         }
 
-        const pipeInfo = pipesInfo.get(pipe)
-        if (!pipeInfo?.environmentSupported) {
+        let pipeInfo = pipesInfo.get(pipe)
+        if (!pipeInfo) {
+            pipeInfo = await pipe.getInfo()
+            logger?.debug(`Querying pipe info for ${pipeName(pipe)}: ${JSON.stringify(pipeInfo)}`)
+        }
+
+        if (!pipeInfo.environmentSupported) {
             logger?.debug(`Failed to create pipeline ${pipelineToString(pipeline)} because pipe ${pipeName(pipe)} is not supported!`)
             return null
         }
@@ -149,6 +172,17 @@ export function buildPipelineNoCheck(pipeline: Pipeline, logger?: Logger, render
     }
 
     return pipe
+}
+
+export function getRootPipe(pipe: Pipe): Pipe {
+    let base = pipe
+    let newBase = null
+
+    while ((newBase = base.getBase())) {
+        base = newBase
+    }
+
+    return base
 }
 
 let PIPE_INFO: Promise<Map<PipeStatic, PipeInfo>> | null

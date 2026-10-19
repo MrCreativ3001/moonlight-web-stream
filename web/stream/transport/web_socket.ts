@@ -2,13 +2,11 @@ import { Api } from "../../api"
 import { WebSocketChannel, WebSocketClientboundMessage, WebSocketServerboundMessage } from "../../api_bindings"
 import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, InputBatcher, PacketDirection } from "../../uniffi/moonlight_common_bindings"
 import { globalObject } from "../../util"
-import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
 import { Logger } from "../log"
 import { buildPipeline, getPipe, OutputPipeStatic, Pipe, Pipeline, pipelineInputType, pipelineToString } from "../pipeline"
 import { DataPipe } from "../pipeline/pipes"
 import { StatValue } from "../stats"
 import { createSupportedVideoFormatsBits, getSelectedVideoCodec } from "../video"
-import { TrackVideoRenderer, VideoRenderer } from "../video/index"
 import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index"
 
 export class WebSocketTransport implements Transport {
@@ -91,6 +89,7 @@ export class WebSocketTransport implements Transport {
                         samplesPerFrame: response.audio_samples_per_frame,
                         mapping: response.audio_mapping
                     },
+                    microphoneType: null,
                     capabilities: { touch: true },
                     appName: response.app_name ?? "Unknown",
                 }
@@ -193,6 +192,11 @@ export class WebSocketTransport implements Transport {
 
         this.audioPipeline = await buildPipeline(pipeline, this.logger) as DataPipe
         return this.audioPipeline
+    }
+
+    async connectMicrophonePipeline(_pipeline: Pipeline): Promise<Pipe | null> {
+        // TODO
+        return null
     }
 
     private relayStats: { rttMs: number, rttVarianceMs: number } | null = null

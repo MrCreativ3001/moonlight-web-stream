@@ -22,6 +22,7 @@ export type Settings = {
     canvasRenderer: boolean
     canvasVsync: boolean
     playAudioLocal: boolean
+    microphone: boolean
     mouseScrollMode: MouseScrollMode
     mouseMode: MouseMode
     touchMode: TouchMode
@@ -163,6 +164,9 @@ export class StreamSettingsComponent implements Component {
 
     private audioHeader: HTMLHeadingElement = document.createElement("h3")
     private playAudioLocal: InputComponent
+
+    private microphoneHeader: HTMLHeadingElement = document.createElement("h3")
+    private microphone: InputComponent
 
     private mouseHeader: HTMLHeadingElement = document.createElement("h3")
     private mouseScrollMode: SelectComponent
@@ -352,6 +356,16 @@ export class StreamSettingsComponent implements Component {
         })
         this.playAudioLocal.addChangeListener(this.onSettingsChange.bind(this))
         this.playAudioLocal.mount(this.divElement)
+
+        // Microphone
+        this.microphoneHeader.innerText = i.microphone
+        this.divElement.appendChild(this.microphoneHeader)
+
+        this.microphone = new InputComponent("microphone", "checkbox", i.microphoneEnabled, {
+            checked: settings?.microphone
+        })
+        this.microphone.addChangeListener(this.onSettingsChange.bind(this))
+        this.microphone.mount(this.divElement)
 
         // Mouse
         this.mouseHeader.innerText = i.mouse
@@ -555,6 +569,8 @@ export class StreamSettingsComponent implements Component {
         settings.canvasVsync = this.canvasVsync.isChecked()
 
         settings.playAudioLocal = this.playAudioLocal.isChecked()
+
+        settings.microphone = this.microphone.isChecked()
 
         settings.mouseScrollMode = this.mouseScrollMode.getValue() as any
         settings.mouseMode = this.mouseMode.getValue() as MouseMode

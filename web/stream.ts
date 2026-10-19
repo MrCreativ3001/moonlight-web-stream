@@ -355,6 +355,11 @@ class ViewerApp implements Component {
 
         this.stream.getVideoRenderer()?.onUserInteraction()
         this.stream.getAudioPlayer()?.onUserInteraction()
+
+        const micListener = this.stream.getMicrophoneListener()
+        if (micListener && "onUserInteraction" in micListener && typeof micListener.onUserInteraction == "function") {
+            micListener.onUserInteraction()
+        }
     }
 
     // -- Auto Fullscreen

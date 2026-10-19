@@ -2,6 +2,7 @@ use crate::api::stream::webrtc::audio::AudioChannel;
 use crate::api::stream::webrtc::control::ControlChannel;
 use crate::api::stream::webrtc::ext_color_space::COLOR_SPACE_URI;
 use crate::api::stream::webrtc::forward_interceptor::RtcpForwarderInterceptor;
+use crate::api::stream::webrtc::microphone::MicChannel;
 use crate::api::stream::webrtc::stream::webrtc_loop;
 use crate::api::stream::webrtc::video::{VideoChannel, video_rtcp_feedback};
 use crate::config::PortRange;
@@ -48,6 +49,7 @@ use tokio::time::sleep;
 use tokio::{select, spawn};
 use tracing::{Instrument, debug, debug_span, error, info, instrument, warn};
 use webrtc::data_channel::DataChannel;
+use webrtc::media_stream::track_remote::TrackRemote;
 use webrtc::peer_connection::{
     MediaEngine, PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler,
     RTCConfigurationBuilder, RTCIceCandidateInit, RTCIceGatheringState, RTCIceServer,
@@ -71,6 +73,7 @@ mod convert;
 mod ext_color_space;
 mod forward_interceptor;
 mod ice_servers;
+mod microphone;
 mod stream;
 mod video;
 
@@ -230,6 +233,7 @@ fn create_media_engine(video_formats: &HashMap<VideoFormat, RTCRtpCodecParameter
 struct WebRtcHandler {
     on_ice_gathering_finished: Notify,
     on_data_channel_sender: mpsc::UnboundedSender<Arc<dyn DataChannel>>,
+    on_track_sender: mpsc::UnboundedSender<Arc<dyn TrackRemote>>,
     peer_state: Mutex<RTCPeerConnectionState>,
 }
 
@@ -251,6 +255,10 @@ impl PeerConnectionEventHandler for WebRtcHandler {
 
     async fn on_data_channel(&self, data_channel: Arc<dyn DataChannel>) {
         let _ = self.on_data_channel_sender.send(data_channel);
+    }
+
+    async fn on_track(&self, track: Arc<dyn TrackRemote>) {
+        let _ = self.on_track_sender.send(track);
     }
 }
 
@@ -378,11 +386,13 @@ pub async fn webrtc_post(
     // Initialize senders and receivers for events
     let (on_data_channel_sender, on_data_channel) =
         mpsc::unbounded_channel::<Arc<dyn DataChannel>>();
+    let (on_track_sender, on_track) = mpsc::unbounded_channel::<Arc<dyn TrackRemote>>();
 
     let handler = Arc::new(WebRtcHandler {
         peer_state: Mutex::new(RTCPeerConnectionState::New),
         on_ice_gathering_finished: Notify::new(),
         on_data_channel_sender,
+        on_track_sender,
     });
 
     // Create new peer
@@ -431,7 +441,7 @@ pub async fn webrtc_post(
         });
 
     // TODO: query microphone support
-    let microphone_enabled = false;
+    let mic_channel = MicChannel::new(&offer_sdp).await;
 
     // TODO: query audio support
     let audio_config = Some(AudioConfig::STEREO);
@@ -474,7 +484,7 @@ pub async fn webrtc_post(
         audio_config: AudioConfig::STEREO,
         gamepads_attached: ActiveGamepads::empty(),
         gamepads_persist_after_disconnect: false,
-        enable_mic: microphone_enabled,
+        enable_mic: mic_channel.is_some(),
     };
 
     // -- Get and Apply Permissions
@@ -525,6 +535,7 @@ pub async fn webrtc_post(
             return Err(err.into());
         }
     };
+    let host_features = moonlight_stream.host_features();
 
     // Add audio and video track forwarding
     let audio_channel = match AudioChannel::new_track(&moonlight_stream, &*peer).await {
@@ -585,7 +596,9 @@ pub async fn webrtc_post(
                 audio_channel,
                 video_channel,
                 control_channel,
+                mic_channel,
                 on_data_channel,
+                on_track,
                 &handler,
             )
             .await
@@ -626,7 +639,7 @@ pub async fn webrtc_post(
         Session::parse(answer.sdp.as_bytes()).expect("failed to get parse sdp answer");
     let additional_answer = WebRTCSessionAnswer {
         app_name: app_title,
-        microphone: false,
+        microphone: host_features.microphone,
     };
     additional_answer.apply(&mut answer_sdp);
 

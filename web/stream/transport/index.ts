@@ -1,15 +1,17 @@
 import { ClientInputEvent, ControlPacket, ControlPacketConfig, controlPacketConfigNew, ServerType, VideoFormats } from "../../uniffi/moonlight_common_bindings"
-import { AudioPlayer, AudioPlayerSetup, TrackAudioPlayer } from "../audio/index"
+import { AudioPlayerSetup } from "../audio/index"
 import { StreamCapabilities } from "../index"
-import { OutputPipeStatic, Pipe, Pipeline } from "../pipeline"
-import { DataPipe } from "../pipeline/pipes"
+import { Pipe, Pipeline } from "../pipeline"
 import { StatValue } from "../stats"
-import { TrackVideoRenderer, VideoRenderer, VideoRendererSetup } from "../video/index"
+import { VideoRendererSetup } from "../video/index"
 
-export type TransportVideoType = "videotrack" // TrackTransportChannel
+export type TransportVideoType = "videotrack"
     | "data" // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L298
 
-export type TransportAudioType = "audiotrack" // TrackTransportChannel
+export type TransportAudioType = "audiotrack"
+    | "data" // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L356
+
+export type TransportMicrophoneType = "audiotrack"
     | "data" // Data like https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/Limelight.h#L356
 
 // failednoconnect => a connection failed without firstly being established
@@ -30,6 +32,7 @@ export type TransportOptions = {
     preferredCodecs?: VideoFormats,
     preferredAudio?: number,
     hostId: number,
+    microphone: boolean
 }
 
 export type TransportConnectData = {
@@ -38,6 +41,7 @@ export type TransportConnectData = {
     videoSetup: VideoRendererSetup,
     audioType: TransportAudioType,
     audioSetup: AudioPlayerSetup,
+    microphoneType: TransportMicrophoneType | null,
     appName: string,
 }
 
@@ -53,6 +57,8 @@ export interface Transport {
     // -- Only allowed after onconnect was called
     connectVideoPipeline(pipeline: Pipeline): Promise<Pipe>
     connectAudioPipeline(pipeline: Pipeline): Promise<Pipe>
+    /// only callable if microphoneType is not null
+    connectMicrophonePipeline(pipeline: Pipeline): Promise<Pipe | null>
 
     getStats(): Promise<Record<string, StatValue>>
 }

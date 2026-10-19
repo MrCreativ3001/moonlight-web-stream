@@ -6,7 +6,7 @@ import { wait } from "../util"
 import { AudioPlayer, AudioPlayerSetup } from "./audio/index"
 import { defaultStreamInputConfig, StreamInput } from "./input"
 import { Logger, LogMessageInfo } from "./log"
-import { gatherPipeInfo, pipelineToString, pipeName } from "./pipeline/index"
+import { gatherPipeInfo, Pipe, Pipeline, pipelineToString, pipeName } from "./pipeline/index"
 import { StreamStats } from "./stats"
 import { Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./transport/index"
 import { WebSocketTransport } from "./transport/web_socket"
@@ -16,6 +16,8 @@ import { VideoRenderer, VideoRendererSetup } from "./video/index"
 import { querySupportedDataVideoCodecs, selectVideoPipeline, VideoPipelineOptions } from "./video/pipeline"
 import { StreamPermissions } from "../api_bindings"
 import { selectAudioPipeline } from "./audio/pipeline"
+import { MicrophonePipe } from "./audio/microphone_pipe"
+import { showNotification } from "../component/notification"
 
 export type ExecutionEnvironment = {
     main: boolean
@@ -110,6 +112,7 @@ export class Stream implements Component {
 
     private videoRenderer: VideoRenderer | null = null
     private audioPlayer: AudioPlayer | null = null
+    private microphoneListener: Pipe | null = null
 
     private input: StreamInput
     private stats: StreamStats
@@ -214,6 +217,7 @@ export class Stream implements Component {
             bitrate: this.settings.bitrate,
             hdr: this.settings.hdr,
             localAudioPlayMode: this.settings.playAudioLocal,
+            microphone: this.settings.microphone,
             supportedCodecs: dataCodecs,
             preferredCodecs: codecHint,
         }
@@ -359,6 +363,12 @@ export class Stream implements Component {
         // Set input
         this.input.onStreamStart(connectData.capabilities, [connectData.videoSetup.width, connectData.videoSetup.height])
 
+        if (this.settings.microphone && !connectData.microphoneType) {
+            const micUnsupportedMessage = "Microphone is not supported by the host or the data transport option"
+            this.logger.debug(micUnsupportedMessage)
+            showNotification(micUnsupportedMessage)
+        }
+
         // Create pipelines
         await this.createPipelines(connectData)
 
@@ -389,9 +399,10 @@ export class Stream implements Component {
         codecSupport[connectData.videoSetup.codec] = true
 
         // Create pipelines
-        const [gotVideoRenderer, _gotAudioPlayer] = await Promise.all([
+        const [gotVideoRenderer, _gotAudioPlayer, _gotMicrophone] = await Promise.all([
             this.createVideoRenderer(connectData.videoType, connectData.videoSetup),
-            this.createAudioPlayer(connectData.audioType, connectData.audioSetup)
+            this.createAudioPlayer(connectData.audioType, connectData.audioSetup),
+            this.configureMicrophone(connectData.microphoneType),
         ])
 
         const videoPipelineName = `${connectData.videoType} (transport) -> ${this.videoRenderer?.implementationName} (renderer)`
@@ -503,6 +514,28 @@ export class Stream implements Component {
 
         return true
     }
+    private async configureMicrophone(type: string | null) {
+        if (!type) {
+            return
+        }
+
+        if (!this.transport) {
+            this.debugLog("Failed to setup microphone without transport")
+            return
+        }
+
+        // TODO: make this more dynamic
+        let pipeline: Pipeline | null = null
+        if (type == "audiotrack") {
+            pipeline = { pipes: [MicrophonePipe] }
+        }
+        if (!pipeline) {
+            this.debugLog("Failed to setup microphone because no pipeline exists")
+            return
+        }
+
+        this.microphoneListener = await this.transport.connectMicrophonePipeline(pipeline)
+    }
 
     mount(parent: HTMLElement): void {
         parent.appendChild(this.divElement)
@@ -516,6 +549,9 @@ export class Stream implements Component {
     }
     getAudioPlayer(): AudioPlayer | null {
         return this.audioPlayer
+    }
+    getMicrophoneListener(): Pipe | null {
+        return this.microphoneListener
     }
 
     async stop(): Promise<boolean> {

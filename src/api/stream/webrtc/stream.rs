@@ -16,6 +16,7 @@ use tokio::{select, sync::mpsc};
 use tracing::{debug, info, warn};
 use webrtc::{
     data_channel::DataChannel,
+    media_stream::track_remote::TrackRemote,
     peer_connection::{PeerConnection, RTCPeerConnectionState},
 };
 
@@ -24,6 +25,7 @@ use crate::{
         WebRtcHandler,
         audio::AudioChannel,
         control::{ControlChannel, ControlChannelEvent},
+        microphone::{MicChannel, MicChannelEvent},
         video::{VideoChannel, VideoChannelEvent},
     },
     app::AppError,
@@ -35,7 +37,9 @@ pub async fn webrtc_loop(
     mut audio_channel: AudioChannel,
     mut video_channel: VideoChannel,
     mut control_channel: ControlChannel,
+    mut mic_channel: Option<MicChannel>,
     mut on_data_channel: mpsc::UnboundedReceiver<Arc<dyn DataChannel>>,
+    mut on_track: mpsc::UnboundedReceiver<Arc<dyn TrackRemote>>,
     handler: &WebRtcHandler,
 ) -> Result<(), AppError> {
     info!("started main webrtc loop");
@@ -80,6 +84,13 @@ pub async fn webrtc_loop(
 
                 if control_channel.try_add_channel(&label, &data_channel) {
                     continue;
+                }
+            }
+            Some(track) = async { if on_track.is_closed() { pending().await } else { on_track.recv().await } } => {
+                debug!("got remote track");
+
+                if let Some(mic_channel) = &mut mic_channel {
+                    mic_channel.set_track(track);
                 }
             }
             result = stream.drive() => {
@@ -170,6 +181,21 @@ pub async fn webrtc_loop(
                     ControlChannelEvent::Closed => {
                         info!("control channel closed");
                     },
+                }
+            }
+            result = async { if let Some(mic_channel) = &mut mic_channel { mic_channel.drive().await } else { pending().await } } => {
+                let event = result?;
+
+                match event {
+                    MicChannelEvent::OnFrame {
+                        timestamp,
+                        data,
+                    } => {
+                        stream.send_microphone_opus_data(timestamp, &data);
+                    }
+                    MicChannelEvent::Closed => {
+                        warn!("the microphone channel got closed");
+                    }
                 }
             }
         }

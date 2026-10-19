@@ -2,15 +2,15 @@ import { Api, fetchApi, WebRTCAnswer } from "../../api"
 import { StreamKeys } from "../../api_bindings"
 import { ActiveGamepads, ClientInputEvent, ClientInputEvent_Tags, ControlPacket, ControlPacketConfig, controlPacketDeserialize, controlPacketSerialize, KeyAction, keyStatesCanStore, keyStatesEmpty, keyStatesSetPressed, MouseButton, MouseButtonAction, PacketDirection, VideoFormats, WebRtcSessionAnswer, webrtcSessionAnswerParse, WebRtcSessionOffer, webrtcSessionOfferApply } from "../../uniffi/moonlight_common_bindings"
 import { globalObject, wait } from "../../util"
-import { AudioPlayer, TrackAudioPlayer } from "../audio/index"
+import { TrackAudioPlayer } from "../audio/index"
+import { RtpTrackSenderPipe } from "../audio/rtp_track_sender_pipe"
 import { I16_MAX, U16_MAX, U8_MAX } from "../buffer"
 import { createControllerPacketBitflags } from "../gamepad"
 import { Logger } from "../log"
-import { buildPipeline, getPipe, Pipe, Pipeline, pipelineInputType } from "../pipeline"
-import { DataPipe } from "../pipeline/pipes"
+import { buildPipeline, getPipe, getRootPipe, Pipe, Pipeline, pipelineInputType, pipelineOutputType, pipelineToString } from "../pipeline"
 import { StatValue } from "../stats"
-import { TrackVideoRenderer, VideoRenderer } from "../video/index"
-import { generateControlPacketConfig, IControlStream, Transport, TransportAudioType, TransportConnectData, TransportOptions, TransportShutdown, TransportVideoType } from "./index"
+import { TrackVideoRenderer } from "../video/index"
+import { generateControlPacketConfig, IControlStream, Transport, TransportConnectData, TransportOptions, TransportShutdown } from "./index"
 
 export class WebRTCTransport implements Transport {
 
@@ -58,6 +58,11 @@ export class WebRTCTransport implements Transport {
     private sdpAnswer: WebRtcSessionAnswer | null = null
 
     async createOffer(options: TransportOptions): Promise<string> {
+        if (options.microphone) {
+            this.logger?.debug("Adding microphone transceiver")
+            this.microphoneTransceiver = this.peer.addTransceiver("audio", { direction: "sendonly" })
+        }
+
         this.logger?.debug("Creating webrtc offer")
 
         let offer = await this.peer.createOffer()
@@ -139,6 +144,7 @@ export class WebRTCTransport implements Transport {
                 samplesPerFrame: 0,
                 mapping: []
             },
+            microphoneType: this.sdpAnswer?.microphone ? "audiotrack" : null,
             appName: this.sdpAnswer?.appName ?? "Unknown"
         }
         return this.connectData
@@ -273,6 +279,38 @@ export class WebRTCTransport implements Transport {
 
             trackPipeline.setTrack(this.audioStream)
             return trackPipeline
+        } else {
+            throw "unimplemented"
+        }
+    }
+
+    // Microphone
+    private microphoneTransceiver: RTCRtpTransceiver | null = null
+
+    async connectMicrophonePipeline(pipeline: Pipeline): Promise<Pipe | null> {
+        if (!this.connectData) {
+            throw "the stream must be connected!"
+        }
+        if (!this.microphoneTransceiver) {
+            return null
+        }
+
+        const outputType = pipelineOutputType(pipeline)
+
+        if (outputType == "audiotrack") {
+            pipeline.output = RtpTrackSenderPipe
+
+            const startPipe = await buildPipeline(pipeline, this.logger)
+            if (!startPipe) {
+                this.logger?.debug("Failed to build microphone pipeline")
+                return null
+            }
+
+            const rtpSenderPipe = getRootPipe(startPipe) as RtpTrackSenderPipe
+            rtpSenderPipe.setRtpSender(this.microphoneTransceiver.sender)
+
+            this.logger?.debug(`Successfully build microphone pipeline: ${pipelineToString(pipeline)}`)
+            return startPipe
         } else {
             throw "unimplemented"
         }

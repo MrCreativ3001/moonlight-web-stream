@@ -12,7 +12,6 @@ import { requestKeyboardLock } from "./iframe"
 import "./polyfill/index"
 import { KeyboardModeChangeEvent, likelyHasNativeOnScreenKeyboard, ScreenKeyboard, ScreenKeyboardListener, TextEvent } from "./keyboard"
 import { InfoEvent, Stream, StreamCapabilities } from "./stream/index"
-import { exitStreamPage } from "./stream/exit"
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input"
 import { emptyKeyModifiers } from "./stream/keyboard"
 import { LogMessageType } from "./stream/log"
@@ -21,6 +20,7 @@ import "./styles/index"
 import { LogLevel, uniffiInitAsync, Logger as UniffiLogger, setLogger as uniffiSetLogger } from "./uniffi/entry"
 import { NativeScreenKeyboard } from "./keyboard/native_keyboard"
 import { SimulatedKeyboard } from "./keyboard/simulated_keyboard"
+import { buildUrl } from "./config_"
 
 let I = getTranslations(getCurrentLanguage())
 
@@ -163,6 +163,7 @@ class ViewerApp implements Component {
 
     private div = document.createElement("div")
 
+    private connectionInfoModal = new ConnectionInfoModal()
     private screenKeyboard: ScreenKeyboard
 
     private statsDiv = document.createElement("div")
@@ -312,10 +313,9 @@ class ViewerApp implements Component {
         this.stream.addInfoListener(this.onInfo.bind(this))
 
         // Create connection info modal
-        const connectionInfo = new ConnectionInfoModal()
-        const connectionInfoListener = connectionInfo.onInfo.bind(connectionInfo)
+        const connectionInfoListener = this.connectionInfoModal.onInfo.bind(this.connectionInfoModal)
         this.stream.addInfoListener(connectionInfoListener)
-        showModal(connectionInfo)
+        showModal(this.connectionInfoModal)
 
         // Start animation frame loop
         this.onTouchUpdate()
@@ -342,7 +342,17 @@ class ViewerApp implements Component {
 
             this.armFullscreenOnNextInteraction()
         } else if (data.type == "streamEnded") {
-            exitStreamPage()
+            if (data.graceful) {
+                await showMessage(data.message ?? "The stream was gracefully closed!")
+
+                exitStreamPage()
+            } else {
+                // This dispatches a log line as fatal
+                const event: InfoEvent = new CustomEvent("stream-info", {
+                    detail: { type: "addDebugLine", line: data.message ?? "The stream closed with an ungracefully!", additional: { type: "fatal" } }
+                })
+                this.connectionInfoModal.onInfo(event)
+            }
         }
     }
 
@@ -1093,7 +1103,6 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
             }
 
             exitStreamPage()
-
         })
         this.buttonDiv.appendChild(this.exitStreamButton)
 
@@ -1218,6 +1227,22 @@ class SendKeycodeModal extends FormModal<number> {
         }
 
         return parseInt(keyString)
+    }
+}
+
+function exitStreamPage() {
+    if (window.matchMedia('(display-mode: standalone)').matches && history.length > 1) {
+        history.back()
+    } else {
+        window.close()
+
+        // Browsers may refuse to close a tab opened directly by the user.
+        // In that case, return to the app list instead of leaving a dead viewer.
+        window.setTimeout(() => {
+            if (!window.closed) {
+                window.location.replace(buildUrl("/"))
+            }
+        }, 0)
     }
 }
 

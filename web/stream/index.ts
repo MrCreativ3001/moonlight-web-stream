@@ -32,7 +32,7 @@ export type InfoEvent = CustomEvent<
     { type: "app", appName: string } |
     { type: "connectionComplete", capabilities: StreamCapabilities } |
     { type: "videoReady" } |
-    { type: "streamEnded" } |
+    { type: "streamEnded", graceful: boolean, message: string | null } |
     { type: "addDebugLine", line: string, additional?: LogMessageInfo }
 >
 export type InfoEventListener = (event: InfoEvent) => void
@@ -110,8 +110,6 @@ export class Stream implements Component {
     private eventTarget = new EventTarget()
 
     private transportOverride: TransportType | null = null
-    private stopped = false
-    private stopPromise: Promise<boolean> | null = null
 
     private videoRenderer: VideoRenderer | null = null
     private audioPlayer: AudioPlayer | null = null
@@ -170,11 +168,11 @@ export class Stream implements Component {
         const desiredTransport = this.transportOverride ?? this.settings.dataTransport
         this.debugLog(`Using transport: ${desiredTransport}`)
 
-        let shutdownReason: TransportShutdown | undefined
+        let shutdownReason: TransportShutdown | null = null
         if (desiredTransport == "auto") {
             shutdownReason = await this.tryWebRTCTransport()
 
-            if (!this.stopped && shutdownReason == "failednoconnect") {
+            if (shutdownReason == "failednoconnect") {
                 this.debugLog("Failed to establish WebRTC connection. Falling back to Web Socket transport.", { type: "ifErrorDescription" })
                 shutdownReason = await this.tryWebSocketTransport()
             }
@@ -184,7 +182,7 @@ export class Stream implements Component {
             shutdownReason = await this.tryWebSocketTransport()
         }
 
-        if (this.stopped || shutdownReason == "disconnect") {
+        if (shutdownReason == "disconnect") {
             return
         }
         this.debugLog(shutdownReason == "failed"
@@ -310,17 +308,17 @@ export class Stream implements Component {
 
         return await onClose
     }
-    private async tryWebSocketTransport() {
+    private async tryWebSocketTransport(): Promise<TransportShutdown | null> {
         if (!this.permissions.allow_transport_websockets) {
             this.debugLog("Not trying WebSocket transport becaues permissions disallow it")
-            return
+            return null
         }
 
         this.debugLog("Trying Web Socket transport")
 
         const options = await this.createTransportOptions()
         if (!options) {
-            return
+            return null
         }
 
         const transport = new WebSocketTransport(this.api, this.logger)
@@ -563,33 +561,36 @@ export class Stream implements Component {
         return this.microphoneListener
     }
 
-    stop(): Promise<boolean> {
-        this.stopped = true
-        return this.stopPromise ??= (async () => {
-            await this.transport?.close()
-            return true
-        })()
+    async stop(): Promise<boolean> {
+        // Stop transport
+        await this.transport?.close()
+        this.transport = null
+
+        return true
     }
 
     private boundReceivePacket = this.onReceivePacket.bind(this)
-    private onReceivePacket(packet: ControlPacket) {
+    private async onReceivePacket(packet: ControlPacket) {
         switch (packet.tag) {
             case ControlPacket_Tags.ServerTermination: {
-                if (this.stopped) {
-                    return
-                }
                 const reason = packet.inner.reason
                 const graceful = reason.tag == TerminationReason_Tags.Long && reason.inner[0] == 0x80030023
-                // Mark the stream stopped before closing its transport. Otherwise
-                // the close callback can trigger an error or start a fallback stream.
-                void this.stop().catch(error => console.debug("Failed to close ended stream", error))
+
+                // close the transport
+                this.stop()
+
+                let message = null
                 if (graceful) {
-                    this.eventTarget.dispatchEvent(new CustomEvent("stream-info", {
-                        detail: { type: "streamEnded" }
-                    }))
+                    message = "The host ended the stream gracefully."
                 } else {
-                    this.debugLog(`The host ended the stream (code 0x${reason.inner[0].toString(16)})`, { type: "fatalDescription" })
+                    message = `The host ended the stream (code 0x${reason.inner[0].toString(16)})`
                 }
+
+                const event: InfoEvent = new CustomEvent("stream-info", {
+                    detail: { type: "streamEnded", graceful, message }
+                })
+
+                this.eventTarget.dispatchEvent(event)
                 return
             }
             case ControlPacket_Tags.HdrMode:

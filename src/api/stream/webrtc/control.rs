@@ -185,6 +185,7 @@ impl ControlChannel {
                         }
                         DataChannelEvent::OnClose => {
                             self.channel_state = RTCDataChannelState::Closed;
+                            return Ok(ControlChannelEvent::Closed);
                         }
                         _ => {}
                     }

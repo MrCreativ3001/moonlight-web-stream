@@ -274,7 +274,7 @@ jobs:
         with:
           context: ./docker/
           file: ./docker/Dockerfile.action
-          tags: mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-${{ matrix.platform }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/moonlight-web-stream:${{ github.ref_name }}-${{ matrix.platform }}
           push: true
 
   docker-manifest:
@@ -292,12 +292,14 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Create and push manifest
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          docker manifest create mrcreativ3001/moonlight-web-stream:${{ github.ref_name }} \
-            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-amd64 \
-            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-arm64
+          docker manifest create "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}" \
+            --amend "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}-amd64" \
+            --amend "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}-arm64"
 
-          docker manifest push mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}
+          docker manifest push "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}"
 
   docker-manifest-latest:
     name: Docker point latest image to versioned image
@@ -314,9 +316,11 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Create and push manifest
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          docker manifest create mrcreativ3001/moonlight-web-stream:latest \
-            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-amd64 \
-            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-arm64
+          docker manifest create "$DOCKERHUB_USERNAME/moonlight-web-stream:latest" \
+            --amend "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}-amd64" \
+            --amend "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}-arm64"
 
-          docker manifest push mrcreativ3001/moonlight-web-stream:latest
+          docker manifest push "$DOCKERHUB_USERNAME/moonlight-web-stream:latest"

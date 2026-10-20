@@ -125,12 +125,17 @@ pub async fn webrtc_loop(
                         if let ControlPacket::ServerTermination { reason } = &packet {
                             info!(?reason, "relaying host termination to browser");
                             control_channel.send(packet);
+
                             // Keep SCTP alive until the viewer has received the message
                             // and closed the channel. Closing the peer immediately can
                             // discard the queued termination packet, especially over WAN.
-                            let _ = tokio::time::timeout(Duration::from_secs(5), async {
-                                while let Ok(ControlChannelEvent::Packet(_)) = control_channel.drive().await {}
-                            }).await;
+                            let _ = tokio::time::timeout(
+                                Duration::from_secs(5),
+                                async {
+                                    while !matches!(control_channel.drive().await, Ok(ControlChannelEvent::Closed) | Err(_)) {}
+                                }
+                            ).await;
+
                             return Ok(());
                         }
                         if let ControlPacket::HdrMode { enabled, sunshine } = &packet {

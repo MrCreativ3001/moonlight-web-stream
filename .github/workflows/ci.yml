@@ -114,9 +114,17 @@ jobs:
           static
 
   build-macos:
-    name: Build aarch64-apple-darwin
+    name: Build ${{ matrix.target }}
     needs: test
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            target: aarch64-apple-darwin
+          - runner: macos-26-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
 
     steps:
     - uses: actions/checkout@v5
@@ -130,10 +138,10 @@ jobs:
 
     - uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        target: aarch64-apple-darwin
+        target: ${{ matrix.target }}
     - uses: Swatinem/rust-cache@v2
       with:
-        shared-key: aarch64-apple-darwin
+        shared-key: ${{ matrix.target }}
 
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
@@ -142,19 +150,19 @@ jobs:
 
     - name: Build
       run: |
-        cargo build --release --target aarch64-apple-darwin
+        cargo build --release --target ${{ matrix.target }}
 
         npm ci
         npm run build
         mv dist static
 
         rm -rf web-server
-        mv target/aarch64-apple-darwin/release/web-server web-server
+        mv target/${{ matrix.target }}/release/web-server web-server
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v7
       with:
-        name: moonlight-web-aarch64-apple-darwin
+        name: moonlight-web-${{ matrix.target }}
         path: |
           web-server
           static
@@ -204,6 +212,8 @@ jobs:
           - target: aarch64-unknown-linux-musl
             suffix: ""
           - target: aarch64-apple-darwin
+            suffix: ""
+          - target: x86_64-apple-darwin
             suffix: ""
 
     steps:

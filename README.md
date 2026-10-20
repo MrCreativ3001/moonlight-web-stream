@@ -575,7 +575,7 @@ You can use [Cargo Cross](https://github.com/cross-rs/cross) for cross compilati
 ```sh
 cross build --release --target YOUR_TARGET
 ```
-Note: windows only has the gnu target `x86_64-pc-windows-gnu`. macOS ARM64 is built natively for `aarch64-apple-darwin`.
+Note: windows only has the gnu target `x86_64-pc-windows-gnu`. macOS is built natively for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
 
 ### Building the Frontend
 Build the web frontend with [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).

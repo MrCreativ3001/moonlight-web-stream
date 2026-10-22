@@ -66,13 +66,13 @@ jobs:
             app-suffix: ""
           - target: aarch64-apple-darwin
             app-suffix: ""
-            compile_native_with_runner: macos-26
+            runner: macos-26
           - target: x86_64-apple-darwin
             app-suffix: ""
-            compile_native_with_runner: macos-26-intel
+            runner: macos-26-intel
 
     name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.compile_native_with_runner || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
   
     steps:
     - uses: actions/checkout@v5

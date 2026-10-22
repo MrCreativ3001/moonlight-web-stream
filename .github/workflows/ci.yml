@@ -56,35 +56,23 @@ jobs:
         include:
           - target: x86_64-pc-windows-gnu
             app-suffix: .exe
-            runner: ubuntu-latest
-            use-cross: true
           - target: x86_64-unknown-linux-gnu
             app-suffix: ""
-            runner: ubuntu-latest
-            use-cross: true
           - target: x86_64-unknown-linux-musl
             app-suffix: ""
-            runner: ubuntu-latest
-            use-cross: true
           - target: aarch64-unknown-linux-gnu
             app-suffix: ""
-            runner: ubuntu-latest
-            use-cross: true
           - target: aarch64-unknown-linux-musl
             app-suffix: ""
-            runner: ubuntu-latest
-            use-cross: true
           - target: aarch64-apple-darwin
             app-suffix: ""
             runner: macos-26
-            use-cross: false
           - target: x86_64-apple-darwin
             app-suffix: ""
             runner: macos-26-intel
-            use-cross: false
 
     name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
   
     steps:
     - uses: actions/checkout@v5
@@ -97,14 +85,8 @@ jobs:
         node-version: 26
         cache: npm
   
-    # Install rust. Apple targets compile on the host, so rustup must
-    # provide that std. Cross images already contain the Linux and Windows targets.
+    # Install Rust
     - uses: actions-rust-lang/setup-rust-toolchain@v1
-      if: matrix.use-cross
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
-      if: ${{ !matrix.use-cross }}
-      with:
-        target: ${{ matrix.target }}
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: cross-${{ matrix.target }}
@@ -113,7 +95,6 @@ jobs:
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
-      if: matrix.use-cross
       run: cargo binstall --force cross
     - name: Install Wasm-Bindgen
       run: cargo binstall --no-confirm --force wasm-bindgen-cli@0.2.128
@@ -121,11 +102,7 @@ jobs:
     # Build
     - name: Build
       run: |
-        if [[ "${{ matrix.use-cross }}" == "true" ]]; then
-          cross build --release --target ${{ matrix.target }}
-        else
-          cargo build --release --target ${{ matrix.target }}
-        fi
+        cross build --release --target ${{ matrix.target }}
   
         npm ci
         npm run build

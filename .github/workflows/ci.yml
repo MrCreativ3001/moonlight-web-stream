@@ -56,17 +56,35 @@ jobs:
         include:
           - target: x86_64-pc-windows-gnu
             app-suffix: .exe
+            runner: ubuntu-latest
+            use-cross: true
           - target: x86_64-unknown-linux-gnu
             app-suffix: ""
+            runner: ubuntu-latest
+            use-cross: true
           - target: x86_64-unknown-linux-musl
             app-suffix: ""
+            runner: ubuntu-latest
+            use-cross: true
           - target: aarch64-unknown-linux-gnu
             app-suffix: ""
+            runner: ubuntu-latest
+            use-cross: true
           - target: aarch64-unknown-linux-musl
             app-suffix: ""
+            runner: ubuntu-latest
+            use-cross: true
+          - target: aarch64-apple-darwin
+            app-suffix: ""
+            runner: macos-26
+            use-cross: false
+          - target: x86_64-apple-darwin
+            app-suffix: ""
+            runner: macos-26-intel
+            use-cross: false
 
     name: Build ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
   
     steps:
     - uses: actions/checkout@v5
@@ -79,8 +97,14 @@ jobs:
         node-version: 26
         cache: npm
   
-    # Install rust
+    # Install rust. Apple targets compile on the host, so rustup must
+    # provide that std. Cross images already contain the Linux and Windows targets.
     - uses: actions-rust-lang/setup-rust-toolchain@v1
+      if: matrix.use-cross
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      if: ${{ !matrix.use-cross }}
+      with:
+        target: ${{ matrix.target }}
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: cross-${{ matrix.target }}
@@ -89,6 +113,7 @@ jobs:
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
+      if: matrix.use-cross
       run: cargo binstall --force cross
     - name: Install Wasm-Bindgen
       run: cargo binstall --no-confirm --force wasm-bindgen-cli@0.2.128
@@ -96,7 +121,11 @@ jobs:
     # Build
     - name: Build
       run: |
-        cross build --release --target ${{ matrix.target }}
+        if [[ "${{ matrix.use-cross }}" == "true" ]]; then
+          cross build --release --target ${{ matrix.target }}
+        else
+          cargo build --release --target ${{ matrix.target }}
+        fi
   
         npm ci
         npm run build
@@ -117,7 +146,8 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs:
+    - build
   
     outputs:
       upload_url: ${{ steps.release.outputs.upload_url }}
@@ -153,6 +183,10 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             suffix: ""
           - target: aarch64-unknown-linux-musl
+            suffix: ""
+          - target: aarch64-apple-darwin
+            suffix: ""
+          - target: x86_64-apple-darwin
             suffix: ""
 
     steps:
@@ -223,7 +257,7 @@ jobs:
         with:
           context: ./docker/
           file: ./docker/Dockerfile.action
-          tags: mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-${{ matrix.platform }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/moonlight-web-stream:${{ github.ref_name }}-${{ matrix.platform }}
           push: true
 
   docker-manifest:
@@ -241,12 +275,14 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Create and push manifest
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          docker manifest create mrcreativ3001/moonlight-web-stream:${{ github.ref_name }} \
-            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-amd64 \
-            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-arm64
+          docker manifest create "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}" \
+            --amend "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}-amd64" \
+            --amend "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}-arm64"
 
-          docker manifest push mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}
+          docker manifest push "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}"
 
   docker-manifest-latest:
     name: Docker point latest image to versioned image
@@ -263,9 +299,11 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Create and push manifest
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          docker manifest create mrcreativ3001/moonlight-web-stream:latest \
-            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-amd64 \
-            --amend mrcreativ3001/moonlight-web-stream:${{ github.ref_name }}-arm64
+          docker manifest create "$DOCKERHUB_USERNAME/moonlight-web-stream:latest" \
+            --amend "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}-amd64" \
+            --amend "$DOCKERHUB_USERNAME/moonlight-web-stream:${{ github.ref_name }}-arm64"
 
-          docker manifest push mrcreativ3001/moonlight-web-stream:latest
+          docker manifest push "$DOCKERHUB_USERNAME/moonlight-web-stream:latest"

@@ -72,7 +72,7 @@ jobs:
             compile_native_with_runner: macos-26-intel
 
     name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.compile_native_with_runner || "ubuntu-latest" }}
+    runs-on: ${{ matrix.compile_native_with_runner || 'ubuntu-latest' }}
   
     steps:
     - uses: actions/checkout@v5

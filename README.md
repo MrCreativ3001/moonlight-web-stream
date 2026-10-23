@@ -248,15 +248,6 @@ There are a few important things to be aware of when using WebSockets for stream
 
 - If the application is **not** running in a secure context, it will fall back to an older video playback API, which may introduce noticeable latency.
 
-- If this is unacceptable and you know what you're doing, you can use a software-based decoder:
-  - Build a custom version of [openh264](https://github.com/MrCreativ3001/openh264-js) for the browser.
-  - This custom build allows video frames to be decoded directly in the browser without relying on the `VideoDecoder` API.
-  - After building, copy the generated `decoder.js` file to:
-    ```
-    static/libopenh264/decoder.js
-    ```
-  - The decoder will be detected and used automatically.
-
 ## Config
 The config file is under `server/config.json` relative to the executable.
 Here are the most important settings for configuring Moonlight Web.

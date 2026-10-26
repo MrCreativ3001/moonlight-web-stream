@@ -521,6 +521,8 @@ pub async fn webrtc_post(
         )
         .await?;
 
+    info!(config = ?config, "connecting to host");
+
     let moonlight_stream = match MoonlightStream::connect(
         config,
         settings,

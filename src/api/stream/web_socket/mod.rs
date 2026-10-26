@@ -215,6 +215,8 @@ async fn handle_ws(
         )
         .await?;
 
+    info!(config = ?config, "connecting to host");
+
     let stream = MoonlightStream::connect(
         config,
         settings,

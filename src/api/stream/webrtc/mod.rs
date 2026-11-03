@@ -25,9 +25,7 @@ use moonlight_common::stream::tokio::MoonlightStream;
 use moonlight_common::stream::video::{
     ColorRange, ColorSpace, VideoCapabilities, VideoFormat, VideoFormats,
 };
-use moonlight_common::stream::{
-    AesIv, AesKey, MoonlightStreamSettings, StreamingConfig,
-};
+use moonlight_common::stream::{AesIv, AesKey, MoonlightStreamSettings, StreamingConfig};
 use moonlight_common::webrtc::answer::WebRTCSessionAnswer;
 use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;

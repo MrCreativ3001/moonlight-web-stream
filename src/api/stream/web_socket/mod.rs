@@ -6,7 +6,7 @@ use crate::api::{
         WebSocketClientboundMessage, WebSocketServerboundMessage, WebSocketStreamResponse,
     },
     stream::{
-        PACKET_SIZE, apply_role_restrictions,
+        ENCRYPTION_FLAGS, PACKET_SIZE, apply_role_restrictions,
         web_socket::delay_controller::{DelayController, DelayState},
     },
 };
@@ -17,7 +17,7 @@ use moonlight_common::{
     AppId,
     crypto::rustcrypto::RustCryptoBackend,
     stream::{
-        AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
+        AesIv, AesKey, MoonlightStreamSettings, StreamingConfig,
         audio::AudioConfig,
         control::ActiveGamepads,
         proto::{
@@ -173,7 +173,7 @@ async fn handle_ws(
         fps_x100: stream_request.fps * 100,
         bitrate: stream_request.bitrate,
         packet_size: PACKET_SIZE,
-        encryption_flags: EncryptionFlags::AUDIO | EncryptionFlags::FOUNDATION_MICROPHONE,
+        encryption_flags: ENCRYPTION_FLAGS,
         streaming_remotely: StreamingConfig::Auto,
         sops: true,
         hdr: stream_request.hdr,

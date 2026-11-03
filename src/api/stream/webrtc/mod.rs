@@ -26,7 +26,7 @@ use moonlight_common::stream::video::{
     ColorRange, ColorSpace, VideoCapabilities, VideoFormat, VideoFormats,
 };
 use moonlight_common::stream::{
-    AesIv, AesKey, EncryptionFlags, MoonlightStreamSettings, StreamingConfig,
+    AesIv, AesKey, MoonlightStreamSettings, StreamingConfig,
 };
 use moonlight_common::webrtc::answer::WebRTCSessionAnswer;
 use moonlight_common::webrtc::header::WebRTCLinkHeader;
@@ -59,7 +59,7 @@ use webrtc::peer_connection::{
 
 use crate::api::stream::webrtc::convert::into_webrtc_ice_candidate;
 use crate::api::stream::webrtc::ice_servers::generate_ice_servers;
-use crate::api::stream::{PACKET_SIZE, apply_role_restrictions};
+use crate::api::stream::{ENCRYPTION_FLAGS, PACKET_SIZE, apply_role_restrictions};
 use crate::app::App;
 use crate::app::host::HostId;
 use crate::app::stream::{ExternalStreamEvent, Stream, StreamId};
@@ -470,8 +470,7 @@ pub async fn webrtc_post(
         fps_x100: session.fps * 100,
         bitrate: session.bitrate,
         packet_size: PACKET_SIZE,
-        // There's not need to encrypt video
-        encryption_flags: EncryptionFlags::AUDIO | EncryptionFlags::FOUNDATION_MICROPHONE,
+        encryption_flags: ENCRYPTION_FLAGS,
         streaming_remotely: StreamingConfig::Auto,
         sops: true,
         hdr: session.hdr,

@@ -1,7 +1,7 @@
 use moonlight_common::{
     ServerVersion,
     stream::{
-        MoonlightStreamSettings,
+        EncryptionFlags, MoonlightStreamSettings,
         proto::control::packet::{ControlPacketConfig, RawControlPacketType},
         video::VideoFormats,
     },
@@ -13,6 +13,12 @@ pub mod web_socket;
 pub mod webrtc;
 
 const PACKET_SIZE: u32 = 1024;
+
+/// Video is included so that hosts with mandatory encryption accept the stream and so that
+/// it is protected between the host and this server, no matter which transport is used.
+const ENCRYPTION_FLAGS: EncryptionFlags = EncryptionFlags::AUDIO
+    .union(EncryptionFlags::VIDEO)
+    .union(EncryptionFlags::FOUNDATION_MICROPHONE);
 
 fn server_version() -> ServerVersion {
     ServerVersion::new(7, 0, 0, 0)
@@ -62,5 +68,24 @@ pub fn apply_role_restrictions(
 
     if !allow_hdr {
         settings.hdr = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use moonlight_common::stream::EncryptionFlags;
+
+    use crate::api::stream::{ENCRYPTION_FLAGS, PACKET_SIZE};
+
+    #[test]
+    fn streams_request_encrypted_video() {
+        assert!(ENCRYPTION_FLAGS.contains(EncryptionFlags::VIDEO));
+        assert!(ENCRYPTION_FLAGS.contains(EncryptionFlags::AUDIO));
+    }
+
+    /// Video encryption requires the packet size to be a multiple of the FEC chunk size
+    #[test]
+    fn packet_size_is_a_multiple_of_16() {
+        assert!(PACKET_SIZE.is_multiple_of(16));
     }
 }

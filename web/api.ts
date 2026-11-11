@@ -203,23 +203,23 @@ class StreamedJsonResponse<Initial, Other> {
 
     async next(): Promise<Other | null> {
         while (true) {
+            const newline = this.bufferedText.indexOf("\n")
+            if (newline != -1) {
+                const line = this.bufferedText.slice(0, newline).trim()
+                this.bufferedText = this.bufferedText.slice(newline + 1)
+                if (line) {
+                    return JSON.parse(line)
+                }
+                continue
+            }
+
             const { done, value } = await this.reader.read()
-
             if (done) {
-                return null
+                const line = (this.bufferedText + this.decoder.decode()).trim()
+                this.bufferedText = ""
+                return line ? JSON.parse(line) : null
             }
-
-            this.bufferedText += this.decoder.decode(value)
-
-            const split = this.bufferedText.split("\n", 2)
-            if (split.length == 2) {
-                this.bufferedText = split[1]
-
-                const text = split[0]
-                const json = JSON.parse(text)
-
-                return json
-            }
+            this.bufferedText += this.decoder.decode(value, { stream: true })
         }
     }
 }

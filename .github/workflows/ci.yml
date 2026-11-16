@@ -32,7 +32,7 @@ jobs:
 
       # Clippy
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       # Binstall
       - name: Install cargo-binstall
@@ -40,13 +40,13 @@ jobs:
 
       # Cargo Shear
       - name: Install cargo-shear
-        run: cargo binstall --force --no-confirm cargo-shear
+        run: cargo binstall --force --no-confirm --locked cargo-shear
       - name: Cargo Shear
-        run: cargo shear
+        run: cargo shear --locked
   
       # Test
       - name: Test
-        run: cargo test --workspace --locked
+        run: cargo test --locked --workspace
 
   build:
     needs: test
@@ -95,14 +95,14 @@ jobs:
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
-      run: cargo binstall --force cross
+      run: cargo binstall --force --locked cross
     - name: Install Wasm-Bindgen
-      run: cargo binstall --no-confirm --force wasm-bindgen-cli@0.2.128
+      run: cargo binstall --no-confirm --force --locked wasm-bindgen-cli@0.2.128
   
     # Build
     - name: Build
       run: |
-        cross build --release --target ${{ matrix.target }}
+        cross build --locked --release --target ${{ matrix.target }}
   
         npm ci
         npm run build

@@ -182,6 +182,7 @@ fn init_log(config: &Config) -> Option<non_blocking::WorkerGuard> {
     Registry::default()
         .with(venator)
         .with(env_filter.clone())
+        .with(config_level_filter)
         .with(file_layer)
         .with(stdout_layer)
         .init();

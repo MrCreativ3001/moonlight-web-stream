@@ -67,6 +67,9 @@ hex = { version = "0.4.3" }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
+[lints.rust]
+unused_crate_dependencies = "warn"
+
 [lints.clippy]
 too_many_arguments = "allow"
 unwrap_used = "warn"

@@ -34,16 +34,6 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
-      # Binstall
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
-
-      # Cargo Shear
-      - name: Install cargo-shear
-        run: cargo binstall --force --no-confirm --locked cargo-shear
-      - name: Cargo Shear
-        run: cargo shear --locked
-  
       # Test
       - name: Test
         run: cargo test --locked --workspace

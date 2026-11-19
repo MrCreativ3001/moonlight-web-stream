@@ -15,7 +15,7 @@ use futures_concurrency::future::RaceOk;
 use hex::FromHexError;
 use moonlight_common::{
     crypto::rustcrypto::{RustCryptoBackend, RustCryptoError},
-    http::{client::tokio_hyper::TokioHyperClient, pair::PairingCryptoBackend},
+    http::{client::tokio::TokioClient, pair::PairingCryptoBackend},
 };
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -183,7 +183,7 @@ struct AppInner {
     streams: RwLock<HashMap<StreamId, Stream>>,
 }
 
-pub type RequestClient = TokioHyperClient;
+pub type RequestClient = TokioClient;
 
 pub struct App {
     inner: Arc<AppInner>,

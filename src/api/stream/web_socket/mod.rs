@@ -22,12 +22,12 @@ use moonlight_common::{
         control::ActiveGamepads,
         proto::{
             MoonlightStreamSetup,
-            audio::AudioStreamEvent,
+            audio::stream::AudioStreamEvent,
             control::{
-                ControlStreamEvent,
                 packet::{ControlPacket, ControlPacketConfig, PacketDirection},
+                stream::ControlStreamEvent,
             },
-            video::VideoStreamEvent,
+            video::stream::VideoStreamEvent,
         },
         tokio::{MoonlightStream, MoonlightStreamEvent},
         video::{ColorRange, ColorSpace, VideoCapabilities, VideoFormats},

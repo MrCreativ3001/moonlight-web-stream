@@ -86,6 +86,8 @@ jobs:
       uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
       run: cargo install --locked --git https://github.com/cross-rs/cross cross
+      env:
+        RUSTFLAGS: "-A semicolon-in-expressions-from-non-local-macros"
     - name: Install Wasm-Bindgen
       run: cargo binstall --no-confirm --force --locked wasm-bindgen-cli@0.2.128
   

@@ -232,6 +232,7 @@ jobs:
         with:
           context: ./docker/
           file: ./docker/Dockerfile.action
+          platforms: linux/${{ matrix.platform }}
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/moonlight-web-stream:${{ github.ref_name }}-${{ matrix.platform }}
           push: true
 

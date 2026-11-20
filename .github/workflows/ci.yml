@@ -85,23 +85,29 @@ jobs:
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
-      run: cargo install --locked --git https://github.com/cross-rs/cross cross
+      run: cargo install --locked --git https://github.com/cross-rs/cross --rev a9301e91f72bba3850460512685f6b16062015ff cross
       env:
         RUSTFLAGS: "-A semicolon-in-expressions-from-non-local-macros"
+      if: ${{ matrix.runner }} != null
     - name: Install Wasm-Bindgen
       run: cargo binstall --no-confirm --force --locked wasm-bindgen-cli@0.2.128
-  
+
     # Build
+    - name: Build with cargo
+      if: matrix.runner != null
+      run: cargo build --locked --release --target ${{ matrix.target }}
+    - name: Build with cross
+      if: matrix.runner == null
+      run: cross build --locked --release --target ${{ matrix.target }}
+
     - name: Build
       run: |
-        cross build --locked --release --target ${{ matrix.target }} -vv
-  
+        rm -rf web-server
+        mv target/${{ matrix.target }}/release/web-server${{ matrix.app-suffix }} web-server${{ matrix.app-suffix }}
+
         npm ci
         npm run build
         mv dist static
-  
-        rm -rf web-server
-        mv target/${{ matrix.target }}/release/web-server${{ matrix.app-suffix }} web-server${{ matrix.app-suffix }}
   
     - name: Upload build artifact
       uses: actions/upload-artifact@v7

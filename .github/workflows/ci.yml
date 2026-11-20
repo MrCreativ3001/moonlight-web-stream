@@ -85,7 +85,7 @@ jobs:
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
     - name: Install Cross
-      run: cargo binstall --force --locked cross
+      run: cargo install --locked cross
     - name: Install Wasm-Bindgen
       run: cargo binstall --no-confirm --force --locked wasm-bindgen-cli@0.2.128
   

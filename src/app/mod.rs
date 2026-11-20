@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     io, mem,
     ops::Deref,
-    sync::{Arc, Weak},
+    sync::{Arc, Mutex as StdMutex, Weak},
 };
 
 use crate::{
@@ -67,6 +67,14 @@ pub enum AppError {
     HostPaired,
     #[error("the host must be paired for this action")]
     HostNotPaired,
+    #[error("a pairing attempt for this host is already in progress")]
+    PairingInProgress,
+    #[error("the pairing attempt timed out before the pin was entered on the host")]
+    PairingTimedOut,
+    #[error("the pairing attempt was cancelled")]
+    PairingCancelled,
+    #[error("there is no pairing attempt in progress for this host")]
+    PairingNotInProgress,
     #[error("the client doesn't support the required codecs")]
     WebRtcClientCodecNotSupported,
     #[error("the stream was already closed")]
@@ -129,6 +137,10 @@ impl ResponseError for AppError {
             Self::HostNotPaired => HttpResponse::new(StatusCode::FORBIDDEN),
             Self::HostPaired => HttpResponse::new(StatusCode::NOT_MODIFIED)
                 .set_body(BoxBody::new("host not paired")),
+            Self::PairingInProgress => HttpResponse::new(StatusCode::CONFLICT),
+            Self::PairingTimedOut => HttpResponse::new(StatusCode::REQUEST_TIMEOUT),
+            Self::PairingCancelled => HttpResponse::new(StatusCode::OK),
+            Self::PairingNotInProgress => HttpResponse::new(StatusCode::NOT_FOUND),
             Self::WebRtcClientCodecNotSupported => HttpResponse::new(StatusCode::BAD_REQUEST),
             Self::UserNotFound => {
                 HttpResponse::new(StatusCode::NOT_FOUND).set_body(BoxBody::new("user not found"))
@@ -180,6 +192,12 @@ struct AppInner {
     config: Config,
     storage: Arc<dyn Storage + Send + Sync>,
     app_image_cache: RwLock<HashMap<(UserId, HostId, AppId), Bytes>>,
+    /// Hosts with a pairing attempt in flight, with a sender to cancel it.
+    /// Guards against concurrent attempts for the same host: racing attempts
+    /// corrupt Sunshine's pending pair session (it keys sessions by client
+    /// uniqueid and never refreshes an existing entry), which makes every
+    /// later attempt fail until Sunshine restarts.
+    pairing_sessions: StdMutex<HashMap<HostId, tokio::sync::oneshot::Sender<()>>>,
     streams: RwLock<HashMap<StreamId, Stream>>,
 }
 
@@ -195,6 +213,7 @@ impl App {
             storage: create_storage(config.data_storage.clone()).await?,
             config,
             app_image_cache: Default::default(),
+            pairing_sessions: Default::default(),
             streams: Default::default(),
         };
         let inner = Arc::new(app);

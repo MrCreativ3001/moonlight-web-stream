@@ -1,4 +1,4 @@
-import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, PutDefaultUserRequest, PutDefaultRoleRequest, GetDefaultRoleResponse, GetDefaultUserResponse, } from "./api_bindings"
+import { App, DeleteHostQuery, DeleteUserRequest, DetailedHost, DetailedUser, GetAppImageQuery, GetAppsQuery, GetAppsResponse, GetHostQuery, GetHostResponse, GetHostsResponse, GetUserQuery, GetUsersResponse, PatchUserRequest, PostCancelRequest, PostCancelResponse, PostLoginRequest, PostPairCancelRequest, PostPairRequest, PostPairResponse1, PostPairResponse2, PostUserRequest, PostWakeUpRequest, PostHostRequest, PostHostResponse, UndetailedHost, PatchHostRequest, GetRolesResponse, GetRoleResponse, GetRoleQuery, DeleteRoleQuery, PatchRoleRequest, PostRoleResponse, PostRoleRequest, DetailedRole, PutDefaultUserRequest, PutDefaultRoleRequest, GetDefaultRoleResponse, GetDefaultUserResponse, } from "./api_bindings"
 import { showNotification } from "./component/notification"
 import { showMessage, showModal } from "./component/modal/index"
 import { ApiUserPasswordPrompt } from "./component/modal/login"
@@ -456,6 +456,13 @@ export async function apiPostPair(api: Api, request: PostPairRequest): Promise<S
         json: request,
         response: "jsonStreaming",
         noTimeout: true
+    })
+}
+
+export async function apiPostPairCancel(api: Api, request: PostPairCancelRequest): Promise<void> {
+    await fetchApi(api, "/pair/cancel", "post", {
+        json: request,
+        response: "ignore"
     })
 }
 

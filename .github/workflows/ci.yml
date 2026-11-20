@@ -92,7 +92,7 @@ jobs:
     # Build
     - name: Build
       run: |
-        cross build --locked --release --target ${{ matrix.target }}
+        cross build --locked --release --target ${{ matrix.target }} -vv
   
         npm ci
         npm run build

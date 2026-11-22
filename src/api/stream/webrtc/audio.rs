@@ -67,7 +67,8 @@ impl AudioChannel {
             }],
         )));
 
-        peer.add_track(Arc::clone(&track) as Arc<dyn TrackLocal>)
+        let sender = peer
+            .add_track(Arc::clone(&track) as Arc<dyn TrackLocal>)
             .await?;
 
         info!(audio_config = ?config, codec = ?codec, "finished audio track setup");
@@ -77,14 +78,50 @@ impl AudioChannel {
         spawn(
             async move {
                 let mut sequence_number = 0u16;
+                let mut negotiated_payload_type: Option<u8> = None;
 
                 while let Some(frame) = frame_receiver.recv().await {
+                    let payload_type = match negotiated_payload_type {
+                        Some(pt) => pt,
+                        None => {
+                            match sender.get_parameters().await {
+                                Ok(parameters) => {
+                                    match parameters
+                                    .rtp_parameters
+                                    .codecs
+                                    .iter()
+                                    .find(|codec| {
+                                        codec.rtp_codec.mime_type
+                                        .eq_ignore_ascii_case("audio/opus")
+                                    })
+                                    {
+                                        Some(codec) => {
+                                            let pt = codec.payload_type;
+                                            negotiated_payload_type = Some(pt);
+
+                                            info!(
+                                                payload_type = pt,
+                                                "using negotiated Opus payload type"
+                                            );
+
+                                            pt
+                                        }
+                                        None => {
+                                            warn!("Opus codec not negotiated yet; dropping audio frame");
+                                            continue;
+                                        }
+                                    }
+                                }
+                                Err(error) => {
+                                    warn!(error = %error, "failed to get negotiated audio parameters");
+                                    continue;
+                                }
+                            }
+                        }
+                    };
                     let timestamp = (frame.timestamp.as_millis() * 48) as u32;
-
-                    trace!(len = ?frame.buffer.len(), timestamp = ?frame.timestamp, "audio frame");
-
+                    trace!(len = ?frame.buffer.len(), timestamp = ?frame.timestamp, payload_type, "audio frame");
                     sequence_number = sequence_number.wrapping_add(1);
-
                     // Opus doesn't need any special payloading: https://github.com/webrtc-rs/webrtc/blob/6b94718e23111df28125f96af4b0de8cbb3dfd0d/rtp/src/codecs/opus/mod.rs#L9-L24
                     if let Err(err) = track
                         .write_rtp_with_extensions(
@@ -93,7 +130,7 @@ impl AudioChannel {
                                     version: 2,
                                     sequence_number,
                                     timestamp,
-                                    payload_type: 111,
+                                    payload_type,
                                     ssrc,
                                     ..Default::default()
                                 },

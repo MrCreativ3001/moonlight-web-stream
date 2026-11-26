@@ -3,8 +3,9 @@ import { zhCN } from "./locales/zh-CN"
 import { ptBR } from "./locales/pt-BR"
 import { frFr } from "./locales/fr-FR"
 import { koKR } from "./locales/ko-KR"
+import { jaJP } from "./locales/ja-JP"
 
-export type Language = "en" | "zh-CN" | "pt-BR" | "fr-FR" | "ko-KR"
+export type Language = "en" | "zh-CN" | "pt-BR" | "fr-FR" | "ko-KR" | "ja-JP"
 
 // Translations is defined in locales/en.ts (the canonical locale).
 // Adding a new locale requires: (1) create web/locales/<code>.ts implementing
@@ -17,6 +18,7 @@ const locales: Record<Language, Translations> = {
     "pt-BR": ptBR,
     "fr-FR": frFr,
     "ko-KR": koKR,
+    "ja-JP": jaJP,
 }
 
 export function getTranslations(language: Language): Translations {
@@ -32,6 +34,9 @@ export function normalizeLanguage(language: unknown): Language {
     }
     if (language === "ko" || language === "ko-KR" || language === "ko_KR") {
         return "ko-KR"
+    }
+    if (language === "ja" || language === "ja-JP" || language === "ja_JP") {
+        return "ja-JP"
     }
     return "en"
 }
@@ -81,5 +86,6 @@ export function getLanguageOptions(): Array<{ value: Language, name: string }> {
         { value: "pt-BR", name: "Português (Brasil)" },
         { value: "fr-FR", name: "Français" },
         { value: "ko-KR", name: "한국어" },
+        { value: "ja-JP", name: "日本語" },
     ]
 }
